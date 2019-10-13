@@ -1,10 +1,12 @@
-import Chisel3._
+package data
+
+import chisel3._
 
 // AXI master port, without ACLK / ARSESTn
 class AXI(
     DATA_WIDTH: Int,
     ADDR_WIDTH: Int = 64,
-    ID_WIDTH: Int = 4,
+    ID_WIDTH: Int = 4
 ) extends Bundle {
     // TODO: asserts DATA_wIDTH % 8 === 0
     val AWID = Output(UInt(ID_WIDTH.W))
@@ -16,7 +18,7 @@ class AXI(
     val AWCACHE = Output(UInt(4.W))
     val AWPROT = Output(UInt(3.W))
     val AWQOS = Output(UInt(3.W))
-    val AWREGION = Ouptut(UInt(4.W))
+    val AWREGION = Output(UInt(4.W))
     // We ignore user signals
     val AWVALID = Output(Bool())
     val AWREADY = Input(Bool())
@@ -41,7 +43,7 @@ class AXI(
     val ARCACHE = Output(UInt(4.W))
     val ARPROT = Output(UInt(3.W))
     val ARQOS = Output(UInt(3.W))
-    val ARREGION = Ouptut(UInt(4.W))
+    val ARREGION = Output(UInt(4.W))
     val ARVALID = Output(Bool())
     val ARREADY = Input(Bool())
 
