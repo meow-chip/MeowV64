@@ -1,7 +1,7 @@
 package instr
 
 import chisel3._
-import chisel3.util.Enum
+import chisel3.util._
 
 /**
  * Instruction Decoder
@@ -24,10 +24,10 @@ object Decoder {
     }
   }
 
-  case class OpSpec(ident: UInt, t: InstrType.InstrType)
+  case class OpSpec(ident: UInt, t: UInt)
 
   object spec {
-    def apply(s: String, t: InstrType.InstrType) = OpSpec(Integer.parseInt(s, 2).U(5.W), t)
+    def apply(s: String, t: InstrType.InstrType) = OpSpec(Integer.parseInt(s, 2).U(5.W), InstrType.toInt(t))
   }
 
   val Op: Map[String, OpSpec] = Map(
@@ -107,14 +107,55 @@ object Decoder {
     "CSRRSI" -> "110",
     "CSRRCI" -> "111"
   ).mapValues(Integer.parseInt(_, 2).U(3.W))
+
+  implicit class ConvertToInstr(self: Data) {
+    def asInstr(): Instr = {
+      val result = Wire(new Instr)
+      val ui = self.asUInt
+      result.op := ui >> 2
+
+      val ctx: Option[WhenContext] = None
+
+      for((op, OpSpec(pat, typ)) <- Op) {
+        ctx match {
+          case Some(c) => c.elsewhen(result.op === pat) { result.base := typ }
+          case None => when(result.op === pat) { result.base := typ }
+        }
+      }
+
+      // Really parse the instr
+      result.funct3 := ui(14, 12)
+      result.funct7 := ui(31, 25)
+      result.rd := ui(11, 7)
+      result.rs1 := ui(19, 15)
+      result.rs2 := ui(24, 20)
+
+      // Parse immediate
+      result.imm := 0.U
+      when(result.base === InstrType.toInt(InstrType.I)) {
+        result.imm := ui(31, 20).asSInt
+      }.elsewhen(result.base === InstrType.toInt(InstrType.S)) {
+        result.imm := (ui(31, 25) ## ui(11, 7)).asSInt
+      }.elsewhen(result.base === InstrType.toInt(InstrType.B)) {
+        result.imm := (ui(31) ## ui(7) ## ui(30, 25) ## ui(11, 8) ## 0.U(1.W)).asSInt
+      }.elsewhen(result.base === InstrType.toInt(InstrType.U)) {
+        result.imm := ui(31, 12).asSInt << 12
+      }.elsewhen(result.base === InstrType.toInt(InstrType.J)) {
+        result.imm := (ui(31) ## ui(19, 12) ## ui(20) ## ui(30, 21) ## 0.U(1.W)).asSInt
+      }
+
+      result
+    }
+  }
 }
 
 class Instr extends Bundle {
   // Opcode
   val op = UInt(5.W)
+  val base = UInt(3.W)
 
   // Immediates
-  val imm = UInt(32.W)
+  val imm = SInt(32.W)
 
   // Registers
   val rs1 = UInt(5.W)

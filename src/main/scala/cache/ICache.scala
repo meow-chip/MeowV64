@@ -3,7 +3,7 @@ package cache
 import chisel3._
 import _root_.data._
 
-class ICachePort(ADDR_WIDTH: Int = 48, DATA_LEN: Int = 64) extends Bundle {
+class ICachePort(ADDR_WIDTH: Int, DATA_LEN: Int) extends Bundle {
   val addr = Input(UInt(ADDR_WIDTH.W))
   val read = Input(Bool())
 
@@ -17,10 +17,10 @@ class ICachePort(ADDR_WIDTH: Int = 48, DATA_LEN: Int = 64) extends Bundle {
 }
 
 // TODO: Change to xpm_tdpmem
-class ICache extends Module {
-  val io = IO(new ICachePort)
+class ICache(ADDR_WIDTH: Int, DATA_LEN: Int) extends Module {
+  val io = IO(new ICachePort(ADDR_WIDTH, DATA_LEN))
 
-  val inner = Module(new Passthrough)
+  val inner = Module(new Passthrough(ADDR_WIDTH, DATA_LEN))
 
   inner.io <> io
 }
