@@ -5,7 +5,7 @@ import chisel3._
 // AXI master port, without ACLK / ARSESTn
 class AXI(
     DATA_WIDTH: Int,
-    ADDR_WIDTH: Int = 64,
+    ADDR_WIDTH: Int = 48,
     ID_WIDTH: Int = 4
 ) extends Bundle {
     // TODO: asserts DATA_wIDTH % 8 === 0

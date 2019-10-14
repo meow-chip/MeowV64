@@ -3,6 +3,6 @@ import _root_.data._
 
 class Core extends Module {
     val io = IO(new Bundle {
-        val axi = new AXI(64)
+        val axi = new AXI(8)
     })
 }
