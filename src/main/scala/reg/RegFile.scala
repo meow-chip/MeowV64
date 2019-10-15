@@ -14,6 +14,7 @@ class RegWriter(XLEN: Int = 64, COUNT: Int = 32) extends Bundle {
 }
 
 // Standard Registers
+// TODO: support multi port
 class RegFile(XLEN: Int = 64, COUNT: Int = 32) extends Module {
   val io = IO(new Bundle {
     val read = Flipped(new RegReader(XLEN, COUNT))
