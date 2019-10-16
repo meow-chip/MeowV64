@@ -93,6 +93,132 @@ class Exec extends Module {
       }
     }
 
+    is(Decoder.Op("OP-IMM-32").ident) {
+      io.regWriter.addr := current.instr.rd
+      // First we truncate everything to 32-bit, get a 32-bit result, then
+      // sign-extend to 64-bit. TODO: Not sure if it works
+      var result32 = 0.S(32.W)
+
+      switch(current.instr.funct3) {
+        is(Decoder.OP_FUNC("ADD/SUB")) {
+          // ADDIW
+          result32 = readRs1 + extended
+        }
+
+        is(Decoder.OP_FUNC("SLL")) {
+          // SLLIW
+          // TODO: add assert to check shamt[5]
+          result32 = readRs1 << extended(4, 0)
+        }
+
+        is(Decoder.OP_FUNC("SRL/SRA")) {
+          when(current.instr.funct7(5)) {
+            // SRAIW
+            result32 = (readRs1(31, 0).asSInt >> extended(4, 0)).asUInt
+          }.otherwise {
+            // SRLIW
+            result32 = readRs1(31, 0).asUInt >> extended(4, 0)
+          }
+        }
+      }
+
+      io.regWriter.data := result32.asSInt
+    }
+
+    is(Decoder.Op("OP").ident) {
+      io.regWriter.addr := current.instr.rd
+
+      switch(current.instr.funct3) {
+        is(Decoder.OP_FUNC("ADD/SUB")) {
+          when(current.instr.funct7(5)) {
+            // Overflows ignored in ADD/SUB
+            // SUB
+            io.regWriter.data := readRs1.asSInt - readRs2.asSInt
+          }.otherwise {
+            // ADD
+            io.regWriter.data := readRs1.asSInt + readRs2.asSInt
+          }
+
+          is(Decoder.OP_FUNC("SLL")) {
+            io.regWriter.data := readRs1 << readRs2(5, 0)
+          }
+
+          is(Decoder.OP_FUNC("SLT")) {
+            when(readRs1.asSInt < readRs2.asSInt) {
+              io.regWriter.data := 1.U
+            }.otherwise {
+              io.regWriter.data := 0.U
+            }
+          }
+
+          is(Decoder.OP_FUNC("SLTU")) {
+            when(readRs1.asUInt < readRs2.asUInt) {
+              io.regWriter.data := 1.U
+            }.otherwise {
+              io.regWriter.data := 0.U
+            }
+          }
+
+          is(Decoder.OP_FUNC("XOR")) {
+            io.regWriter.data := readRs1 ^ readRs2
+          }
+
+          is(Decoder.OP_FUNC("SRL/SRA")) {
+            when(current.instr.funct7(5)) {
+              // SRA
+              // In RV64I, only the low 6 bits of rs2 are considered for the
+              // shift amount. (c.f. spec p.53)
+              io.regWriter.data := (readRs1.asSInt >> readRs2(5, 0)).asUInt
+            }.otherwise {
+              io.regWriter.data := readRs1 >> readRs2(5, 0).asUInt
+            }
+          }
+
+          is(Decoder.OP_FUNC("OR")) {
+            io.regWriter.data := readRs1 | readRs2
+          }
+
+          is(Decoder.OP_FUNC("AND")) {
+            io.regWriter.data := readRs1 & readRs2
+          }
+        }
+      }
+    }
+
+    is(Decoder.Op("OP-32").ident) {
+      io.regWriter.addr := current.instr.rd
+      var result32 = 0.S(32.W)
+
+      switch(current.instr.funct3) {
+        is(Decoder.OP_FUNC("ADD/SUB")) {
+          when(current.instr.funct7(5)) {
+            // SUBW
+            result32 = readRs1 - readRs2
+          }.otherwise {
+            // ADDW
+            result32 = readRs1 + readRs2
+          }
+        }
+
+        is(Decoder.OP_FUNC("SLL")) {
+          // SLLW
+          result32 = readRs1 << readRs2(4, 0)
+        }
+
+        is(Decoder.OP_FUNC("SRL/SRA")) {
+          when(current.instr.funct7(5)) {
+            // SRAW
+            result32 = (readRs1(31, 0).asSInt >> readRs2(4, 0)).asUInt
+          }.otherwise {
+            // SRLW
+            result32 = readRs1(31, 0).asUInt >> readRs2(4, 0)
+          }
+        }
+      }
+
+      io.regWriter.data := result32
+    }
+
     is(Decoder.Op("LUI").ident) {
       io.regWriter.addr := current.instr.rd
       io.regWriter.data.asSInt := current.instr.imm
