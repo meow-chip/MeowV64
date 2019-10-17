@@ -22,5 +22,14 @@ class ICache(ADDR_WIDTH: Int, DATA_LEN: Int) extends Module {
 
   val inner = Module(new Passthrough(ADDR_WIDTH, DATA_LEN))
 
-  inner.io <> io
+  inner.io.addr <> io.addr
+  inner.io.read <> io.read
+  inner.io.write := false.B
+  inner.io.axi := io.axi
+  inner.io.stall := io.stall
+  inner.io.pause := io.pause
+  inner.io.rdata := io.data
+
+  // FIXME: make passthrough supports flush
+  io.flush <> DontCare
 }
