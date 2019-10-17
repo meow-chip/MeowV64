@@ -114,14 +114,16 @@ object Decoder {
       val ui = self.asUInt
       result.op := ui >> 2
 
-      val ctx: Option[WhenContext] = None
+      var ctx: Option[WhenContext] = None
 
       for((op, OpSpec(pat, typ)) <- Op) {
-        ctx match {
+        ctx = Some(ctx match {
           case Some(c) => c.elsewhen(result.op === pat) { result.base := typ }
           case None => when(result.op === pat) { result.base := typ }
-        }
+        })
       }
+
+      ctx.get.otherwise { result.base := InstrType.toInt(InstrType.SPECIAL) }
 
       // Really parse the instr
       result.funct3 := ui(14, 12)
@@ -131,7 +133,7 @@ object Decoder {
       result.rs2 := ui(24, 20)
 
       // Parse immediate
-      result.imm := 0.U
+      result.imm := 0.S
       when(result.base === InstrType.toInt(InstrType.I)) {
         result.imm := ui(31, 20).asSInt
       }.elsewhen(result.base === InstrType.toInt(InstrType.S)) {

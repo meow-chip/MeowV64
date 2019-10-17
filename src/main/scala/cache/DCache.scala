@@ -3,7 +3,7 @@ package cache
 import chisel3._
 import _root_.data._
 
-class DCachePort(ADDR_WIDTH: Int, DATA_LEN: Int) extends Bundle {
+class DCachePort(val ADDR_WIDTH: Int, val DATA_LEN: Int) extends Bundle {
   val addr = Input(UInt(ADDR_WIDTH.W))
   val read = Input(Bool())
   val write = Input(Bool())

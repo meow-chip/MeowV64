@@ -24,6 +24,7 @@ class Ctrl(ADDR_WIDTH: Int, INIT_VEC: BigInt, ISSUE_NUM: Int) extends Module {
   })
 
   val pc = RegInit(INIT_VEC.U(ADDR_WIDTH.W))
+  io.pc := pc
 
   val stalled = io.fetch.stall || io.exec.stall
   io.fetch.pause := stalled

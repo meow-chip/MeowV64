@@ -3,7 +3,7 @@ package cache
 import chisel3._
 import _root_.data._
 
-class ICachePort(ADDR_WIDTH: Int, DATA_LEN: Int) extends Bundle {
+class ICachePort(val ADDR_WIDTH: Int, val DATA_LEN: Int) extends Bundle {
   val addr = Input(UInt(ADDR_WIDTH.W))
   val read = Input(Bool())
 
@@ -11,7 +11,7 @@ class ICachePort(ADDR_WIDTH: Int, DATA_LEN: Int) extends Bundle {
 
   val stall = Output(Bool())
   val pause = Input(Bool())
-  val flush = Output(Bool()) // Branch missperdict, flushing all running requests
+  val flush = Input(Bool()) // Branch missperdict, flushing all running requests
 
   val data = Output(UInt(DATA_LEN.W)) // Data delay is 1 cycle
 }
@@ -24,11 +24,14 @@ class ICache(ADDR_WIDTH: Int, DATA_LEN: Int) extends Module {
 
   inner.io.addr <> io.addr
   inner.io.read <> io.read
+  inner.io.axi <> io.axi
+  inner.io.stall <> io.stall
+  inner.io.pause <> io.pause
+  inner.io.rdata <> io.data
+
   inner.io.write := false.B
-  inner.io.axi := io.axi
-  inner.io.stall := io.stall
-  inner.io.pause := io.pause
-  inner.io.rdata := io.data
+  inner.io.wdata := DontCare
+  inner.io.be := DontCare
 
   // FIXME: make passthrough supports flush
   io.flush <> DontCare

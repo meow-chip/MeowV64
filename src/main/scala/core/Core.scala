@@ -23,9 +23,10 @@ class Core extends Module {
   val reg = Module(new RegFile(Def.XLEN))
 
   fetch.io.icache <> ic.io
-  fetch.io.pc <> ctrl.pc
+  fetch.io.pc <> ctrl.io.pc
   fetch.io.fetch := !ctrl.io.fetch.pause
   fetch.io.ctrl <> ctrl.io.fetch
+  fetch.io.axi <> io.axi
 
   // Now we forces FETCH_NUM = 1
   exec.io.instr <> fetch.io.output.asTypeOf(exec.io.instr)
@@ -33,4 +34,7 @@ class Core extends Module {
   exec.io.regWriter <> reg.io.write
   exec.io.ctrl <> ctrl.io.exec
   exec.io.branch <> DontCare
+  
+  ctrl.io.branch <> exec.io.branch.branch
+  ctrl.io.baddr <> exec.io.branch.target
 }

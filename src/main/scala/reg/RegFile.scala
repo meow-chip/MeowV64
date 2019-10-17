@@ -3,12 +3,12 @@ package reg
 import chisel3._
 import chisel3.util.log2Ceil
 
-class RegReader(XLEN: Int = 64, COUNT: Int = 32) extends Bundle {
+class RegReader(val XLEN: Int = 64, val COUNT: Int = 32) extends Bundle {
   val addr = Output(UInt(log2Ceil(COUNT).W))
   val data = Input(UInt(XLEN.W))
 }
 
-class RegWriter(XLEN: Int = 64, COUNT: Int = 32) extends Bundle {
+class RegWriter(val XLEN: Int = 64, val COUNT: Int = 32) extends Bundle {
   val addr = Output(UInt(log2Ceil(COUNT).W))
   val data = Output(UInt(XLEN.W))
 }

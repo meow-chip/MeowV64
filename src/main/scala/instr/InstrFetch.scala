@@ -4,8 +4,9 @@ import chisel3._
 import _root_.cache._
 import Decoder._
 import _root_.core._
+import _root_.data._
 
-class InstrExt(ADDR_WIDTH: Int = 48) extends Bundle {
+class InstrExt(val ADDR_WIDTH: Int = 48) extends Bundle {
   val addr = UInt(ADDR_WIDTH.W)
   val instr = new Instr
 }
@@ -17,12 +18,15 @@ class InstrFetch(ADDR_WIDTH: Int = 48, FETCH_NUM: Int = 1) extends Module {
     val fetch = Input(Bool())
     val output = Output(Vec(FETCH_NUM, new InstrExt(ADDR_WIDTH)))
 
+    val axi = new AXI(8)
+
     val ctrl = StageCtrl.stage()
   })
 
   io.ctrl.stall <> io.icache.stall
   io.ctrl.pause <> io.icache.pause
   io.ctrl.flush <> io.icache.flush
+  io.axi <> io.icache.axi
   io.pc <> io.icache.addr
   io.fetch <> io.icache.read
 

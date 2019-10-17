@@ -24,7 +24,7 @@ class Passthrough(ADDR_WIDTH: Int, DATA_LEN: Int) extends Module {
   val cnt = RegInit(0.U(log2Ceil(DATA_LEN / 8).W))
   val result = RegInit(VecInit((0 until DATA_LEN/8).map(_ => { 0.U(8.W) })))
 
-  io.axi := 0.U
+  io.axi <> 0.U.asTypeOf(io.axi)
   io.axi.ARLEN := (DATA_LEN / 8).U
   io.axi.ARSIZE := AXI.Constants.Size.S8.U
   io.axi.ARBURST := AXI.Constants.Burst.INCR.U
@@ -40,7 +40,7 @@ class Passthrough(ADDR_WIDTH: Int, DATA_LEN: Int) extends Module {
     is(sIDLE) {
       when(!io.pause) {
         workingAddr := io.addr
-        workingData := io.wdata
+        workingData := io.wdata.asTypeOf(workingData)
         workingBE := io.be
         cnt := 0.U
 
@@ -61,7 +61,7 @@ class Passthrough(ADDR_WIDTH: Int, DATA_LEN: Int) extends Module {
       }
     }
 
-    is(sREQUEST_READ) {
+    is(sREQUEST_WRITE) {
       io.axi.AWADDR := workingAddr
       io.axi.AWVALID := true.B
 

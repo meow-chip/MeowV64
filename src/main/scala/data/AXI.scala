@@ -4,9 +4,9 @@ import chisel3._
 
 // AXI master port, without ACLK / ARSESTn
 class AXI(
-    DATA_WIDTH: Int,
-    ADDR_WIDTH: Int = 48,
-    ID_WIDTH: Int = 4
+    val DATA_WIDTH: Int,
+    val ADDR_WIDTH: Int = 48,
+    val ID_WIDTH: Int = 4
 ) extends Bundle {
     // TODO: asserts DATA_wIDTH % 8 === 0
     val AWID = Output(UInt(ID_WIDTH.W))
@@ -48,11 +48,11 @@ class AXI(
     val ARREADY = Input(Bool())
 
     val RID = Input(UInt(ID_WIDTH.W))
-    val RDATA = Output(UInt(DATA_WIDTH.W))
+    val RDATA = Input(UInt(DATA_WIDTH.W))
     val RRESP = Input(UInt(2.W))
-    val RLAST = Output(Bool())
-    val RVALID = Output(Bool())
-    val RREADY = Input(Bool())
+    val RLAST = Input(Bool())
+    val RVALID = Input(Bool())
+    val RREADY = Output(Bool())
 }
 
 object AXI {

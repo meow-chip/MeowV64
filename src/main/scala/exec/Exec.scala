@@ -5,7 +5,7 @@ import instr._
 import chisel3.util._
 import _root_.core.StageCtrl
 
-class BranchResult(ADDR_WIDTH: Int = 48) extends Bundle {
+class BranchResult(val ADDR_WIDTH: Int = 48) extends Bundle {
   val branch = Bool()
   val target = UInt(ADDR_WIDTH.W)
 }
@@ -22,8 +22,9 @@ class Exec(ADDR_WIDTH: Int) extends Module {
   })
 
   io.ctrl.stall := false.B
-  io.branch := 0.U
+  io.branch := 0.U.asTypeOf(io.branch)
   io.regWriter.addr := 0.U
+  io.regWriter.data := 0.U
 
   val current = Reg(new InstrExt)
   val readRs1 = Reg(UInt(64.W)) // TODO: use XLEN
@@ -42,15 +43,15 @@ class Exec(ADDR_WIDTH: Int) extends Module {
   switch(current.instr.op) {
     is(Decoder.Op("OP-IMM").ident) {
       io.regWriter.addr := current.instr.rd
-      val extended = SInt(64.W)
+      val extended = Wire(SInt(64.W))
       extended := current.instr.imm
 
       switch(current.instr.funct3) {
         is(Decoder.OP_FUNC("ADD/SUB")) { // Can only be ADDI in OP-IMM
-          io.regWriter.data.asSInt := extended + readRs1.asSInt
+          io.regWriter.data := (extended + readRs1.asSInt).asUInt
         }
         is(Decoder.OP_FUNC("SLL")) {
-          io.regWriter.data.asSInt := readRs1 << extended(4, 0)
+          io.regWriter.data := (readRs1 << extended(4, 0)).asUInt
         }
 
         is(Decoder.OP_FUNC("SLT")) {
@@ -97,7 +98,8 @@ class Exec(ADDR_WIDTH: Int) extends Module {
       io.regWriter.addr := current.instr.rd
       // First we truncate everything to 32-bit, get a 32-bit result, then
       // sign-extend to 64-bit. TODO: Not sure if it works
-      var result32 = 0.S(32.W)
+      var result32 = Wire(SInt(32.W))
+      result32 := 0.S // Default value
 
       switch(current.instr.funct3) {
         is(Decoder.OP_FUNC("ADD/SUB")) {
@@ -122,7 +124,9 @@ class Exec(ADDR_WIDTH: Int) extends Module {
         }
       }
 
-      io.regWriter.data := result32.asSInt
+      val result = Wire(SInt(64.W))
+      result := result32
+      io.regWriter.data := result.asUInt
     }
 
     is(Decoder.Op("OP").ident) {
@@ -133,101 +137,108 @@ class Exec(ADDR_WIDTH: Int) extends Module {
           when(current.instr.funct7(5)) {
             // Overflows ignored in ADD/SUB
             // SUB
-            io.regWriter.data := readRs1.asSInt - readRs2.asSInt
+            io.regWriter.data := readRs1 - readRs2
           }.otherwise {
             // ADD
-            io.regWriter.data := readRs1.asSInt + readRs2.asSInt
+            io.regWriter.data := readRs1 + readRs2
           }
+        }
 
-          is(Decoder.OP_FUNC("SLL")) {
-            io.regWriter.data := readRs1 << readRs2(5, 0)
-          }
+        is(Decoder.OP_FUNC("SLL")) {
+          io.regWriter.data := readRs1 << readRs2(5, 0)
+        }
 
-          is(Decoder.OP_FUNC("SLT")) {
-            when(readRs1.asSInt < readRs2.asSInt) {
-              io.regWriter.data := 1.U
-            }.otherwise {
-              io.regWriter.data := 0.U
-            }
+        is(Decoder.OP_FUNC("SLT")) {
+          when(readRs1.asSInt < readRs2.asSInt) {
+            io.regWriter.data := 1.U
+          }.otherwise {
+            io.regWriter.data := 0.U
           }
+        }
 
-          is(Decoder.OP_FUNC("SLTU")) {
-            when(readRs1.asUInt < readRs2.asUInt) {
-              io.regWriter.data := 1.U
-            }.otherwise {
-              io.regWriter.data := 0.U
-            }
+        is(Decoder.OP_FUNC("SLTU")) {
+          when(readRs1.asUInt < readRs2.asUInt) {
+            io.regWriter.data := 1.U
+          }.otherwise {
+            io.regWriter.data := 0.U
           }
+        }
 
-          is(Decoder.OP_FUNC("XOR")) {
-            io.regWriter.data := readRs1 ^ readRs2
-          }
+        is(Decoder.OP_FUNC("XOR")) {
+          io.regWriter.data := readRs1 ^ readRs2
+        }
 
-          is(Decoder.OP_FUNC("SRL/SRA")) {
-            when(current.instr.funct7(5)) {
-              // SRA
-              // In RV64I, only the low 6 bits of rs2 are considered for the
-              // shift amount. (c.f. spec p.53)
-              io.regWriter.data := (readRs1.asSInt >> readRs2(5, 0)).asUInt
-            }.otherwise {
-              io.regWriter.data := readRs1 >> readRs2(5, 0).asUInt
-            }
+        is(Decoder.OP_FUNC("SRL/SRA")) {
+          when(current.instr.funct7(5)) {
+            // SRA
+            // In RV64I, only the low 6 bits of rs2 are considered for the
+            // shift amount. (c.f. spec p.53)
+            io.regWriter.data := (readRs1.asSInt >> readRs2(5, 0)).asUInt
+          }.otherwise {
+            io.regWriter.data := readRs1 >> readRs2(5, 0)
           }
+        }
 
-          is(Decoder.OP_FUNC("OR")) {
-            io.regWriter.data := readRs1 | readRs2
-          }
+        is(Decoder.OP_FUNC("OR")) {
+          io.regWriter.data := readRs1 | readRs2
+        }
 
-          is(Decoder.OP_FUNC("AND")) {
-            io.regWriter.data := readRs1 & readRs2
-          }
+        is(Decoder.OP_FUNC("AND")) {
+          io.regWriter.data := readRs1 & readRs2
         }
       }
     }
 
     is(Decoder.Op("OP-32").ident) {
       io.regWriter.addr := current.instr.rd
-      var result32 = 0.U(32.W)
+      val result32 = Wire(UInt(32.W))
+      result32 := 0.U // Default value
 
       switch(current.instr.funct3) {
         is(Decoder.OP_FUNC("ADD/SUB")) {
           when(current.instr.funct7(5)) {
             // SUBW
-            result32 = readRs1 - readRs2
+            result32 := readRs1 - readRs2
           }.otherwise {
             // ADDW
-            result32 = readRs1 + readRs2
+            result32 := readRs1 + readRs2
           }
         }
 
         is(Decoder.OP_FUNC("SLL")) {
           // SLLW
-          result32 = readRs1 << readRs2(4, 0)
+          result32 := readRs1 << readRs2(4, 0)
         }
 
         is(Decoder.OP_FUNC("SRL/SRA")) {
           when(current.instr.funct7(5)) {
             // SRAW
-            result32 = (readRs1(31, 0).asSInt >> readRs2(4, 0)).asUInt
+            result32 := (readRs1(31, 0).asSInt >> readRs2(4, 0)).asUInt
           }.otherwise {
             // SRLW
-            result32 = readRs1(31, 0).asUInt >> readRs2(4, 0)
+            result32 := readRs1(31, 0).asUInt >> readRs2(4, 0)
           }
         }
       }
 
       // Sign extended
-      io.regWriter.data.asSInt := result32.asSInt
+      val result = Wire(SInt(64.W))
+      result := result32.asSInt
+      io.regWriter.data := result.asUInt
     }
 
     is(Decoder.Op("LUI").ident) {
       io.regWriter.addr := current.instr.rd
-      io.regWriter.data.asSInt := current.instr.imm
+      val extended = Wire(SInt(64.W))
+      extended := current.instr.imm
+      io.regWriter.data := extended.asUInt
     }
 
     is(Decoder.Op("AUIPC").ident) {
       io.regWriter.addr := current.instr.rd
-      io.regWriter.data.asSInt := current.instr.imm + current.addr.asSInt
+      val result = Wire(SInt(64.W))
+      result := current.instr.imm + current.addr.asSInt
+      io.regWriter.data := result.asUInt
     }
   }
 }
