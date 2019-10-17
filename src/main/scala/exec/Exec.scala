@@ -3,25 +3,25 @@ import chisel3._
 import reg._
 import instr._
 import chisel3.util._
+import _root_.core.StageCtrl
 
 class BranchResult(ADDR_WIDTH: Int = 48) extends Bundle {
   val branch = Bool()
   val target = UInt(ADDR_WIDTH.W)
 }
 
-class Exec extends Module {
+class Exec(ADDR_WIDTH: Int) extends Module {
   val io = IO(new Bundle {
     val regReaders = Vec(2, new RegReader)
     val regWriter = new RegWriter
-    val instr = Input(new InstrExt)
+    val instr = Input(new InstrExt(ADDR_WIDTH))
 
-    val pause = Input(Bool())
-    val stall = Output(Bool())
+    val ctrl = StageCtrl.stage()
 
-    val branch = Output(new BranchResult)
+    val branch = Output(new BranchResult(ADDR_WIDTH))
   })
 
-  io.stall := false.B
+  io.ctrl.stall := false.B
   io.branch := 0.U
   io.regWriter.addr := 0.U
 
@@ -32,7 +32,7 @@ class Exec extends Module {
   io.regReaders(0).addr := io.instr.instr.rs1
   io.regReaders(1).addr := io.instr.instr.rs2
 
-  when(!io.pause) {
+  when(!io.ctrl.pause) {
     current := io.instr
 
     readRs1 := io.regReaders(0).data
@@ -102,22 +102,22 @@ class Exec extends Module {
       switch(current.instr.funct3) {
         is(Decoder.OP_FUNC("ADD/SUB")) {
           // ADDIW
-          result32 = readRs1 + extended
+          result32 = readRs1.asSInt + current.instr.imm
         }
 
         is(Decoder.OP_FUNC("SLL")) {
           // SLLIW
           // TODO: add assert to check shamt[5]
-          result32 = readRs1 << extended(4, 0)
+          result32 = readRs1.asSInt << current.instr.imm(4, 0)
         }
 
         is(Decoder.OP_FUNC("SRL/SRA")) {
           when(current.instr.funct7(5)) {
             // SRAIW
-            result32 = (readRs1(31, 0).asSInt >> extended(4, 0)).asUInt
+            result32 = readRs1(31, 0).asSInt >> current.instr.imm(4, 0)
           }.otherwise {
             // SRLIW
-            result32 = readRs1(31, 0).asUInt >> extended(4, 0)
+            result32 = (readRs1(31, 0).asUInt >> current.instr.imm(4, 0)).asSInt
           }
         }
       }
@@ -187,7 +187,7 @@ class Exec extends Module {
 
     is(Decoder.Op("OP-32").ident) {
       io.regWriter.addr := current.instr.rd
-      var result32 = 0.S(32.W)
+      var result32 = 0.U(32.W)
 
       switch(current.instr.funct3) {
         is(Decoder.OP_FUNC("ADD/SUB")) {
@@ -216,7 +216,8 @@ class Exec extends Module {
         }
       }
 
-      io.regWriter.data := result32
+      // Sign extended
+      io.regWriter.data.asSInt := result32.asSInt
     }
 
     is(Decoder.Op("LUI").ident) {
