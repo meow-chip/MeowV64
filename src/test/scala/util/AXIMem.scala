@@ -26,8 +26,8 @@ class AXIMem(init: Option[String], depth: Int = 65536, addrWidth: Int = 48) exte
 
   val sIDLE :: sREADING :: sWRITING :: sRESP :: nil = Enum(4)
 
-  val target = RegInit(0.U(addrWidth))
-  val remaining: UInt = RegInit(0.U(log2Ceil(addrWidth)))
+  val target = RegInit(0.U(addrWidth.W))
+  val remaining: UInt = RegInit(0.U(log2Ceil(addrWidth).W))
   val state = RegInit(sIDLE)
 
   printf("Mem state:\n================\n")
