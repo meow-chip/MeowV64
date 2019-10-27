@@ -57,6 +57,10 @@ class AXIMem(init: Option[String], depth: Int = 65536, addrWidth: Int = 48) exte
       io.axi.RLAST := remaining === 1.U
 
       when(io.axi.RREADY) {
+        printf(p"AXIMEM READING:\n")
+        printf(p"  ADDR: 0x${Hexadecimal(target)}\n")
+        printf(p"  DATA: 0x${Hexadecimal(io.axi.RDATA)}\n")
+
         target := target + 1.U
         remaining := remaining - 1.U
         when(remaining === 1.U) {
@@ -68,6 +72,10 @@ class AXIMem(init: Option[String], depth: Int = 65536, addrWidth: Int = 48) exte
     is(sWRITING) {
       io.axi.WREADY := true.B
       when(io.axi.WVALID) {
+        printf(p"AXIMEM WRITING:\n")
+        printf(p"  ADDR: 0x${Hexadecimal(target)}\n")
+        printf(p"  DATA: 0x${Hexadecimal(io.axi.WDATA)}\n")
+
         memory.write(target, io.axi.WDATA)
         target := target + 1.U
         when(io.axi.WLAST) {

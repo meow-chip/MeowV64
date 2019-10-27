@@ -11,10 +11,10 @@ import chisel3.util._
 object Decoder {
   object InstrType extends Enumeration {
     type InstrType = Value
-    val SPECIAL, R, I, S, B, U, J = Value
+    val RESERVED, R, I, S, B, U, J = Value
 
     def toInt(x: Value) = x match {
-      case SPECIAL => 0.U(3.W)
+      case RESERVED => 0.U(3.W)
       case R => 1.U(3.W)
       case I => 2.U(3.W)
       case S => 3.U(3.W)
@@ -123,7 +123,7 @@ object Decoder {
         })
       }
 
-      ctx.get.otherwise { result.base := InstrType.toInt(InstrType.SPECIAL) }
+      ctx.get.otherwise { result.base := InstrType.toInt(InstrType.RESERVED) }
 
       // Really parse the instr
       result.funct3 := ui(14, 12)

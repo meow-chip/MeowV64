@@ -88,7 +88,7 @@ class Passthrough(ADDR_WIDTH: Int, DATA_LEN: Int) extends Module {
       io.axi.WDATA := workingData(cnt)
       io.axi.WSTRB := workingBE(cnt).asUInt
 
-      io.axi.WLAST := cnt === (DATA_LEN - 1).U
+      io.axi.WLAST := cnt === (DATA_LEN/8 - 1).U
 
       when(io.axi.WREADY) {
         when(io.axi.WLAST) {

@@ -2,9 +2,9 @@ SRCS:=$(wildcard src/*.S)
 BINS:=$(patsubst src/%.S,bin/%.bin,$(SRCS))
 HEXS:=$(patsubst src/%.S,hex/%.hex,$(SRCS))
 
-.PHONY: list all
+.PHONY: list all clean
 
-all: $(HEXS)
+all: $(BINS) $(HEXS)
 
 bin/%.bin: src/%.S Makefile
 	mkdir -p bin
@@ -23,7 +23,7 @@ list:
 	@echo $(BINS)
 
 clean:
-	rm -f $(BINS)
+	rm -f $(BINS) $(HEXS)
 
 disasm:
 	@echo "Disassembly for $(FILE)"

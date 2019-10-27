@@ -16,9 +16,10 @@ class WrappedCore(coredef: CoreDef, ifile: String) extends Module {
   val core = Module(new Core(coredef))
 
   val imem = Module(new AXIMem(Some(ifile), 65536, core.coredef.ADDR_WIDTH))
-  // val dmem = Module(new AXIMem(None, 65536, dut.coredef.ADDR_WIDTH))
+  val dmem = Module(new AXIMem(None, 65536, core.coredef.ADDR_WIDTH))
 
-  core.io.axi <> imem.io.axi
+  core.io.iaxi <> imem.io.axi
+  core.io.daxi <> dmem.io.axi
 }
 
 class ExecTest(dut: WrappedCore) extends PeekPokeTester(dut) {
@@ -43,5 +44,5 @@ class ExecSpec extends FlatSpec with Matchers {
 }
 
 object ExecTestMain extends App {
-  ExecTest.runFile("./testcases/hex/op-imm.hex", Some(args))
+  ExecTest.runFile("./testcases/hex/load-store.hex", Some(args))
 }

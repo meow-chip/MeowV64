@@ -1,39 +1,53 @@
 package exec
 import chisel3._
 import reg._
+import data._
 import instr._
 import chisel3.util._
 import _root_.core.StageCtrl
+import cache.DCachePort
+import cache.DCache
 
 class BranchResult(val ADDR_WIDTH: Int = 48) extends Bundle {
   val branch = Bool()
   val target = UInt(ADDR_WIDTH.W)
 }
 
-class Exec(ADDR_WIDTH: Int) extends Module {
+class Exec(ADDR_WIDTH: Int, XLEN: Int) extends Module {
   val io = IO(new Bundle {
     val regReaders = Vec(2, new RegReader)
     val regWriter = new RegWriter
     val instr = Input(new InstrExt(ADDR_WIDTH))
+
+    val axi = new AXI(8)
 
     val ctrl = StageCtrl.stage()
 
     val branch = Output(new BranchResult(ADDR_WIDTH))
   })
 
-  io.ctrl.stall := false.B
   io.branch := 0.U.asTypeOf(io.branch)
   io.regWriter.addr := 0.U
   io.regWriter.data := 0.U
 
+  val dcache = Module(new DCache(ADDR_WIDTH, XLEN))
+  dcache.io <> DontCare
+  dcache.io.axi <> io.axi
+  dcache.io.pause := false.B
+
+  dcache.io.read := false.B
+  dcache.io.write := false.B
+
   val current = Reg(new InstrExt)
-  val readRs1 = Reg(UInt(64.W)) // TODO: use XLEN
-  val readRs2 = Reg(UInt(64.W))
+  val readRs1 = Reg(UInt(XLEN.W))
+  val readRs2 = Reg(UInt(XLEN.W))
 
   printf(p"EX:\n================\n")
-  printf(p"Running: ${current}\n\n")
-  printf(p"Writing To: 0x${Hexadecimal(io.regWriter.addr)}\n\n")
-  printf(p"Writing Data: 0x${Hexadecimal(io.regWriter.data)}\n\n")
+  printf(p"Running:\n${current}\n")
+  printf(p"readRs1: 0x${Hexadecimal(readRs1)}\n")
+  printf(p"readRs2: 0x${Hexadecimal(readRs2)}\n")
+  printf(p"Writing To: 0x${Hexadecimal(io.regWriter.addr)}\n")
+  printf(p"Writing Data: 0x${Hexadecimal(io.regWriter.data)}\n")
 
   io.regReaders(0).addr := io.instr.instr.rs1
   io.regReaders(1).addr := io.instr.instr.rs2
@@ -45,9 +59,22 @@ class Exec(ADDR_WIDTH: Int) extends Module {
     readRs2 := io.regReaders(1).data
   }
 
+  // Load/Store related FSM
+  val lsIDLE :: lsWAIT :: nil = Enum(2)
+  val lsState = RegInit(lsIDLE)
+  val lsNextState = Wire(lsState.cloneType)
+  val lsAddr = Reg(UInt(ADDR_WIDTH.W))
+
+  lsNextState := lsState
+  lsState := lsNextState
+
+  io.ctrl.stall := lsNextState === lsIDLE
+
   switch(current.instr.op) {
     is(Decoder.Op("OP-IMM").ident) {
-      io.regWriter.addr := current.instr.rd
+      when(!io.ctrl.pause) {
+        io.regWriter.addr := current.instr.rd
+      }
       val extended = Wire(SInt(64.W))
       extended := current.instr.imm
 
@@ -100,31 +127,34 @@ class Exec(ADDR_WIDTH: Int) extends Module {
     }
 
     is(Decoder.Op("OP-IMM-32").ident) {
-      io.regWriter.addr := current.instr.rd
+      when(!io.ctrl.pause) {
+        io.regWriter.addr := current.instr.rd
+      }
+
       // First we truncate everything to 32-bit, get a 32-bit result, then
       // sign-extend to 64-bit. TODO: Not sure if it works
-      var result32 = Wire(SInt(32.W))
+      val result32 = Wire(SInt(32.W))
       result32 := 0.S // Default value
 
       switch(current.instr.funct3) {
         is(Decoder.OP_FUNC("ADD/SUB")) {
           // ADDIW
-          result32 = readRs1.asSInt + current.instr.imm
+          result32 := readRs1.asSInt + current.instr.imm
         }
 
         is(Decoder.OP_FUNC("SLL")) {
           // SLLIW
           // TODO: add assert to check shamt[5]
-          result32 = readRs1.asSInt << current.instr.imm(4, 0)
+          result32 := readRs1.asSInt << current.instr.imm(4, 0)
         }
 
         is(Decoder.OP_FUNC("SRL/SRA")) {
           when(current.instr.funct7(5)) {
             // SRAIW
-            result32 = readRs1(31, 0).asSInt >> current.instr.imm(4, 0)
+            result32 := readRs1(31, 0).asSInt >> current.instr.imm(4, 0)
           }.otherwise {
             // SRLIW
-            result32 = (readRs1(31, 0).asUInt >> current.instr.imm(4, 0)).asSInt
+            result32 := (readRs1(31, 0).asUInt >> current.instr.imm(4, 0)).asSInt
           }
         }
       }
@@ -135,7 +165,9 @@ class Exec(ADDR_WIDTH: Int) extends Module {
     }
 
     is(Decoder.Op("OP").ident) {
-      io.regWriter.addr := current.instr.rd
+      when(!io.ctrl.pause) {
+        io.regWriter.addr := current.instr.rd
+      }
 
       switch(current.instr.funct3) {
         is(Decoder.OP_FUNC("ADD/SUB")) {
@@ -195,7 +227,9 @@ class Exec(ADDR_WIDTH: Int) extends Module {
     }
 
     is(Decoder.Op("OP-32").ident) {
-      io.regWriter.addr := current.instr.rd
+      when(!io.ctrl.pause) {
+        io.regWriter.addr := current.instr.rd
+      }
       val result32 = Wire(UInt(32.W))
       result32 := 0.U // Default value
 
@@ -244,6 +278,102 @@ class Exec(ADDR_WIDTH: Int) extends Module {
       val result = Wire(SInt(64.W))
       result := current.instr.imm + current.addr.asSInt
       io.regWriter.data := result.asUInt
+    }
+
+    is(Decoder.Op("LOAD").ident) {
+      switch(lsState) {
+        is(lsIDLE) {
+          val lsAddrCompute = readRs1 + current.instr.imm.asUInt
+          lsAddr := lsAddrCompute
+          dcache.io.addr := (lsAddrCompute >> 3) << 3 // Align
+          dcache.io.read := true.B
+
+          lsNextState := lsWAIT
+        }
+
+        is(lsWAIT) {
+          printf(p"AXI read output: ${Hexadecimal(dcache.io.rdata)}\n")
+          printf(p"Addr: ${Hexadecimal(lsAddr)}\n")
+          val data = dcache.io.rdata
+          val shifted = data >> (lsAddr(2, 0) * 8.U)
+          printf(p"Shifted output: ${Hexadecimal(shifted)}\n")
+          val result = Wire(UInt(XLEN.W))
+          val signedResult = Wire(SInt(XLEN.W))
+
+          signedResult := DontCare
+          result := signedResult.asUInt
+          io.regWriter.data := result
+
+          switch(current.instr.funct3) {
+            is(Decoder.LOAD_FUNC("LB")) {
+              signedResult := shifted(7, 0).asSInt
+            }
+
+            is(Decoder.LOAD_FUNC("LH")) {
+              signedResult := shifted(15, 0).asSInt
+            }
+
+            is(Decoder.LOAD_FUNC("LW")) {
+              signedResult := shifted(31, 0).asSInt
+            }
+
+            is(Decoder.LOAD_FUNC("LD")) {
+              result := shifted
+            }
+
+            is(Decoder.LOAD_FUNC("LBU")) {
+              result := shifted(7, 0)
+            }
+
+            is(Decoder.LOAD_FUNC("LHU")) {
+              result := shifted(16, 0)
+            }
+
+            is(Decoder.LOAD_FUNC("LWU")) {
+              result := shifted(32, 0)
+            }
+          }
+
+          when(!dcache.io.stall) {
+            // Commit
+            io.regWriter.addr := current.instr.rd
+            lsNextState := lsIDLE
+          }
+        }
+      }
+    }
+
+    is(Decoder.Op("STORE").ident) {
+      switch(lsState) {
+        is(lsIDLE) {
+          val lsAddrCompute = readRs1 + current.instr.imm.asUInt
+          val lsAddrShift = lsAddrCompute(2, 0)
+          lsAddr := lsAddrCompute
+          dcache.io.addr := (lsAddrCompute >> 3) << 3 // Align
+          dcache.io.write := true.B
+
+          val tailMask = Wire(UInt((XLEN/8).W))
+          tailMask := 0.U
+
+          dcache.io.wdata := readRs2 << lsAddrShift
+          dcache.io.be := tailMask << lsAddrShift
+
+          switch(current.instr.funct3) {
+            is(Decoder.STORE_FUNC("SB")) { tailMask := 0x01.U }
+            is(Decoder.STORE_FUNC("SH")) { tailMask := 0x03.U }
+            is(Decoder.STORE_FUNC("SW")) { tailMask := 0x0f.U }
+            is(Decoder.STORE_FUNC("SD")) { tailMask := 0xff.U }
+          }
+
+          lsNextState := lsWAIT
+        }
+
+        is(lsWAIT) {
+          when(!dcache.io.stall) {
+            lsNextState := lsIDLE
+          }
+        }
+      }
     }
   }
 }

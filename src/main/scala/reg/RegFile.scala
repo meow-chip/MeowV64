@@ -40,7 +40,8 @@ class RegFile(XLEN: Int = 64, COUNT: Int = 32, READ_COUNT: Int = 2) extends Modu
   printf("RegFile status: \n")
   printf("================\n")
   for(i <- (0 until COUNT)) {
-    printf(p"x$i: ${regs(i.U)}\n")
-    if(i % 4 == 3) printf("\n")
+    val prefix = ("x" + i).reverse.padTo(3, ' ').reverse
+    printf(p" | $prefix: 0x${Hexadecimal(regs(i.U))}")
+    if(i % 4 == 3) printf(" |\n")
   }
 }

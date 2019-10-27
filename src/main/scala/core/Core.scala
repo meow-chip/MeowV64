@@ -9,7 +9,8 @@ import exec.Exec
 
 class Core(val coredef: CoreDef = DefaultDef) extends Module {
   val io = IO(new Bundle {
-    val axi = new AXI(8, coredef.ADDR_WIDTH)
+    val iaxi = new AXI(8, coredef.ADDR_WIDTH)
+    val daxi = new AXI(8, coredef.ADDR_WIDTH)
   })
 
   val ctrl = Module(new Ctrl(coredef.ADDR_WIDTH, coredef.INIT_VEC, coredef.ISSUE_NUM))
@@ -19,14 +20,14 @@ class Core(val coredef: CoreDef = DefaultDef) extends Module {
     32 * coredef.ISSUE_NUM
   ))
   val fetch = Module(new InstrFetch(coredef.ADDR_WIDTH, coredef.ISSUE_NUM))
-  val exec = Module(new Exec(coredef.ADDR_WIDTH))
+  val exec = Module(new Exec(coredef.ADDR_WIDTH, coredef.XLEN))
   val reg = Module(new RegFile(coredef.XLEN))
 
   fetch.io.icache <> ic.io
   fetch.io.pc <> ctrl.io.pc
   fetch.io.fetch := !ctrl.io.fetch.pause
   fetch.io.ctrl <> ctrl.io.fetch
-  fetch.io.axi <> io.axi
+  fetch.io.axi <> io.iaxi
 
   // Now we forces FETCH_NUM = 1
   exec.io.instr <> fetch.io.output.asTypeOf(exec.io.instr)
@@ -34,6 +35,7 @@ class Core(val coredef: CoreDef = DefaultDef) extends Module {
   exec.io.regWriter <> reg.io.write
   exec.io.ctrl <> ctrl.io.exec
   exec.io.branch <> DontCare
+  exec.io.axi <> io.daxi
   
   ctrl.io.branch <> exec.io.branch.branch
   ctrl.io.baddr <> exec.io.branch.target

@@ -10,7 +10,6 @@ class InstrExt(val ADDR_WIDTH: Int = 48) extends Bundle {
   val addr = UInt(ADDR_WIDTH.W)
   val instr = new Instr
 
-
   override def toPrintable: Printable = {
     p"Address: 0x${Hexadecimal(addr)}\n" +
     p"${instr}"
@@ -29,8 +28,10 @@ class InstrFetch(ADDR_WIDTH: Int = 48, FETCH_NUM: Int = 1) extends Module {
     val ctrl = StageCtrl.stage()
   })
 
+  /*
   printf(p"IF:\n================\n")
   printf(p"Fetched: ${io.output(0)}\n\n")
+  */
 
   io.ctrl.stall <> io.icache.stall
   io.ctrl.pause <> io.icache.pause
