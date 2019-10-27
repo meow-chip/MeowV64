@@ -35,6 +35,8 @@ class Passthrough(ADDR_WIDTH: Int, DATA_LEN: Int) extends Module {
 
   io.stall := state =/= sIDLE
   io.rdata := result.asUInt
+  printf("Cache state:\n================\n")
+  printf(p"State: ${state}\n\n")
 
   switch(state) {
     is(sIDLE) {

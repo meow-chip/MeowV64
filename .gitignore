@@ -341,3 +341,5 @@ hs_err_pid*
 
 .metals
 .bloop
+
+test_run_dir

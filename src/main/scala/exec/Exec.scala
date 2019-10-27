@@ -30,6 +30,11 @@ class Exec(ADDR_WIDTH: Int) extends Module {
   val readRs1 = Reg(UInt(64.W)) // TODO: use XLEN
   val readRs2 = Reg(UInt(64.W))
 
+  printf(p"EX:\n================\n")
+  printf(p"Running: ${current}\n\n")
+  printf(p"Writing To: 0x${Hexadecimal(io.regWriter.addr)}\n\n")
+  printf(p"Writing Data: 0x${Hexadecimal(io.regWriter.data)}\n\n")
+
   io.regReaders(0).addr := io.instr.instr.rs1
   io.regReaders(1).addr := io.instr.instr.rs2
 

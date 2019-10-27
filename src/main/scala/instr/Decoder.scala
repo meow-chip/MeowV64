@@ -167,4 +167,17 @@ class Instr extends Bundle {
   // Funct
   val funct7 = UInt(7.W)
   val funct3 = UInt(3.W)
+
+  override def toPrintable: Printable = {
+    // Reverse check op
+    p"Instr: \n" +
+    p"  Base: ${Hexadecimal(base)}\n" +
+    p"  Op:   ${Hexadecimal(op)}\n" +
+    p"  Imm:  ${Hexadecimal(imm)}\n" +
+    p"  RS1:  ${Hexadecimal(rs1)}\n" +
+    p"  RS2:  ${Hexadecimal(rs2)}\n" +
+    p"  RD:   ${Hexadecimal(rd)}\n" +
+    p"  F7:   ${Hexadecimal(funct7)}\n" +
+    p"  F3:   ${Hexadecimal(funct3)}"
+  }
 }

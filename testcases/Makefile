@@ -1,13 +1,19 @@
 SRCS:=$(wildcard src/*.S)
 BINS:=$(patsubst src/%.S,bin/%.bin,$(SRCS))
+HEXS:=$(patsubst src/%.S,hex/%.hex,$(SRCS))
 
 .PHONY: list all
 
-all: $(BINS)
+all: $(HEXS)
 
 bin/%.bin: src/%.S Makefile
+	mkdir -p bin
 	$(PREFIX)as $< -o $@
 	$(PREFIX)objcopy -O binary $@
+
+hex/%.hex: bin/%.bin Makefile
+	mkdir -p hex
+	hexdump $< -ve '16/1 "%02x " "\n"' > $@
 
 list:
 	@echo "Sources:"

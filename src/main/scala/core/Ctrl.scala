@@ -41,4 +41,10 @@ class Ctrl(ADDR_WIDTH: Int, INIT_VEC: BigInt, ISSUE_NUM: Int) extends Module {
       pc := pc + (4 * ISSUE_NUM).U
     }
   }
+
+  printf("Ctrl status:\n")
+  printf("================\n")
+  printf(p"PC: ${pc}\n")
+  printf(p"Stalled: ${stalled}\n")
+  printf("\n")
 }

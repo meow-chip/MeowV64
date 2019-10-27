@@ -36,4 +36,11 @@ class RegFile(XLEN: Int = 64, COUNT: Int = 32, READ_COUNT: Int = 2) extends Modu
   when(io.write.addr =/= 0.U) {
     regs(io.write.addr) := io.write.data
   }
+
+  printf("RegFile status: \n")
+  printf("================\n")
+  for(i <- (0 until COUNT)) {
+    printf(p"x$i: ${regs(i.U)}\n")
+    if(i % 4 == 3) printf("\n")
+  }
 }

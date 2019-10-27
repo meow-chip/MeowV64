@@ -14,7 +14,7 @@ class AXIMem(init: Option[String], depth: Int = 65536, addrWidth: Int = 48) exte
   // Async read, sync write mem
   val memory = Mem(depth, UInt(8.W))
   if(init.isDefined)
-    loadMemoryFromFile(memory, init.get, MemoryLoadFileType.Binary)
+    loadMemoryFromFile(memory, init.get)
   
   // default signals
   io.axi <> DontCare
@@ -29,6 +29,9 @@ class AXIMem(init: Option[String], depth: Int = 65536, addrWidth: Int = 48) exte
   val target = RegInit(0.U(addrWidth))
   val remaining: UInt = RegInit(0.U(log2Ceil(addrWidth)))
   val state = RegInit(sIDLE)
+
+  printf("Mem state:\n================\n")
+  printf(p"State: ${state}\n\n")
 
   // Assumes Burst = INCR
   switch(state) {
@@ -51,6 +54,7 @@ class AXIMem(init: Option[String], depth: Int = 65536, addrWidth: Int = 48) exte
     is(sREADING) {
       io.axi.RDATA := memory(target)
       io.axi.RVALID := true.B
+      io.axi.RLAST := remaining === 1.U
 
       when(io.axi.RREADY) {
         target := target + 1.U
@@ -66,8 +70,7 @@ class AXIMem(init: Option[String], depth: Int = 65536, addrWidth: Int = 48) exte
       when(io.axi.WVALID) {
         memory.write(target, io.axi.WDATA)
         target := target + 1.U
-        remaining := remaining - 1.U
-        when(remaining === 1.U) {
+        when(io.axi.WLAST) {
           state := sRESP
         }
       }
