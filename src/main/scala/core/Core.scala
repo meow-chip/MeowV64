@@ -7,20 +7,20 @@ import _root_.cache._
 import _root_.reg._
 import exec.Exec
 
-class Core extends Module {
+class Core(val coredef: CoreDef = DefaultDef) extends Module {
   val io = IO(new Bundle {
-    val axi = new AXI(8)
+    val axi = new AXI(8, coredef.ADDR_WIDTH)
   })
 
-  val ctrl = Module(new Ctrl(Def.ADDR_WIDTH, Def.INIT_VEC, Def.ISSUE_NUM))
+  val ctrl = Module(new Ctrl(coredef.ADDR_WIDTH, coredef.INIT_VEC, coredef.ISSUE_NUM))
 
   val ic = Module(new ICache(
-    Def.ADDR_WIDTH,
-    32 * Def.ISSUE_NUM
+    coredef.ADDR_WIDTH,
+    32 * coredef.ISSUE_NUM
   ))
-  val fetch = Module(new InstrFetch(Def.ADDR_WIDTH, Def.ISSUE_NUM))
-  val exec = Module(new Exec(Def.ADDR_WIDTH))
-  val reg = Module(new RegFile(Def.XLEN))
+  val fetch = Module(new InstrFetch(coredef.ADDR_WIDTH, coredef.ISSUE_NUM))
+  val exec = Module(new Exec(coredef.ADDR_WIDTH))
+  val reg = Module(new RegFile(coredef.XLEN))
 
   fetch.io.icache <> ic.io
   fetch.io.pc <> ctrl.io.pc
