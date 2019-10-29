@@ -11,6 +11,7 @@ object ExecDef extends CoreDef {
 
 class WrappedCore(coredef: CoreDef, ifile: String) extends Module {
   val io = IO(new Bundle {
+    val ended = Output(Bool())
   })
 
   val core = Module(new Core(coredef))
@@ -20,13 +21,27 @@ class WrappedCore(coredef: CoreDef, ifile: String) extends Module {
 
   core.io.iaxi <> imem.io.axi
   core.io.daxi <> dmem.io.axi
+
+  // Exit vector
+  io.ended := core.io.pc === 0x100000.U // Stack base
 }
 
 class ExecTest(dut: WrappedCore) extends PeekPokeTester(dut) {
-  for(i <- (0 until 5000)) {
-    // println("Cycle: " + i)
-    step(1)
+  def doTest(bound: Int): Unit = {
+    for(i <- (0 until bound)) {
+      // println("Cycle: " + i)
+      step(1)
+
+      if(peek(dut.io.ended) == 1) {
+        println(s"> Process ended at cycle ${i}")
+        return
+      }
+    }
+
+    throw new Error(s"Did not finished within ${bound} cycles")
   }
+
+  doTest(10000)
 }
 
 object ExecTest {

@@ -11,6 +11,9 @@ class Core(val coredef: CoreDef = DefaultDef) extends Module {
   val io = IO(new Bundle {
     val iaxi = new AXI(8, coredef.ADDR_WIDTH)
     val daxi = new AXI(8, coredef.ADDR_WIDTH)
+
+    // Debug
+    val pc = Output(UInt(coredef.ADDR_WIDTH.W))
   })
 
   val ctrl = Module(new Ctrl(coredef.ADDR_WIDTH, coredef.INIT_VEC, coredef.ISSUE_NUM))
@@ -39,4 +42,6 @@ class Core(val coredef: CoreDef = DefaultDef) extends Module {
   
   ctrl.io.branch <> exec.io.branch.branch
   ctrl.io.baddr <> exec.io.branch.target
+
+  io.pc := ctrl.io.pc
 }

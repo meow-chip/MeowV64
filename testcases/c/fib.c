@@ -10,14 +10,21 @@ void div10(int *value, int *q) {
 
 void print(int num) {
   int q;
+  char tmp[10];
+  char *cur = tmp;
   if(num == 0) {
     *SERIAL = '0';
     *SERIAL = '\n';
   } else {
     while(num) {
       div10(&num, &q);
-      *SERIAL = num + '0';
+      *cur = num + '0';
+      ++cur;
       num = q;
+    }
+    while(cur != tmp) {
+      cur--;
+      *SERIAL = *cur;
     }
     *SERIAL = '\n';
   }
