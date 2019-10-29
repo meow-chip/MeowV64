@@ -43,6 +43,7 @@ class Ctrl(ADDR_WIDTH: Int, INIT_VEC: BigInt, ISSUE_NUM: Int) extends Module {
     }.otherwise {
       pc := pc + (4 * ISSUE_NUM).U
     }
+    // printf(p"PC: ${Hexadecimal(io.pc)}\n")
   }
 
   /*

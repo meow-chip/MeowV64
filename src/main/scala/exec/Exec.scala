@@ -297,6 +297,7 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int) extends Module {
         io.regWriter.addr := current.instr.rd
         val result = Wire(SInt(64.W))
         result := current.instr.imm + current.addr.asSInt
+        // printf(p"AUIPC Written: ${Hexadecimal(result)}\n")
         io.regWriter.data := result.asUInt
       }
 
@@ -420,7 +421,8 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int) extends Module {
 
       is(Decoder.Op("JALR").ident) {
         val linked = current.addr + 4.U
-        val dest = readRs1.asSInt + current.addr.asSInt
+        val dest = ((readRs1.asSInt + current.instr.imm) >> 1) << 1
+        // printf(p"JALR dest: ${Hexadecimal(dest)}")
         io.branch.branch := true.B
         io.branch.target := dest.asUInt
 

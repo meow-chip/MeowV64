@@ -41,9 +41,9 @@ object ExecTest {
 class ExecSpec extends FlatSpec with Matchers {
   behavior of "ExecTest"
 
-  it should "run OP-IMM instructions successfully" in { ExecTest.runFile("./testcases/hex/serial.hex") should be(true) }
+  it should "run OP-IMM instructions successfully" in { ExecTest.runFile("./testcases/hex/fib.hex") should be(true) }
 }
 
 object ExecTestMain extends App {
-  ExecTest.runFile("./testcases/hex/serial.hex", Some(args))
+  ExecTest.runFile("./testcases/hex/fib.hex", Some(args))
 }
