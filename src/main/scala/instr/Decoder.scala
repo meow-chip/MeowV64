@@ -58,10 +58,10 @@ object Decoder {
   val BRANCH_FUNC: Map[String, UInt] = Map(
     "BEQ" -> "000",
     "BNE" -> "001",
-    "BLT" -> "010",
-    "BGE" -> "011",
-    "BLTU" -> "100",
-    "BGEU" -> "110"
+    "BLT" -> "100",
+    "BGE" -> "101",
+    "BLTU" -> "110",
+    "BGEU" -> "111"
   ).mapValues(Integer.parseInt(_, 2).U(3.W))
 
   val LOAD_FUNC: Map[String, UInt] = Map(

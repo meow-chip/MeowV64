@@ -35,10 +35,10 @@ class Ctrl(ADDR_WIDTH: Int, INIT_VEC: BigInt, ISSUE_NUM: Int) extends Module {
 
   when(!stalled) {
     when(io.branch) {
-      printf("Branched!")
+      printf(p"Branched, baddr: ${Hexadecimal(io.baddr)}\n")
       io.fetch.flush := true.B
       io.exec.flush := true.B
-      pc := io.baddr + 4.U
+      pc := io.baddr + (4 * ISSUE_NUM).U
       io.pc := io.baddr
     }.otherwise {
       pc := pc + (4 * ISSUE_NUM).U

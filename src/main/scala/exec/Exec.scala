@@ -421,6 +421,42 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int) extends Module {
         io.regWriter.addr := current.instr.rd
         io.regWriter.data := linked.asUInt
       }
+
+      is(Decoder.Op("BRANCH").ident) {
+        val branch = Wire(Bool())
+        branch := false.B
+
+        val readRs1S = readRs1.asSInt
+        val readRs2S = readRs2.asSInt
+        switch(current.instr.funct3) {
+          is(Decoder.BRANCH_FUNC("BEQ")) {
+            branch := readRs1 === readRs2
+          }
+
+          is(Decoder.BRANCH_FUNC("BNE")) {
+            branch := readRs1 =/= readRs2
+          }
+
+          is(Decoder.BRANCH_FUNC("BLT")) {
+            branch := readRs1S < readRs2S
+          }
+
+          is(Decoder.BRANCH_FUNC("BGE")) {
+            branch := readRs1S > readRs2S
+          }
+
+          is(Decoder.BRANCH_FUNC("BLTU")) {
+            branch := readRs1 < readRs2
+          }
+
+          is(Decoder.BRANCH_FUNC("BGEU")) {
+            branch := readRs1 > readRs2
+          }
+        }
+
+        io.branch.branch := branch
+        io.branch.target := (current.instr.imm + current.addr.asSInt).asUInt
+      }
     }
   }.otherwise {
     printf("Vacant, skipped exec")

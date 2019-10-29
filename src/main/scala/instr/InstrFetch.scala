@@ -45,6 +45,7 @@ class InstrFetch(ADDR_WIDTH: Int = 48, FETCH_NUM: Int = 1) extends Module {
   val pipePc = RegInit(0.U(ADDR_WIDTH.W))
   when(!io.ctrl.stall && !io.ctrl.pause) {
     pipePc := io.pc
+    printf(p">>>> IF Fetching: ${Hexadecimal(io.pc)}\n")
   }
 
   for((wire, i) <- io.icache.data.asTypeOf(Vec(FETCH_NUM, UInt(32.W))).zipWithIndex) {

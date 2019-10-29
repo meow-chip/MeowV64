@@ -23,7 +23,8 @@ class Passthrough(ADDR_WIDTH: Int, DATA_LEN: Int) extends Module {
 
   val cnt = RegInit(0.U(log2Ceil(DATA_LEN / 8).W))
   val result = RegInit(VecInit((0 until DATA_LEN/8).map(_ => { 0.U(8.W) })))
-  val vacant = RegInit(true.B)
+  val pipeRead = RegInit(false.B)
+  val pipeWrite = RegInit(false.B)
 
   io.axi <> 0.U.asTypeOf(io.axi)
   io.axi.ARLEN := (DATA_LEN / 8).U
@@ -36,10 +37,17 @@ class Passthrough(ADDR_WIDTH: Int, DATA_LEN: Int) extends Module {
 
   io.stall := state =/= sIDLE
   io.rdata := result.asUInt
-  io.vacant := vacant
+  io.vacant := !(pipeRead || pipeWrite)
 
+  /*
   printf("Cache state:\n================\n")
   printf(p"State: ${state}\n\n")
+  */
+
+  when(!io.pause && !io.stall) {
+    pipeRead := io.read
+    pipeWrite := io.write
+  }
 
   switch(state) {
     is(sIDLE) {
@@ -48,9 +56,6 @@ class Passthrough(ADDR_WIDTH: Int, DATA_LEN: Int) extends Module {
         workingData := io.wdata.asTypeOf(workingData)
         workingBE := io.be
         cnt := 0.U
-
-        // No read, no write -> vacant
-        vacant := true.B
 
         when(io.read) {
           state := sREQUEST_READ
@@ -85,7 +90,6 @@ class Passthrough(ADDR_WIDTH: Int, DATA_LEN: Int) extends Module {
         cnt := cnt + 1.U
         when(io.axi.RLAST) {
           state := sIDLE
-          vacant := false.B
         }
       }
     }
@@ -110,7 +114,6 @@ class Passthrough(ADDR_WIDTH: Int, DATA_LEN: Int) extends Module {
       io.axi.BREADY := true.B
       when(io.axi.BVALID) {
         state := sIDLE
-        vacant := false.B
       }
     }
   }

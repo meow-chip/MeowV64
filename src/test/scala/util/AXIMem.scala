@@ -30,8 +30,10 @@ class AXIMem(init: Option[String], depth: Int = 65536, addrWidth: Int = 48) exte
   val remaining: UInt = RegInit(0.U(log2Ceil(addrWidth).W))
   val state = RegInit(sIDLE)
 
+  /*
   printf("Mem state:\n================\n")
   printf(p"State: ${state}\n\n")
+  */
 
   // Assumes Burst = INCR
   switch(state) {
@@ -57,9 +59,11 @@ class AXIMem(init: Option[String], depth: Int = 65536, addrWidth: Int = 48) exte
       io.axi.RLAST := remaining === 1.U
 
       when(io.axi.RREADY) {
+        /*
         printf(p"AXIMEM READING:\n")
         printf(p"  ADDR: 0x${Hexadecimal(target)}\n")
         printf(p"  DATA: 0x${Hexadecimal(io.axi.RDATA)}\n")
+        */
 
         target := target + 1.U
         remaining := remaining - 1.U
@@ -72,10 +76,12 @@ class AXIMem(init: Option[String], depth: Int = 65536, addrWidth: Int = 48) exte
     is(sWRITING) {
       io.axi.WREADY := true.B
       when(io.axi.WVALID) {
+        /*
         printf(p"AXIMEM WRITING:\n")
         printf(p"  ADDR: 0x${Hexadecimal(target)}\n")
         printf(p"  DATA: 0x${Hexadecimal(io.axi.WDATA)}\n")
         printf(p"  STRB: ${Hexadecimal(io.axi.WSTRB)}\n")
+        */
 
         when(io.axi.WSTRB(0)) {
           memory.write(target, io.axi.WDATA)
