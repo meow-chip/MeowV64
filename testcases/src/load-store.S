@@ -8,5 +8,5 @@ _start:
   sd t0, 0x0(s1)
   sb t1, 0x5(s1)
 
-  lw a0, 0x4(s1)
   lb a1, 0x1(s1)
+  lw a0, 0x4(s1)

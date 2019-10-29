@@ -23,7 +23,8 @@ class WrappedCore(coredef: CoreDef, ifile: String) extends Module {
 }
 
 class ExecTest(dut: WrappedCore) extends PeekPokeTester(dut) {
-  for(i <- (0 until 100)) {
+  for(i <- (0 until 150)) {
+    println("Cycle: " + i)
     step(1)
   }
 }

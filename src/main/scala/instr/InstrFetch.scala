@@ -9,9 +9,11 @@ import _root_.data._
 class InstrExt(val ADDR_WIDTH: Int = 48) extends Bundle {
   val addr = UInt(ADDR_WIDTH.W)
   val instr = new Instr
+  val vacant = Bool()
 
   override def toPrintable: Printable = {
     p"Address: 0x${Hexadecimal(addr)}\n" +
+    p"Vacant: ${vacant}\n" +
     p"${instr}"
   }
 }
@@ -46,5 +48,6 @@ class InstrFetch(ADDR_WIDTH: Int = 48, FETCH_NUM: Int = 1) extends Module {
   for((wire, i) <- io.icache.data.asTypeOf(Vec(FETCH_NUM, UInt(32.W))).zipWithIndex) {
     io.output(i).instr := wire.asInstr
     io.output(i).addr := pipePc + i.U
+    io.output(i).vacant := io.icache.vacant
   }
 }

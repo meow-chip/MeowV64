@@ -14,6 +14,7 @@ class ICachePort(val ADDR_WIDTH: Int, val DATA_LEN: Int) extends Bundle {
   val flush = Input(Bool()) // Branch missperdict, flushing all running requests
 
   val data = Output(UInt(DATA_LEN.W)) // Data delay is 1 cycle
+  val vacant = Output(Bool())
 }
 
 // TODO: Change to xpm_tdpmem
@@ -28,6 +29,7 @@ class ICache(ADDR_WIDTH: Int, DATA_LEN: Int) extends Module {
   inner.io.stall <> io.stall
   inner.io.pause <> io.pause
   inner.io.rdata <> io.data
+  inner.io.vacant <> io.vacant
 
   inner.io.write := false.B
   inner.io.wdata := DontCare

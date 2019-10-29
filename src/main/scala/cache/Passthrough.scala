@@ -19,10 +19,11 @@ class Passthrough(ADDR_WIDTH: Int, DATA_LEN: Int) extends Module {
 
   val workingAddr = RegInit(0.U(ADDR_WIDTH.W))
   val workingData = Reg(Vec(DATA_LEN/8, UInt(8.W)))
-  val workingBE = RegInit(0.U(DATA_LEN/8))
+  val workingBE = RegInit(0.U((DATA_LEN/8).W))
 
   val cnt = RegInit(0.U(log2Ceil(DATA_LEN / 8).W))
   val result = RegInit(VecInit((0 until DATA_LEN/8).map(_ => { 0.U(8.W) })))
+  val vacant = RegInit(true.B)
 
   io.axi <> 0.U.asTypeOf(io.axi)
   io.axi.ARLEN := (DATA_LEN / 8).U
@@ -35,6 +36,8 @@ class Passthrough(ADDR_WIDTH: Int, DATA_LEN: Int) extends Module {
 
   io.stall := state =/= sIDLE
   io.rdata := result.asUInt
+  io.vacant := vacant
+
   printf("Cache state:\n================\n")
   printf(p"State: ${state}\n\n")
 
@@ -79,6 +82,7 @@ class Passthrough(ADDR_WIDTH: Int, DATA_LEN: Int) extends Module {
         cnt := cnt + 1.U
         when(io.axi.RLAST) {
           state := sIDLE
+          vacant := false.B
         }
       }
     }
@@ -103,6 +107,7 @@ class Passthrough(ADDR_WIDTH: Int, DATA_LEN: Int) extends Module {
       io.axi.BREADY := true.B
       when(io.axi.BVALID) {
         state := sIDLE
+        vacant := false.B
       }
     }
   }

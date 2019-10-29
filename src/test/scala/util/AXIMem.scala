@@ -75,8 +75,11 @@ class AXIMem(init: Option[String], depth: Int = 65536, addrWidth: Int = 48) exte
         printf(p"AXIMEM WRITING:\n")
         printf(p"  ADDR: 0x${Hexadecimal(target)}\n")
         printf(p"  DATA: 0x${Hexadecimal(io.axi.WDATA)}\n")
+        printf(p"  STRB: ${Hexadecimal(io.axi.WSTRB)}\n")
 
-        memory.write(target, io.axi.WDATA)
+        when(io.axi.WSTRB(0)) {
+          memory.write(target, io.axi.WDATA)
+        }
         target := target + 1.U
         when(io.axi.WLAST) {
           state := sRESP

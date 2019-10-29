@@ -17,6 +17,7 @@ class DCachePort(val ADDR_WIDTH: Int, val DATA_LEN: Int) extends Bundle {
   val pause = Input(Bool())
 
   val rdata = Output(UInt(DATA_LEN.W))
+  val vacant = Output(Bool())
 }
 
 class DCache(ADDR_WIDTH: Int, DATA_LEN: Int) extends Module {

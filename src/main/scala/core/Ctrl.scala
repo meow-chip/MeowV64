@@ -42,11 +42,15 @@ class Ctrl(ADDR_WIDTH: Int, INIT_VEC: BigInt, ISSUE_NUM: Int) extends Module {
     }
   }
 
-  /*
   printf("Ctrl status:\n")
   printf("================\n")
   printf(p"PC: ${pc}\n")
   printf(p"Stalled: ${stalled}\n")
+  when(io.fetch.stall) {
+    printf("  Fetch stall")
+  }
+  when(io.exec.stall) {
+    printf("  Exec stall")
+  }
   printf("\n")
-  */
 }
