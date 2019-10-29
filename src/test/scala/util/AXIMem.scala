@@ -6,7 +6,7 @@ import chisel3.util._
 import data.AXI
 import firrtl.annotations.MemoryLoadFileType
 
-class AXIMem(init: Option[String], depth: Int = 65536, addrWidth: Int = 48) extends Module {
+class AXIMem(init: Option[String], depth: Int = 65536, addrWidth: Int = 48, serialAddr: Option[BigInt] = None) extends Module {
   val io = IO(new Bundle {
     val axi = Flipped(new AXI(8, addrWidth))
   });
@@ -24,7 +24,7 @@ class AXIMem(init: Option[String], depth: Int = 65536, addrWidth: Int = 48) exte
   io.axi.RVALID := false.B
   io.axi.BVALID := false.B
 
-  val sIDLE :: sREADING :: sWRITING :: sRESP :: nil = Enum(4)
+  val sIDLE :: sREADING :: sWRITING :: sRESP :: sSERIAL_PRINT :: nil = Enum(5)
 
   val target = RegInit(0.U(addrWidth.W))
   val remaining: UInt = RegInit(0.U(log2Ceil(addrWidth).W))
@@ -50,6 +50,14 @@ class AXIMem(init: Option[String], depth: Int = 65536, addrWidth: Int = 48) exte
         remaining := io.axi.AWLEN
         io.axi.AWREADY := true.B
         state := sWRITING
+
+        if(serialAddr.isDefined) {
+          val sa: BigInt = serialAddr.get
+          when(io.axi.AWADDR === sa.U) {
+            // Override
+            state := sSERIAL_PRINT
+          }
+        }
       }
     }
 
@@ -99,6 +107,19 @@ class AXIMem(init: Option[String], depth: Int = 65536, addrWidth: Int = 48) exte
 
       when(io.axi.BREADY) {
         state := sIDLE
+      }
+    }
+
+    is(sSERIAL_PRINT) {
+      io.axi.WREADY := true.B
+
+      when(io.axi.WVALID) {
+        when(io.axi.WSTRB(0)) {
+          printf(Character(io.axi.WDATA))
+        }
+        when(io.axi.WLAST) {
+          state := sRESP
+        }
       }
     }
   }

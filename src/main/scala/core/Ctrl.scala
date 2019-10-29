@@ -35,7 +35,7 @@ class Ctrl(ADDR_WIDTH: Int, INIT_VEC: BigInt, ISSUE_NUM: Int) extends Module {
 
   when(!stalled) {
     when(io.branch) {
-      printf(p"Branched, baddr: ${Hexadecimal(io.baddr)}\n")
+      // printf(p"Branched, baddr: ${Hexadecimal(io.baddr)}\n")
       io.fetch.flush := true.B
       io.exec.flush := true.B
       pc := io.baddr + (4 * ISSUE_NUM).U
@@ -45,6 +45,7 @@ class Ctrl(ADDR_WIDTH: Int, INIT_VEC: BigInt, ISSUE_NUM: Int) extends Module {
     }
   }
 
+  /*
   printf("Ctrl status:\n")
   printf("================\n")
   printf(p"PC: ${pc}\n")
@@ -56,4 +57,5 @@ class Ctrl(ADDR_WIDTH: Int, INIT_VEC: BigInt, ISSUE_NUM: Int) extends Module {
     printf("  Exec stall")
   }
   printf("\n")
+  */
 }

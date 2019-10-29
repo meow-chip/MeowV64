@@ -47,12 +47,14 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int) extends Module {
   val readRs1 = Reg(UInt(XLEN.W))
   val readRs2 = Reg(UInt(XLEN.W))
 
+  /*
   printf(p"EX:\n================\n")
   printf(p"Running:\n${current}\n")
   printf(p"readRs1: 0x${Hexadecimal(readRs1)}\n")
   printf(p"readRs2: 0x${Hexadecimal(readRs2)}\n")
   printf(p"Writing To: 0x${Hexadecimal(io.regWriter.addr)}\n")
   printf(p"Writing Data: 0x${Hexadecimal(io.regWriter.data)}\n")
+  */
 
   io.regReaders(0).addr := io.instr.instr.rs1
   io.regReaders(1).addr := io.instr.instr.rs2
@@ -79,7 +81,7 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int) extends Module {
     lsState := lsNextState
   }
 
-  printf(p">>>>>>> lsNextState: ${lsNextState}\n")
+  // printf(p">>>>>>> lsNextState: ${lsNextState}\n")
   io.ctrl.stall := (!current.vacant) && lsNextState =/= lsIDLE
 
   when(!current.vacant) {
@@ -352,9 +354,11 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int) extends Module {
             }
 
             when(!dcache.io.stall) {
+              /*
               printf(p"Load recv:\n  Rdata: ${Hexadecimal(dcache.io.rdata)}\n")
               printf(p"Addr: ${Hexadecimal((lsAddr >> 3) << 3)}\n")
               printf(p"Shifted output: ${Hexadecimal(shifted)}\n")
+              */
               // Commit
               io.regWriter.addr := current.instr.rd
               lsNextState := lsIDLE
@@ -375,10 +379,12 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int) extends Module {
             val tailMask = Wire(UInt((XLEN/8).W))
             tailMask := 0.U
 
+            /*
             printf("Store emit: \n")
             printf(p"  Addr: ${Hexadecimal(dcache.io.addr)}\n")
             printf(p"  Wdata: ${Hexadecimal(dcache.io.wdata)}\n")
             printf(p"  BE: ${Hexadecimal(dcache.io.be)}\n")
+            */
             dcache.io.wdata := readRs2 << (lsAddrShift * 8.U)
             dcache.io.be := tailMask << lsAddrShift
 
@@ -459,6 +465,6 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int) extends Module {
       }
     }
   }.otherwise {
-    printf("Vacant, skipped exec")
+    // printf("Vacant, skipped exec")
   }
 }

@@ -37,6 +37,7 @@ class RegFile(XLEN: Int = 64, COUNT: Int = 32, READ_COUNT: Int = 2) extends Modu
     regs(io.write.addr) := io.write.data
   }
 
+  /*
   printf("RegFile status: \n")
   printf("================\n")
   for(i <- (0 until COUNT)) {
@@ -44,4 +45,5 @@ class RegFile(XLEN: Int = 64, COUNT: Int = 32, READ_COUNT: Int = 2) extends Modu
     printf(p" | $prefix: 0x${Hexadecimal(regs(i.U))}")
     if(i % 4 == 3) printf(" |\n")
   }
+  */
 }

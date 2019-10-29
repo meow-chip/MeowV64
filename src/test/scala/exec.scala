@@ -16,15 +16,15 @@ class WrappedCore(coredef: CoreDef, ifile: String) extends Module {
   val core = Module(new Core(coredef))
 
   val imem = Module(new AXIMem(Some(ifile), 65536, core.coredef.ADDR_WIDTH))
-  val dmem = Module(new AXIMem(None, 65536, core.coredef.ADDR_WIDTH))
+  val dmem = Module(new AXIMem(None, 65536, core.coredef.ADDR_WIDTH, Some(BigInt(0x100000))))
 
   core.io.iaxi <> imem.io.axi
   core.io.daxi <> dmem.io.axi
 }
 
 class ExecTest(dut: WrappedCore) extends PeekPokeTester(dut) {
-  for(i <- (0 until 500)) {
-    println("Cycle: " + i)
+  for(i <- (0 until 5000)) {
+    // println("Cycle: " + i)
     step(1)
   }
 }
@@ -41,9 +41,9 @@ object ExecTest {
 class ExecSpec extends FlatSpec with Matchers {
   behavior of "ExecTest"
 
-  it should "run OP-IMM instructions successfully" in { ExecTest.runFile("./testcases/hex/branch.hex") should be(true) }
+  it should "run OP-IMM instructions successfully" in { ExecTest.runFile("./testcases/hex/serial.hex") should be(true) }
 }
 
 object ExecTestMain extends App {
-  ExecTest.runFile("./testcases/hex/branch.hex", Some(args))
+  ExecTest.runFile("./testcases/hex/serial.hex", Some(args))
 }
