@@ -43,7 +43,9 @@ class InstrFetch(ADDR_WIDTH: Int = 48, FETCH_NUM: Int = 1) extends Module {
   io.fetch <> io.icache.read
 
   val pipePc = RegInit(0.U(ADDR_WIDTH.W))
-  pipePc := io.pc
+  when(!io.ctrl.stall && !io.ctrl.pause) {
+    pipePc := io.pc
+  }
 
   for((wire, i) <- io.icache.data.asTypeOf(Vec(FETCH_NUM, UInt(32.W))).zipWithIndex) {
     io.output(i).instr := wire.asInstr

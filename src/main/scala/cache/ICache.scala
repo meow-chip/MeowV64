@@ -29,12 +29,10 @@ class ICache(ADDR_WIDTH: Int, DATA_LEN: Int) extends Module {
   inner.io.stall <> io.stall
   inner.io.pause <> io.pause
   inner.io.rdata <> io.data
-  inner.io.vacant <> io.vacant
 
   inner.io.write := false.B
   inner.io.wdata := DontCare
   inner.io.be := DontCare
 
-  // FIXME: make passthrough supports flush
-  io.flush <> DontCare
+  io.vacant := inner.io.vacant || io.flush
 }

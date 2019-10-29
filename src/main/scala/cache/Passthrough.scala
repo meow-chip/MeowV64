@@ -49,6 +49,9 @@ class Passthrough(ADDR_WIDTH: Int, DATA_LEN: Int) extends Module {
         workingBE := io.be
         cnt := 0.U
 
+        // No read, no write -> vacant
+        vacant := true.B
+
         when(io.read) {
           state := sREQUEST_READ
         }.elsewhen(io.write) {

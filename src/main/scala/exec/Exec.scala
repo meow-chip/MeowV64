@@ -13,6 +13,7 @@ class BranchResult(val ADDR_WIDTH: Int = 48) extends Bundle {
   val target = UInt(ADDR_WIDTH.W)
 }
 
+
 class Exec(ADDR_WIDTH: Int, XLEN: Int) extends Module {
   val io = IO(new Bundle {
     val regReaders = Vec(2, new RegReader)
@@ -56,11 +57,15 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int) extends Module {
   io.regReaders(0).addr := io.instr.instr.rs1
   io.regReaders(1).addr := io.instr.instr.rs2
 
-  when(!io.ctrl.pause) {
-    current := io.instr
+  when(!io.ctrl.pause && !io.ctrl.stall) {
+    when(!io.ctrl.flush) {
+      current := io.instr
 
-    readRs1 := io.regReaders(0).data
-    readRs2 := io.regReaders(1).data
+      readRs1 := io.regReaders(0).data
+      readRs2 := io.regReaders(1).data
+    }.otherwise {
+      current := default
+    }
   }
 
   // Load/Store related FSM
@@ -79,6 +84,9 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int) extends Module {
 
   when(!current.vacant) {
     switch(current.instr.op) {
+
+      // Arith/Logical
+
       is(Decoder.Op("OP-IMM").ident) {
         when(!io.ctrl.pause) {
           io.regWriter.addr := current.instr.rd
@@ -274,6 +282,8 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int) extends Module {
         io.regWriter.data := result.asUInt
       }
 
+      // Load immediate
+
       is(Decoder.Op("LUI").ident) {
         io.regWriter.addr := current.instr.rd
         val extended = Wire(SInt(64.W))
@@ -287,6 +297,8 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int) extends Module {
         result := current.instr.imm + current.addr.asSInt
         io.regWriter.data := result.asUInt
       }
+
+      // Load/Store
 
       is(Decoder.Op("LOAD").ident) {
         switch(lsState) {
@@ -386,6 +398,28 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int) extends Module {
             }
           }
         }
+      }
+
+      // Branch
+
+      is(Decoder.Op("JAL").ident) {
+        val linked = current.addr + 4.U
+        val dest = current.instr.imm + current.addr.asSInt
+        io.branch.branch := true.B
+        io.branch.target := dest.asUInt
+
+        io.regWriter.addr := current.instr.rd
+        io.regWriter.data := linked.asUInt
+      }
+
+      is(Decoder.Op("JALR").ident) {
+        val linked = current.addr + 4.U
+        val dest = readRs1.asSInt + current.addr.asSInt
+        io.branch.branch := true.B
+        io.branch.target := dest.asUInt
+
+        io.regWriter.addr := current.instr.rd
+        io.regWriter.data := linked.asUInt
       }
     }
   }.otherwise {
