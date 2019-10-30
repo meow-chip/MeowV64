@@ -6,9 +6,15 @@ import chisel3.util._
 import data.AXI
 import firrtl.annotations.MemoryLoadFileType
 
-class AXIMem(init: Option[String], depth: Int = 65536, addrWidth: Int = 48, serialAddr: Option[BigInt] = None) extends Module {
+class AXIMem(
+  init: Option[String],
+  depth: Int = 65536,
+  addrWidth: Int = 48,
+  dataWidth: Int = 64,
+  serialAddr: Option[BigInt] = None
+) extends Module {
   val io = IO(new Bundle {
-    val axi = Flipped(new AXI(8, addrWidth))
+    val axi = Flipped(new AXI(dataWidth, addrWidth))
   });
 
   // Async read, sync write mem
@@ -62,18 +68,20 @@ class AXIMem(init: Option[String], depth: Int = 65536, addrWidth: Int = 48, seri
     }
 
     is(sREADING) {
-      io.axi.RDATA := memory(target)
+      // TODO: make 3 configurable
+      val output = for(i <- 0 until dataWidth/8) yield memory(target(addrWidth-1, 3) ## i.U(3.W))
+      io.axi.RDATA := Vec(output).asUInt
       io.axi.RVALID := true.B
       io.axi.RLAST := remaining === 1.U
 
       when(io.axi.RREADY) {
         /*
         printf(p"AXIMEM READING:\n")
-        printf(p"  ADDR: 0x${Hexadecimal(target)}\n")
+        printf(p"  ADDR: 0x${Hexadecimal(RegNext(target))}\n")
         printf(p"  DATA: 0x${Hexadecimal(io.axi.RDATA)}\n")
         */
 
-        target := target + 1.U
+        target := target + 8.U
         remaining := remaining - 1.U
         when(remaining === 1.U) {
           state := sIDLE
@@ -91,10 +99,17 @@ class AXIMem(init: Option[String], depth: Int = 65536, addrWidth: Int = 48, seri
         printf(p"  STRB: ${Hexadecimal(io.axi.WSTRB)}\n")
         */
 
-        when(io.axi.WSTRB(0)) {
-          memory.write(target, io.axi.WDATA)
+        for(i <- 0 until (dataWidth/8)) {
+          when(io.axi.WSTRB(i)) {
+            memory.write(
+              target(addrWidth-1, 3) ## i.U(3.W),
+              io.axi.WDATA(i*8+7, i*8)
+            )
+          }
         }
-        target := target + 1.U
+
+        target := target + (dataWidth/8).U
+
         when(io.axi.WLAST) {
           state := sRESP
         }
@@ -115,8 +130,9 @@ class AXIMem(init: Option[String], depth: Int = 65536, addrWidth: Int = 48, seri
 
       when(io.axi.WVALID) {
         when(io.axi.WSTRB(0)) {
-          printf(Character(io.axi.WDATA))
+          printf(Character(io.axi.WDATA(7, 0)))
         }
+
         when(io.axi.WLAST) {
           state := sRESP
         }

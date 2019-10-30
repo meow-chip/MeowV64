@@ -20,7 +20,7 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int) extends Module {
     val regWriter = new RegWriter
     val instr = Input(new InstrExt(ADDR_WIDTH))
 
-    val axi = new AXI(8)
+    val axi = new AXI(XLEN)
 
     val ctrl = StageCtrl.stage()
 

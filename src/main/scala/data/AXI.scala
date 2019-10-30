@@ -8,6 +8,7 @@ class AXI(
   val ADDR_WIDTH: Int = 48,
   val ID_WIDTH: Int = 4
 ) extends Bundle {
+  if(DATA_WIDTH == 32) throw new Error()
   // TODO: asserts DATA_wIDTH % 8 === 0
   val AWID = Output(UInt(ID_WIDTH.W))
   val AWADDR = Output(UInt(ADDR_WIDTH.W))

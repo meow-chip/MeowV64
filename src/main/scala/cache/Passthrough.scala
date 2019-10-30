@@ -18,25 +18,24 @@ class Passthrough(ADDR_WIDTH: Int, DATA_LEN: Int) extends Module {
   val state = RegInit(sIDLE)
 
   val workingAddr = RegInit(0.U(ADDR_WIDTH.W))
-  val workingData = Reg(Vec(DATA_LEN/8, UInt(8.W)))
+  val workingData = Reg(UInt(DATA_LEN.W))
   val workingBE = RegInit(0.U((DATA_LEN/8).W))
 
-  val cnt = RegInit(0.U(log2Ceil(DATA_LEN / 8).W))
-  val result = RegInit(VecInit((0 until DATA_LEN/8).map(_ => { 0.U(8.W) })))
+  val result = Reg(UInt(DATA_LEN.W))
   val pipeRead = RegInit(false.B)
   val pipeWrite = RegInit(false.B)
 
   io.axi <> 0.U.asTypeOf(io.axi)
-  io.axi.ARLEN := (DATA_LEN / 8).U
-  io.axi.ARSIZE := AXI.Constants.Size.S8.U
+  io.axi.ARLEN := 1.U
+  io.axi.ARSIZE := AXI.Constants.Size.S64.U
   io.axi.ARBURST := AXI.Constants.Burst.INCR.U
 
-  io.axi.AWLEN := (DATA_LEN / 8).U
-  io.axi.AWSIZE := AXI.Constants.Size.S8.U
+  io.axi.AWLEN := 1.U
+  io.axi.AWSIZE := AXI.Constants.Size.S64.U
   io.axi.AWBURST := AXI.Constants.Burst.INCR.U
 
   io.stall := state =/= sIDLE
-  io.rdata := result.asUInt
+  io.rdata := result
   io.vacant := !(pipeRead || pipeWrite)
 
   /*
@@ -55,9 +54,9 @@ class Passthrough(ADDR_WIDTH: Int, DATA_LEN: Int) extends Module {
         workingAddr := io.addr
         workingData := io.wdata.asTypeOf(workingData)
         workingBE := io.be
-        cnt := 0.U
 
         when(io.read) {
+          // printf(p"Start mem req on ${Hexadecimal(io.addr)}\n")
           state := sREQUEST_READ
         }.elsewhen(io.write) {
           state := sREQUEST_WRITE
@@ -86,27 +85,26 @@ class Passthrough(ADDR_WIDTH: Int, DATA_LEN: Int) extends Module {
     is(sRECV) {
       io.axi.RREADY := true.B
       when(io.axi.RVALID) {
-        result(cnt) := io.axi.RDATA
-        cnt := cnt + 1.U
-        when(io.axi.RLAST) {
-          state := sIDLE
-        }
+        // Asserts io.axi.RLAST
+        result := io.axi.RDATA
+        // printf(p"Loaded: ${Hexadecimal(io.axi.RDATA)}\n")
+        state := sIDLE
+
       }
     }
 
     is(sSEND) {
       io.axi.WVALID := true.B
-      io.axi.WDATA := workingData(cnt)
-      io.axi.WSTRB := workingBE(cnt).asUInt
-
-      io.axi.WLAST := cnt === (DATA_LEN/8 - 1).U
+      io.axi.WDATA := workingData
+      io.axi.WSTRB := workingBE
+      io.axi.WLAST := true.B
 
       when(io.axi.WREADY) {
-        when(io.axi.WLAST) {
-          state := sRESP
-        }.otherwise {
-          cnt := cnt + 1.U;
-        }
+        state := sRESP
+        /*
+        printf(p"Stored: ${Hexadecimal(workingData)}\n")
+        printf(p" \\w BE: ${Binary(workingBE)}\n")
+        */
       }
     }
 

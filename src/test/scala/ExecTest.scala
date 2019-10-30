@@ -17,7 +17,7 @@ class WrappedCore(coredef: CoreDef, ifile: String) extends Module {
   val core = Module(new Core(coredef))
 
   val imem = Module(new AXIMem(Some(ifile), 65536, core.coredef.ADDR_WIDTH))
-  val dmem = Module(new AXIMem(None, 65536, core.coredef.ADDR_WIDTH, Some(BigInt(0x100000))))
+  val dmem = Module(new AXIMem(None, 65536, core.coredef.ADDR_WIDTH, 64, Some(BigInt(0x100000))))
 
   core.io.iaxi <> imem.io.axi
   core.io.daxi <> dmem.io.axi

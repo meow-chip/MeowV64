@@ -18,14 +18,14 @@ class InstrExt(val ADDR_WIDTH: Int = 48) extends Bundle {
   }
 }
 
-class InstrFetch(ADDR_WIDTH: Int = 48, FETCH_NUM: Int = 1) extends Module {
+class InstrFetch(ADDR_WIDTH: Int = 48, FETCH_NUM: Int = 1, DATA_WIDTH: Int = 64) extends Module {
   val io = IO(new Bundle {
     val pc = Input(UInt(ADDR_WIDTH.W))
-    val icache = Flipped(new ICachePort(ADDR_WIDTH, 32 * FETCH_NUM))
+    val icache = Flipped(new ICachePort(ADDR_WIDTH, 32 * FETCH_NUM, DATA_WIDTH))
     val fetch = Input(Bool())
     val output = Output(Vec(FETCH_NUM, new InstrExt(ADDR_WIDTH)))
 
-    val axi = new AXI(8)
+    val axi = new AXI(DATA_WIDTH)
 
     val ctrl = StageCtrl.stage()
   })
@@ -45,7 +45,10 @@ class InstrFetch(ADDR_WIDTH: Int = 48, FETCH_NUM: Int = 1) extends Module {
   val pipePc = RegInit(0.U(ADDR_WIDTH.W))
   when(!io.ctrl.stall && !io.ctrl.pause) {
     pipePc := io.pc
-    // printf(p">>>> IF Fetching: ${Hexadecimal(io.pc)}\n")
+    /*
+    printf(p">>>> IF Fetching: ${Hexadecimal(io.pc)}\n")
+    printf(p"     Got: ${io.output}")
+    */
   }
 
   for((wire, i) <- io.icache.data.asTypeOf(Vec(FETCH_NUM, UInt(32.W))).zipWithIndex) {

@@ -9,8 +9,8 @@ import exec.Exec
 
 class Core(val coredef: CoreDef = DefaultDef) extends Module {
   val io = IO(new Bundle {
-    val iaxi = new AXI(8, coredef.ADDR_WIDTH)
-    val daxi = new AXI(8, coredef.ADDR_WIDTH)
+    val iaxi = new AXI(coredef.XLEN, coredef.ADDR_WIDTH)
+    val daxi = new AXI(coredef.XLEN, coredef.ADDR_WIDTH)
 
     // Debug
     val pc = Output(UInt(coredef.ADDR_WIDTH.W))
@@ -20,9 +20,10 @@ class Core(val coredef: CoreDef = DefaultDef) extends Module {
 
   val ic = Module(new ICache(
     coredef.ADDR_WIDTH,
-    32 * coredef.ISSUE_NUM
+    32 * coredef.ISSUE_NUM,
+    coredef.XLEN
   ))
-  val fetch = Module(new InstrFetch(coredef.ADDR_WIDTH, coredef.ISSUE_NUM))
+  val fetch = Module(new InstrFetch(coredef.ADDR_WIDTH, coredef.ISSUE_NUM, coredef.XLEN))
   val exec = Module(new Exec(coredef.ADDR_WIDTH, coredef.XLEN))
   val reg = Module(new RegFile(coredef.XLEN))
 

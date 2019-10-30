@@ -11,7 +11,7 @@ class DCachePort(val ADDR_WIDTH: Int, val DATA_LEN: Int) extends Bundle {
 
   val be = Input(UInt((DATA_LEN/8).W))
 
-  val axi = new AXI(8)
+  val axi = new AXI(DATA_LEN, ADDR_WIDTH)
 
   val stall = Output(Bool())
   val pause = Input(Bool())
