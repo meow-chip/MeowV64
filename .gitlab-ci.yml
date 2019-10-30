@@ -1,0 +1,27 @@
+cache:
+  key: ${CI_JOB_NAME}
+  paths:
+    - "sbt-cache/.ivy/cache"
+    - "sbt-cache/.boot"
+    - "sbt-cache/.sbtboot"
+    - "sbt-cache/target"
+
+variables:
+  SBT_VERSION: "0.13.9"
+  SBT_OPTS: "-Dsbt.global.base=sbt-cache/.sbtboot -Dsbt.boot.directory=sbt-cache/.boot -Dsbt.ivy.home=sbt-cache/.ivy -Dsbt.repository.config=.gitlab-ci/repositories -Dsbt.override.build.repos=true"
+  PREFIX: "riscv64-linux-gnu-"
+
+stages:
+  - test
+
+before_script:
+  - pacman -S riscv64-linux-gnu-gcc
+
+exec_test:
+  stage: test
+  image: chisel
+  script:
+    - cd testcases
+    - make
+    - cd ..
+    - sbt test
