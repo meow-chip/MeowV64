@@ -1,11 +1,15 @@
+  li sp, 0x10000
+	li ra, 0x100000
 .section .text
 .globl _start
 _start:
-  lui a0, 1
-  lui a0, 2
-  lui a0, 3
-  lui a0, 4
-  lui a0, 5
-  lui a0, 6
-  lui a0, 7
-  lui a0, 8
+  li a0, 0x1145141919810
+  slli a0, a0, 0x2
+
+  li a1, (0x1145141919810 * 4)
+
+  # Check
+  bne a0, a1, fail
+  jr ra
+fail:
+  j fail

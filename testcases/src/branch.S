@@ -1,3 +1,5 @@
+  li sp, 0x10000
+	li ra, 0x100000
 .section .text
 .globl _start
 _start:
@@ -9,4 +11,8 @@ loop:
   sub t0, t0, t2 # t0 = t1 - t2
   j loop
 exit:
-  li a0, 0x1
+  li a0, 0x4
+  bne t0, a0, fail
+  jr ra
+fail:
+  j fail

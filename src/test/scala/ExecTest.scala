@@ -47,18 +47,40 @@ class ExecTest(dut: WrappedCore) extends PeekPokeTester(dut) {
 object ExecTest {
   def runFile(file: String, args: Option[Array[String]] = None): Boolean = {
     args match {
-      case None => chisel3.iotesters.Driver(() => new WrappedCore(ExecDef, file)) { new ExecTest(_) }
-      case Some(a) => chisel3.iotesters.Driver.execute(a, () => new WrappedCore(ExecDef, file)) { new ExecTest(_) }
+      case None => chisel3.iotesters.Driver(
+        () => new WrappedCore(ExecDef, file),
+        "treadle"
+      ) { new ExecTest(_) }
+
+      case Some(args) => chisel3.iotesters.Driver.execute(
+        args,
+        () => new WrappedCore(ExecDef, file)
+      ) { new ExecTest(_) }
     }
   }
 }
 
-class ExecSpec extends FlatSpec with Matchers {
-  behavior of "ExecTest"
+object ExecSpec {
+  val cases = List(
+    ("OP-IMM instructions", "./testcases/hex/op-imm.hex"),
+    ("Load/Store", "./testcases/hex/load-store.hex"),
+    ("Unconditional jumps", "./testcases/hex/jump.hex"),
+    ("Branches", "./testcases/hex/branch.hex"),
+    ("Serial output", "./testcases/hex/serial.hex"),
+    ("Fibonacci", "./testcases/hex/fib.hex")
+  )
+}
 
-  it should "run OP-IMM instructions successfully" in { ExecTest.runFile("./testcases/hex/fib.hex") should be(true) }
+class ExecSpec extends FlatSpec with Matchers {
+  behavior of "ExecSpec"
+
+  for ((desc, file) <- ExecSpec.cases) {
+    it should s"run $desc successfully" in { ExecTest.runFile(file) should be(true) }
+  }
 }
 
 object ExecTestMain extends App {
-  ExecTest.runFile("./testcases/hex/fib.hex", Some(args))
+  val fn = args.last
+  println(s"Running $fn...")
+  ExecTest.runFile(fn, Some(args))
 }

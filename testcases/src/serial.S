@@ -1,3 +1,5 @@
+  li sp, 0x10000
+	li ra, 0x100000
 .section .text
 .globl _start
 _start:
@@ -12,5 +14,4 @@ loop:
   j loop
 
 end:
-  li a0, 0x1
-  
+  jr ra

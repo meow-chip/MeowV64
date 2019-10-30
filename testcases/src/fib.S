@@ -1,4 +1,5 @@
   li sp, 0x10000
+	li ra, 0x100000
 	j main
 div10:
 	addi	sp,sp,-32
@@ -132,5 +133,4 @@ main:
 	ld	ra,24(sp)
 	ld	s0,16(sp)
 	addi	sp,sp,32
-	li ra, 0x100000
 	jr ra
