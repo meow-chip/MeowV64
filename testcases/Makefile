@@ -12,7 +12,7 @@ all: $(BINS) $(HEXS)
 
 bin/%.bin: src/%.S Makefile
 	mkdir -p bin
-	$(PREFIX)as $< -o $@.tmp
+	$(PREFIX)as -march=rv64ic $< -o $@.tmp
 	$(PREFIX)ld $@.tmp -o $@
 	$(PREFIX)objcopy -O binary $@
 

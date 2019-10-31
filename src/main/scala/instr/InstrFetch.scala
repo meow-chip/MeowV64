@@ -40,6 +40,9 @@ class InstrFetch(ADDR_WIDTH: Int = 48, FETCH_NUM: Int = 1, DATA_WIDTH: Int = 64)
   io.pc <> io.icache.addr
   io.fetch <> io.icache.read
 
+  val tailFailed = RegInit(false.B)
+  val tail = RegInit(0.U(Const.INSTR_MIN_WIDTH.W))
+
   val pipePc = RegInit(0.U(ADDR_WIDTH.W))
   val pipeSkip = RegInit(0.U)
   when(!io.ctrl.stall && !io.ctrl.pause) {
@@ -59,31 +62,53 @@ class InstrFetch(ADDR_WIDTH: Int = 48, FETCH_NUM: Int = 1, DATA_WIDTH: Int = 64)
   val vecView = io.icache.data.asTypeOf(Vec(FETCH_NUM, UInt(Const.INSTR_MIN_WIDTH.W)))
 
   for(i <- (0 until FETCH_NUM)) {
-    // Fuse two instructions together
-    val higher = if(i == FETCH_NUM-1) {
-      0.U(Const.INSTR_MIN_WIDTH.W)
-    } else {
-      vecView(i+1)
-    }
+    io.output(i).addr := pipePc + (i*Const.INSTR_MIN_WIDTH/8).U
+    io.output(i).vacant := io.icache.vacant || i.U < pipeSkip
 
-    val full = higher ## vecView(i)
-    val instr = full.asInstr
-    io.output(i).instr
+    if(i == FETCH_NUM-1) {
+      val (parsed, success) = vecView(i).tryAsInstr16
+      io.output(i).instr := parsed
+
+      when(!io.icache.vacant && !success) {
+        io.output(i).vacant := true.B
+
+        when(!io.ctrl.pause && !io.ctrl.stall) {
+          tailFailed := true.B
+          tail := vecView(i)
+        }
+      }.otherwise {
+        when(!io.ctrl.pause && !io.ctrl.stall) {
+          tailFailed := false.B
+        }
+      }
+    } else if(i == 0) {
+      when(tailFailed) {
+        val full = vecView(0) ## tail
+        io.output(0).instr := full.asInstr
+        io.output(0).addr := pipePc - (Const.INSTR_MIN_WIDTH/8).U
+      }.otherwise {
+        val full = vecView(i+1) ## vecView(i)
+        io.output(i).instr := full.asInstr
+      }
+    } else {
+      // Fuse two instructions together
+      val full = vecView(i+1) ## vecView(i)
+      io.output(i).instr := full.asInstr
+    }
 
     // Skip this instr if last one was a full instr
     if(i != 0) {
-      when(
-        io.output(i-1).instr.base =/= InstrType.toInt(InstrType.C)
-        && !io.output(i-1).vacant
-      ) {
+      var cond = io.output(i-1).instr.base =/= InstrType.toInt(InstrType.C) && !io.output(i-1).vacant
+      if(i == 1) cond = cond && !tailFailed
+      when(cond) {
         io.output(i).vacant := true.B
+
+        if(i == FETCH_NUM-1) {
+          when(!io.ctrl.pause && !io.ctrl.stall) {
+            tailFailed := false.B
+          }
+        }
       }
     }
-  }
-
-  for((wire, i) <- io.icache.data.asTypeOf(Vec(FETCH_NUM, UInt(32.W))).zipWithIndex) {
-    io.output(i).instr := wire.asInstr
-    io.output(i).addr := pipePc + (i * Const.INSTR_MIN_WIDTH / 8).U
-    io.output(i).vacant := io.icache.vacant || i.U < pipeSkip 
   }
 }

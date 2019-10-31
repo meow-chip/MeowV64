@@ -57,15 +57,6 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int, ISSUE_NUM: Int) extends Module {
   io.branch.branch := branched
   io.branch.target := branchedAddr
 
-  /*
-  printf(p"EX:\n================\n")
-  printf(p"Running:\n${current(instr)}\n")
-  printf(p"readRs1: 0x${Hexadecimal(readRs1)}\n")
-  printf(p"readRs2: 0x${Hexadecimal(readRs2)}\n")
-  printf(p"Writing To: 0x${Hexadecimal(io.regWriter.addr)}\n")
-  printf(p"Writing Data: 0x${Hexadecimal(io.regWriter.data)}\n")
-  */
-
   io.regReaders(0).addr := current(instr).instr.rs1
   io.regReaders(1).addr := current(instr).instr.rs2
   readRs1 := io.regReaders(0).data
@@ -87,7 +78,18 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int, ISSUE_NUM: Int) extends Module {
   val lsAddr = Reg(UInt(ADDR_WIDTH.W))
 
   val substall = (!branched) && (!current(instr).vacant) && lsNextState =/= lsIDLE
-  io.ctrl.stall := instr != ISSUE_NUM.U
+  io.ctrl.stall := instr =/= ISSUE_NUM.U
+
+  /*
+  when(!substall && instr < ISSUE_NUM.U) {
+    printf(p"EX:\n================\n")
+    printf(p"Running:\n${current(instr)}\n")
+    printf(p"readRs1: 0x${Hexadecimal(readRs1)}\n")
+    printf(p"readRs2: 0x${Hexadecimal(readRs2)}\n")
+    printf(p"Writing To: 0x${Hexadecimal(io.regWriter.addr)}\n")
+    printf(p"Writing Data: 0x${Hexadecimal(io.regWriter.data)}\n")
+  }
+  */
 
   lsNextState := lsState
   when(lsNextState === lsWAIT || !substall) {

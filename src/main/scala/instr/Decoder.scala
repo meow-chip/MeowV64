@@ -116,9 +116,8 @@ object Decoder {
   }
 
   implicit class ConvertToInstr(self: Data) {
-    assert(self.getWidth == 32, s"Unexpected decoder input width: ${self.getWidth}")
-
     def asInstr(): Instr = {
+      assert(self.getWidth == 32, s"Unexpected decoder input width: ${self.getWidth}")
       val result = Wire(new Instr)
       val ui = self.asUInt
 
@@ -133,6 +132,28 @@ object Decoder {
       }
 
       result
+    }
+
+    def tryAsInstr16(): (Instr, Bool) = {
+      assert(self.getWidth == 16, s"Unexpected decoder input width: ${self.getWidth}")
+      val result = Wire(new Instr)
+      val success = Wire(Bool())
+      val ui = self.asUInt
+
+      when(!ui.orR()) {
+        // Defined invalid instr
+        result := DontCare
+        success := true.B
+        result.base := InstrType.toInt(InstrType.RESERVED)
+      }.elsewhen(ui(1, 0) =/= "11".asBits(2.W)) {
+        result := self.asInstr16
+        success := true.B
+      }.otherwise {
+        result := DontCare
+        success := false.B
+      }
+
+      (result, success)
     }
 
     def asInstr16(): Instr = {
@@ -365,7 +386,7 @@ object Decoder {
           result.rs1 := 2.U // x2 = sp
           result.rs2 := DontCare
           result.rd := rs1e
-          result.imm := (ui(4, 2) ## ui(12) ## ui(6, 3) ## 0.U(3.W)).asSInt
+          result.imm := (ui(4, 2) ## ui(12) ## ui(6, 5) ## 0.U(3.W)).asSInt
           result.funct3 := LOAD_FUNC("LD")
         }
         is("10100".asBits(5.W)) { // J[AL]R/MV/ADD
