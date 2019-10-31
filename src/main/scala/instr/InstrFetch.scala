@@ -24,7 +24,7 @@ class InstrFetch(ADDR_WIDTH: Int = 48, FETCH_NUM: Int = 1, DATA_WIDTH: Int = 64)
     val pc = Input(UInt(ADDR_WIDTH.W))
     val skip = Input(UInt(log2Ceil(FETCH_NUM).W))
 
-    val icache = Flipped(new ICachePort(ADDR_WIDTH, 32 * FETCH_NUM, DATA_WIDTH))
+    val icache = Flipped(new ICachePort(ADDR_WIDTH, Const.INSTR_MIN_WIDTH * FETCH_NUM, DATA_WIDTH))
     val fetch = Input(Bool())
     val output = Output(Vec(FETCH_NUM, new InstrExt(ADDR_WIDTH)))
 
@@ -54,6 +54,31 @@ class InstrFetch(ADDR_WIDTH: Int = 48, FETCH_NUM: Int = 1, DATA_WIDTH: Int = 64)
       printf(p"${instr}\n\n")
     }
     */
+  }
+
+  val vecView = io.icache.data.asTypeOf(Vec(FETCH_NUM, UInt(Const.INSTR_MIN_WIDTH.W)))
+
+  for(i <- (0 until FETCH_NUM)) {
+    // Fuse two instructions together
+    val higher = if(i == FETCH_NUM-1) {
+      0.U(Const.INSTR_MIN_WIDTH.W)
+    } else {
+      vecView(i+1)
+    }
+
+    val full = higher ## vecView(i)
+    val instr = full.asInstr
+    io.output(i).instr
+
+    // Skip this instr if last one was a full instr
+    if(i != 0) {
+      when(
+        io.output(i-1).instr.base =/= InstrType.toInt(InstrType.C)
+        && !io.output(i-1).vacant
+      ) {
+        io.output(i).vacant := true.B
+      }
+    }
   }
 
   for((wire, i) <- io.icache.data.asTypeOf(Vec(FETCH_NUM, UInt(32.W))).zipWithIndex) {

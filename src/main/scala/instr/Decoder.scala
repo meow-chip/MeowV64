@@ -116,7 +116,7 @@ object Decoder {
   }
 
   implicit class ConvertToInstr(self: Data) {
-    assert(self.getWidth == 32)
+    assert(self.getWidth == 32, s"Unexpected decoder input width: ${self.getWidth}")
 
     def asInstr(): Instr = {
       val result = Wire(new Instr)

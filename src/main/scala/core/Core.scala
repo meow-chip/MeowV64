@@ -16,11 +16,13 @@ class Core(val coredef: CoreDef = DefaultDef) extends Module {
     val pc = Output(UInt(coredef.ADDR_WIDTH.W))
   })
 
+  assert(coredef.ISSUE_NUM % 2 == 0, "issue num can only be multiples of two, because we need to support compressed instructions")
+
   val ctrl = Module(new Ctrl(coredef.ADDR_WIDTH, coredef.INIT_VEC, coredef.ISSUE_NUM))
 
   val ic = Module(new ICache(
     coredef.ADDR_WIDTH,
-    32 * coredef.ISSUE_NUM,
+    Const.INSTR_MIN_WIDTH * coredef.ISSUE_NUM,
     coredef.XLEN
   ))
   val fetch = Module(new InstrFetch(coredef.ADDR_WIDTH, coredef.ISSUE_NUM, coredef.XLEN))
