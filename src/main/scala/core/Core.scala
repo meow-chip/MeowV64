@@ -29,6 +29,7 @@ class Core(val coredef: CoreDef = DefaultDef) extends Module {
 
   fetch.io.icache <> ic.io
   fetch.io.pc <> ctrl.io.pc
+  fetch.io.skip <> ctrl.io.skip
   fetch.io.fetch := !ctrl.io.fetch.pause
   fetch.io.ctrl <> ctrl.io.fetch
   fetch.io.axi <> io.iaxi

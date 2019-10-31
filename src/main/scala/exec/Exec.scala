@@ -47,7 +47,7 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int, ISSUE_NUM: Int) extends Module {
     i.vacant := true.B
   }
   val current = RegInit(default)
-  val instr = RegInit(0.U(log2Ceil(ISSUE_NUM)))
+  val instr = RegInit(0.U(log2Ceil(ISSUE_NUM+1).W))
   val readRs1 = Wire(UInt(XLEN.W))
   val readRs2 = Wire(UInt(XLEN.W))
 
@@ -59,7 +59,7 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int, ISSUE_NUM: Int) extends Module {
 
   /*
   printf(p"EX:\n================\n")
-  printf(p"Running:\n${current}\n")
+  printf(p"Running:\n${current(instr)}\n")
   printf(p"readRs1: 0x${Hexadecimal(readRs1)}\n")
   printf(p"readRs2: 0x${Hexadecimal(readRs2)}\n")
   printf(p"Writing To: 0x${Hexadecimal(io.regWriter.addr)}\n")
@@ -73,7 +73,6 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int, ISSUE_NUM: Int) extends Module {
 
   when(!io.ctrl.pause && !io.ctrl.stall) {
     branched := false.B
-    instr := 0.U
     when(!io.ctrl.flush) {
       current := io.instr
     }.otherwise {
@@ -87,32 +86,37 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int, ISSUE_NUM: Int) extends Module {
   val lsNextState = Wire(lsState.cloneType)
   val lsAddr = Reg(UInt(ADDR_WIDTH.W))
 
+  val substall = (!branched) && (!current(instr).vacant) && lsNextState =/= lsIDLE
+  io.ctrl.stall := instr != ISSUE_NUM.U
+
   lsNextState := lsState
-  when(lsNextState === lsWAIT || !io.ctrl.pause) {
+  when(lsNextState === lsWAIT || !substall) {
     lsState := lsNextState
   }
 
-  // printf(p">>>>>>> lsNextState: ${lsNextState}\n")
-  val substall = (!current(instr).vacant) && lsNextState =/= lsIDLE
-  io.ctrl.stall := instr =/= (ISSUE_NUM-1).U || substall
-
   when(!substall) {
-    when(instr === (ISSUE_NUM-1).U) {
-      instr := 0.U
-    }.elsewhen(instr < (ISSUE_NUM-1).U) {
+    when(instr =/= ISSUE_NUM.U) {
       instr := instr + 1.U
+
+      when(instr === (ISSUE_NUM-1).U) {
+        io.ctrl.stall := false.B
+        when(!io.ctrl.pause) {
+          instr := 0.U
+        }
+      }
+    }.elsewhen(!io.ctrl.pause) {
+      instr := 0.U
     }
   }
 
-  when(!current(instr).vacant) {
+  when(!branched && instr =/= ISSUE_NUM.U && !current(instr).vacant) {
+    // printf(p"current instr: ${instr}\n")
     switch(current(instr).instr.op) {
 
       // Arith/Logical
 
       is(Decoder.Op("OP-IMM").ident) {
-        when(!io.ctrl.pause) {
-          io.regWriter.addr := current(instr).instr.rd
-        }
+        io.regWriter.addr := current(instr).instr.rd
         val extended = Wire(SInt(64.W))
         extended := current(instr).instr.imm
 
@@ -165,9 +169,7 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int, ISSUE_NUM: Int) extends Module {
       }
 
       is(Decoder.Op("OP-IMM-32").ident) {
-        when(!io.ctrl.pause) {
-          io.regWriter.addr := current(instr).instr.rd
-        }
+        io.regWriter.addr := current(instr).instr.rd
 
         // First we truncate everything to 32-bit, get a 32-bit result, then
         // sign-extend to 64-bit. TODO: Not sure if it works
@@ -203,9 +205,7 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int, ISSUE_NUM: Int) extends Module {
       }
 
       is(Decoder.Op("OP").ident) {
-        when(!io.ctrl.pause) {
-          io.regWriter.addr := current(instr).instr.rd
-        }
+        io.regWriter.addr := current(instr).instr.rd
 
         switch(current(instr).instr.funct3) {
           is(Decoder.OP_FUNC("ADD/SUB")) {
@@ -265,9 +265,8 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int, ISSUE_NUM: Int) extends Module {
       }
 
       is(Decoder.Op("OP-32").ident) {
-        when(!io.ctrl.pause) {
-          io.regWriter.addr := current(instr).instr.rd
-        }
+        io.regWriter.addr := current(instr).instr.rd
+
         val result32 = Wire(UInt(32.W))
         result32 := 0.U // Default value
 
@@ -331,6 +330,7 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int, ISSUE_NUM: Int) extends Module {
             dcache.io.addr := (lsAddrCompute >> 3) << 3 // Align
             dcache.io.read := true.B
 
+            // printf("Transfered by LOAD")
             lsNextState := lsWAIT
           }
 
@@ -416,6 +416,7 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int, ISSUE_NUM: Int) extends Module {
               is(Decoder.STORE_FUNC("SD")) { tailMask := 0xff.U }
             }
 
+            // printf("Transfered by STORE")
             lsNextState := lsWAIT
           }
 
