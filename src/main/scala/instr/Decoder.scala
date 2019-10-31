@@ -2,6 +2,7 @@ package instr
 
 import chisel3._
 import chisel3.util._
+import chisel3.internal.firrtl.Width
 
 /**
  * Instruction Decoder
@@ -11,7 +12,7 @@ import chisel3.util._
 object Decoder {
   object InstrType extends Enumeration {
     type InstrType = Value
-    val RESERVED, R, I, S, B, U, J = Value
+    val RESERVED, R, I, S, B, U, J, C = Value
 
     def toInt(x: Value) = x match {
       case RESERVED => 0.U(3.W)
@@ -21,6 +22,7 @@ object Decoder {
       case B => 4.U(3.W)
       case U => 5.U(3.W)
       case J => 6.U(3.W)
+      case C => 7.U(3.W)
     }
   }
 
@@ -108,10 +110,318 @@ object Decoder {
     "CSRRCI" -> "111"
   ).mapValues(Integer.parseInt(_, 2).U(3.W))
 
+  implicit class ConvertToBin(self: String) {
+    def asBin = Integer.parseInt(self, 2)
+    def asBits(len: Width) = self.asBin.U(len)
+  }
+
   implicit class ConvertToInstr(self: Data) {
+    assert(self.getWidth == 32)
+
     def asInstr(): Instr = {
       val result = Wire(new Instr)
       val ui = self.asUInt
+
+      when(!ui.orR()) {
+        // Defined invalid instr
+        result := DontCare
+        result.base := InstrType.toInt(InstrType.RESERVED)
+      }.elsewhen(ui(1, 0) =/= 0.U) {
+        result := self.asInstr16()
+      }.otherwise {
+        result := self.asInstr32()
+      }
+
+      result
+    }
+
+    def asInstr16(): Instr = {
+      val result = Wire(new Instr)
+      result.funct7 := DontCare
+      result.imm := DontCare
+      result.base := InstrType.toInt(InstrType.C)
+
+      val ui = self.asUInt
+
+      val rs1t = ui(9, 7) + 8.U
+      val rs2t = ui(4, 2) + 8.U
+
+      val rs1e = ui(11, 7)
+      val rs2e = ui(6, 2)
+
+      // RD position will differ by instr
+
+      switch(ui(1, 0) ## ui(15, 13)) {
+        is("00000".asBits(5.W)) { // ADDI4SPN
+          result.op := Op("OP-IMM").ident
+          result.rd := rs2t
+          result.rs1 := 2.U
+          result.rs2 := DontCare
+          result.imm := (ui(10, 7) ## ui(12, 11) ## ui(5) ## ui(6)) << 2
+          result.funct3 := OP_FUNC("ADD/SUB") // ADDI
+        }
+        is("00001".asBits(5.W)) { // FLD
+          result.base := InstrType.toInt(InstrType.RESERVED)
+        }
+        is("00010".asBits(5.W)) { // LW
+          result.op := Op("LOAD").ident
+          result.rs1 := rs1t
+          result.rs2 := DontCare
+          result.rd := rs2t
+          result.imm := ui(5) ## ui(12, 10) ## ui(6) ## 0.U(2.W)
+          result.funct3 := LOAD_FUNC("LW")
+        }
+        is("00011".asBits(5.W)) { // LD
+          result.op := Op("LOAD").ident
+          result.rs1 := rs1t
+          result.rs2 := DontCare
+          result.rd := rs2t
+          result.imm := ui(6, 5) ## ui(12, 10) ## 0.U(3.W)
+          result.funct3 := LOAD_FUNC("LD")
+        }
+        is("00100".asBits(5.W)) { // Reserved
+          result.base := InstrType.toInt(InstrType.RESERVED)
+        }
+        is("00101".asBits(5.W)) { // FSD
+          result.base := InstrType.toInt(InstrType.RESERVED)
+        }
+        is("00110".asBits(5.W)) { // SW
+          result.op := Op("STORE").ident
+          result.rs1 := rs1t
+          result.rs2 := rs2t
+          result.rd := DontCare
+          result.imm := ui(5) ## ui(12, 10) ## ui(6) ## 0.U(2.W)
+          result.funct3 := STORE_FUNC("SW")
+        }
+        is("00111".asBits(5.W)) { // SD
+          result.op := Op("STORE").ident
+          result.rs1 := rs1t
+          result.rs2 := rs2t
+          result.rd := DontCare
+          result.imm := ui(6, 5) ## ui(12, 10) ## 0.U(2.W)
+          result.funct3 := STORE_FUNC("SD")
+        }
+
+        is("01000".asBits(5.W)) { // ADDI
+          result.op := Op("OP-IMM").ident
+          result.rd := rs1e
+          result.rs1 := rs1e
+          result.rs2 := DontCare
+          result.imm := ui(12) ## ui(6, 2)
+          result.funct3 := OP_FUNC("ADD/SUB") // Can only be ADDI
+        }
+        is("01001".asBits(5.W)) { // ADDIW
+          result.op := Op("OP-IMM-32").ident
+          result.rd := rs1e
+          result.rs1 := rs1e
+          result.rs2 := DontCare
+          result.imm := ui(12) ## ui(6, 2)
+          result.funct3 := OP_FUNC("ADD/SUB") // Can only be ADDI
+        }
+        is("01010".asBits(5.W)) { // LI, encode as ori rd, x0, imm
+          result.op := Op("OP-IMM").ident
+          result.rd := rs1e
+          result.rs1 := 0.U
+          result.rs2 := DontCare
+          result.imm := ui(12) ## ui(6, 2)
+          result.funct3 := OP_FUNC("OR")
+        }
+        is("01011".asBits(5.W)) { // LUI/ADDI16SP
+          when(rs1e === 2.U) { // ADDI16SP
+            result.op := Op("OP-IMM").ident
+            result.rd := 2.U
+            result.rs1 := 2.U
+            result.rs2 := DontCare
+            result.imm := (ui(12) ## ui(4, 3) ## ui(5) ## ui(2) ## ui(6)) << 4
+            result.funct3 := OP_FUNC("ADD/SUB") // ADDI
+          }.otherwise { // LUI
+            result.op := Op("LUI").ident
+            result.rd := rs1e
+            result.rs1 := DontCare
+            result.rs2 := DontCare
+            result.imm := (ui(12) ## ui(6, 2)) << 12
+            result.funct3 := DontCare
+          }
+        }
+        is("01100".asBits(5.W)) { // MISC-ALU
+          when(ui(11) === 0.U) { // SRLI64 / SRAI64
+            result.op := Op("OP-IMM").ident
+            result.rs1 := rs1t
+            result.rs2 := DontCare
+            result.rd := rs1t
+            result.imm := ui(12) ## ui(6, 2)
+            result.funct3 := OP_FUNC("SRL/SRA")
+            result.funct7 := ui(11, 10) ## 0.U(5.U)
+          }.elsewhen(ui(10) === 0.U) { // ANDI
+            result.op := Op("OP-IMM").ident
+            result.rs1 := rs1t
+            result.rs2 := DontCare
+            result.rd := rs1t
+            result.imm := ui(12) ## ui(6, 2)
+            result.funct3 := OP_FUNC("AND")
+          }.otherwise { // OP MISC
+            result.op := Op("OP").ident
+            result.rs1 := rs1t
+            result.rs2 := rs2t
+            result.rd := rs1t
+            result.imm := DontCare
+
+            switch(ui(12) ## ui(6, 5)) {
+              is("000".asBits(3.W)) { // SUB
+                result.funct3 := OP_FUNC("ADD/SUB")
+                result.funct7 := "0100000".asBits(7.W)
+              }
+
+              is("001".asBits(3.W)) { // XOR
+                result.funct3 := OP_FUNC("XOR")
+              }
+
+              is("010".asBits(3.W)) { // OR
+                result.funct3 := OP_FUNC("OR")
+              }
+
+              is("011".asBits(3.W)) { // AND
+                result.funct3 := OP_FUNC("AND")
+              }
+
+              is("100".asBits(3.W)) { // SUBW
+                result.op := Op("OP-32").ident
+                result.funct3 := OP_FUNC("ADD/SUB")
+                result.funct7 := "0100000".asBits(7.W)
+              }
+
+              is("101".asBits(3.W)) { // ADDW
+                result.op := Op("OP-32").ident
+                result.funct3 := OP_FUNC("ADD/SUB")
+                result.funct7 := "0000000".asBits(7.W)
+              }
+
+              is("110".asBits(3.W)) { // Reserved
+                result.base := InstrType.toInt(InstrType.RESERVED)
+              }
+
+              is("111".asBits(3.W)) { // Reserved
+                result.base := InstrType.toInt(InstrType.RESERVED)
+              }
+            }
+          }
+        }
+        is("01101".asBits(5.W)) { // J
+          result.op := Op("JAL").ident
+          result.rs1 := DontCare
+          result.rs2 := DontCare
+          result.rd := 0.U // Ignore result
+          result.imm := ui(12) ## ui(8) ## ui(10, 9) ## ui(6) ## ui(7) ## ui(2) ## ui(11) ## ui(5, 3) ## 0.U(1.W)
+          result.funct3 := DontCare // TODO: trigger error on treadle when reading DontCare
+        }
+        is("01110".asBits(5.W)) { // BEQZ
+          result.op := Op("BRANCH").ident
+          result.rs1 := rs1t
+          result.rs2 := 0.U // Compare with zero
+          result.rd := DontCare
+          result.imm := ui(12) ## ui(6, 5) ## ui(2) ## ui(11, 10) ## ui(4, 3) ## 0.U(1.W)
+          result.funct3 := BRANCH_FUNC("BEQ")
+        }
+        is("01111".asBits(5.W)) { // BNEZ
+          result.op := Op("BRANCH").ident
+          result.rs1 := rs1t
+          result.rs2 := 0.U // Compare with zero
+          result.rd := DontCare
+          result.imm := ui(12) ## ui(6, 5) ## ui(2) ## ui(11, 10) ## ui(4, 3) ## 0.U(1.W)
+          result.funct3 := BRANCH_FUNC("BNE")
+        }
+
+        is("10000".asBits(5.W)) { // SLLI
+          result.op := Op("OP-IMM").ident
+          result.rd := rs1e
+          result.rs1 := rs1e
+          result.rs2 := DontCare
+          result.imm := ui(12) ## ui(6, 2)
+          result.funct3 := OP_FUNC("SLL")
+        }
+        is("10001".asBits(5.W)) { // FLDSP
+          result.base := InstrType.toInt(InstrType.RESERVED)
+        }
+        is("10010".asBits(5.W)) { // LWSP
+          result.op := Op("LOAD").ident
+          result.rs1 := 2.U // x2 = sp
+          result.rs2 := DontCare
+          result.rd := rs1e
+          result.imm := ui(3, 2) ## ui(12) ## ui(6, 4) ## 0.U(2.W)
+          result.funct3 := LOAD_FUNC("LW")
+        }
+        is("10011".asBits(5.W)) { // LDSP
+          result.op := Op("LOAD").ident
+          result.rs1 := 2.U // x2 = sp
+          result.rs2 := DontCare
+          result.rd := rs1e
+          result.imm := ui(4, 2) ## ui(12) ## ui(6, 3) ## 0.U(3.W)
+          result.funct3 := LOAD_FUNC("LD")
+        }
+        is("10100".asBits(5.W)) { // J[AL]R/MV/ADD
+          when(ui(12) === 0.U) {
+            when(rs2e === 0.U) { // JR
+              result.op := Op("JALR").ident
+              result.rs1 := rs1e
+              result.rs2 := DontCare
+              result.rd := 0.U // Ignore result
+              result.imm := 0.U
+              result.funct3 := DontCare
+            }.otherwise { // MV, encode as or rd, x0, rs2, same as add rd, x0, rs2
+              result.op := Op("OP").ident
+              result.rd := rs1e
+              result.rs1 := 0.U
+              result.rs2 := rs2e
+              result.imm := DontCare
+              result.funct3 := OP_FUNC("OR")
+            }
+            // TODO: EBREAK, maybe?
+          }.otherwise {
+            when(rs2e === 0.U) { // JALR
+              result.op := Op("JALR").ident
+              result.rs1 := rs1e
+              result.rs2 := DontCare
+              result.rd := 1.U // x1 = ra
+              result.imm := 0.U
+              result.funct3 := DontCare
+            }.otherwise { // ADD
+              result.op := Op("OP").ident
+              result.rs1 := rs1e
+              result.rs2 := rs2e
+              result.rd := rs1e
+              result.imm := DontCare
+              result.funct3 := OP_FUNC("ADD/SUB")
+              result.funct7 := "0100000".asBits(7.W)
+            }
+          }
+        }
+        is("10101".asBits(5.W)) { // FSDSP
+          result.base := InstrType.toInt(InstrType.RESERVED)
+        }
+        is("10110".asBits(5.W)) { // SWSP
+          result.op := Op("STORE").ident
+          result.rs1 := 2.U // x2 = sp
+          result.rs2 := rs2e
+          result.rd := DontCare
+          result.imm := ui(8, 7) ## ui(12, 9) ## 0.U(2.W)
+          result.funct3 := STORE_FUNC("SW")
+        }
+        is("10111".asBits(5.W)) { // SDSP
+          result.op := Op("STORE").ident
+          result.rs1 := 2.U // x2 = sp
+          result.rs2 := rs2e
+          result.rd := DontCare
+          result.imm := ui(9, 7) ## ui(12, 10) ## 0.U(3.W)
+          result.funct3 := STORE_FUNC("SD")
+        }
+      }
+
+      result
+    }
+
+    def asInstr32(): Instr = {
+      val ui = self.asUInt
+      val result = Wire(new Instr)
       result.op := ui >> 2
 
       var ctx: Option[WhenContext] = None

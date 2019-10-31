@@ -7,6 +7,7 @@ import chisel3.util._
 import _root_.core.StageCtrl
 import cache.DCachePort
 import cache.DCache
+import instr.Decoder.InstrType
 
 class BranchResult(val ADDR_WIDTH: Int = 48) extends Bundle {
   val branch = Bool()
@@ -421,6 +422,10 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int) extends Module {
 
       is(Decoder.Op("JALR").ident) {
         val linked = current.addr + 4.U
+        when(current.instr.base === InstrType.toInt(InstrType.C)) {
+          val linked = current.addr + 2.U // This is an compressed instr instead
+        }
+
         val dest = ((readRs1.asSInt + current.instr.imm) >> 1) << 1
         // printf(p"JALR dest: ${Hexadecimal(dest)}")
         io.branch.branch := true.B
