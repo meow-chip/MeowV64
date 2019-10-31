@@ -24,7 +24,7 @@ class Core(val coredef: CoreDef = DefaultDef) extends Module {
     coredef.XLEN
   ))
   val fetch = Module(new InstrFetch(coredef.ADDR_WIDTH, coredef.ISSUE_NUM, coredef.XLEN))
-  val exec = Module(new Exec(coredef.ADDR_WIDTH, coredef.XLEN))
+  val exec = Module(new Exec(coredef.ADDR_WIDTH, coredef.XLEN, coredef.ISSUE_NUM))
   val reg = Module(new RegFile(coredef.XLEN))
 
   fetch.io.icache <> ic.io
@@ -34,7 +34,7 @@ class Core(val coredef: CoreDef = DefaultDef) extends Module {
   fetch.io.axi <> io.iaxi
 
   // Now we forces FETCH_NUM = 1
-  exec.io.instr <> fetch.io.output.asTypeOf(exec.io.instr)
+  exec.io.instr <> fetch.io.output
   exec.io.regReaders <> reg.io.reads
   exec.io.regWriter <> reg.io.write
   exec.io.ctrl <> ctrl.io.exec

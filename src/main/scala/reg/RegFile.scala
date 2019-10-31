@@ -26,8 +26,6 @@ class RegFile(XLEN: Int = 64, COUNT: Int = 32, READ_COUNT: Int = 2) extends Modu
   for(i <- (0 until READ_COUNT)) {
     when(io.reads(i).addr === 0.U) {
       io.reads(i).data := 0.U
-    }.elsewhen(io.reads(i).addr === io.write.addr) {
-      io.reads(i).data := io.write.data
     }.otherwise {
       io.reads(i).data := regs(io.reads(i).addr)
     }

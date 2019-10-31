@@ -15,11 +15,11 @@ class BranchResult(val ADDR_WIDTH: Int = 48) extends Bundle {
 }
 
 
-class Exec(ADDR_WIDTH: Int, XLEN: Int) extends Module {
+class Exec(ADDR_WIDTH: Int, XLEN: Int, ISSUE_NUM: Int) extends Module {
   val io = IO(new Bundle {
     val regReaders = Vec(2, new RegReader)
     val regWriter = new RegWriter
-    val instr = Input(new InstrExt(ADDR_WIDTH))
+    val instr = Input(Vec(ISSUE_NUM, new InstrExt(ADDR_WIDTH)))
 
     val axi = new AXI(XLEN)
 
@@ -40,13 +40,22 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int) extends Module {
   dcache.io.read := false.B
   dcache.io.write := false.B
 
-  val default = Wire(new InstrExt)
-  default.addr := DontCare
-  default.instr := 0.U.asTypeOf(default.instr)
-  default.vacant := true.B
+  val default = Wire(Vec(ISSUE_NUM, new InstrExt))
+  for(i <- default) {
+    i.addr := DontCare
+    i.instr := 0.U.asTypeOf(i.instr)
+    i.vacant := true.B
+  }
   val current = RegInit(default)
-  val readRs1 = Reg(UInt(XLEN.W))
-  val readRs2 = Reg(UInt(XLEN.W))
+  val instr = RegInit(0.U(log2Ceil(ISSUE_NUM)))
+  val readRs1 = Wire(UInt(XLEN.W))
+  val readRs2 = Wire(UInt(XLEN.W))
+
+  val branched = RegInit(false.B)
+  val branchedAddr = Reg(UInt(ADDR_WIDTH.W))
+
+  io.branch.branch := branched
+  io.branch.target := branchedAddr
 
   /*
   printf(p"EX:\n================\n")
@@ -57,15 +66,16 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int) extends Module {
   printf(p"Writing Data: 0x${Hexadecimal(io.regWriter.data)}\n")
   */
 
-  io.regReaders(0).addr := io.instr.instr.rs1
-  io.regReaders(1).addr := io.instr.instr.rs2
+  io.regReaders(0).addr := current(instr).instr.rs1
+  io.regReaders(1).addr := current(instr).instr.rs2
+  readRs1 := io.regReaders(0).data
+  readRs2 := io.regReaders(1).data
 
   when(!io.ctrl.pause && !io.ctrl.stall) {
+    branched := false.B
+    instr := 0.U
     when(!io.ctrl.flush) {
       current := io.instr
-
-      readRs1 := io.regReaders(0).data
-      readRs2 := io.regReaders(1).data
     }.otherwise {
       current := default
     }
@@ -83,21 +93,30 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int) extends Module {
   }
 
   // printf(p">>>>>>> lsNextState: ${lsNextState}\n")
-  io.ctrl.stall := (!current.vacant) && lsNextState =/= lsIDLE
+  val substall = (!current(instr).vacant) && lsNextState =/= lsIDLE
+  io.ctrl.stall := instr =/= (ISSUE_NUM-1).U || substall
 
-  when(!current.vacant) {
-    switch(current.instr.op) {
+  when(!substall) {
+    when(instr === (ISSUE_NUM-1).U) {
+      instr := 0.U
+    }.elsewhen(instr < (ISSUE_NUM-1).U) {
+      instr := instr + 1.U
+    }
+  }
+
+  when(!current(instr).vacant) {
+    switch(current(instr).instr.op) {
 
       // Arith/Logical
 
       is(Decoder.Op("OP-IMM").ident) {
         when(!io.ctrl.pause) {
-          io.regWriter.addr := current.instr.rd
+          io.regWriter.addr := current(instr).instr.rd
         }
         val extended = Wire(SInt(64.W))
-        extended := current.instr.imm
+        extended := current(instr).instr.imm
 
-        switch(current.instr.funct3) {
+        switch(current(instr).instr.funct3) {
           is(Decoder.OP_FUNC("ADD/SUB")) { // Can only be ADDI in OP-IMM
             io.regWriter.data := (extended + readRs1.asSInt).asUInt
           }
@@ -126,7 +145,7 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int) extends Module {
           }
 
           is(Decoder.OP_FUNC("SRL/SRA")) {
-            when(current.instr.funct7(5)) {
+            when(current(instr).instr.funct7(5)) {
               // SRA
               io.regWriter.data := (readRs1.asSInt >> extended(4, 0)).asUInt
             }.otherwise {
@@ -147,7 +166,7 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int) extends Module {
 
       is(Decoder.Op("OP-IMM-32").ident) {
         when(!io.ctrl.pause) {
-          io.regWriter.addr := current.instr.rd
+          io.regWriter.addr := current(instr).instr.rd
         }
 
         // First we truncate everything to 32-bit, get a 32-bit result, then
@@ -155,25 +174,25 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int) extends Module {
         val result32 = Wire(SInt(32.W))
         result32 := 0.S // Default value
 
-        switch(current.instr.funct3) {
+        switch(current(instr).instr.funct3) {
           is(Decoder.OP_FUNC("ADD/SUB")) {
             // ADDIW
-            result32 := readRs1.asSInt + current.instr.imm
+            result32 := readRs1.asSInt + current(instr).instr.imm
           }
 
           is(Decoder.OP_FUNC("SLL")) {
             // SLLIW
             // TODO: add assert to check shamt[5]
-            result32 := readRs1.asSInt << current.instr.imm(4, 0)
+            result32 := readRs1.asSInt << current(instr).instr.imm(4, 0)
           }
 
           is(Decoder.OP_FUNC("SRL/SRA")) {
-            when(current.instr.funct7(5)) {
+            when(current(instr).instr.funct7(5)) {
               // SRAIW
-              result32 := readRs1(31, 0).asSInt >> current.instr.imm(4, 0)
+              result32 := readRs1(31, 0).asSInt >> current(instr).instr.imm(4, 0)
             }.otherwise {
               // SRLIW
-              result32 := (readRs1(31, 0).asUInt >> current.instr.imm(4, 0)).asSInt
+              result32 := (readRs1(31, 0).asUInt >> current(instr).instr.imm(4, 0)).asSInt
             }
           }
         }
@@ -185,12 +204,12 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int) extends Module {
 
       is(Decoder.Op("OP").ident) {
         when(!io.ctrl.pause) {
-          io.regWriter.addr := current.instr.rd
+          io.regWriter.addr := current(instr).instr.rd
         }
 
-        switch(current.instr.funct3) {
+        switch(current(instr).instr.funct3) {
           is(Decoder.OP_FUNC("ADD/SUB")) {
-            when(current.instr.funct7(5)) {
+            when(current(instr).instr.funct7(5)) {
               // Overflows ignored in ADD/SUB
               // SUB
               io.regWriter.data := readRs1 - readRs2
@@ -225,7 +244,7 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int) extends Module {
           }
 
           is(Decoder.OP_FUNC("SRL/SRA")) {
-            when(current.instr.funct7(5)) {
+            when(current(instr).instr.funct7(5)) {
               // SRA
               // In RV64I, only the low 6 bits of rs2 are considered for the
               // shift amount. (c.f. spec p.53)
@@ -247,14 +266,14 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int) extends Module {
 
       is(Decoder.Op("OP-32").ident) {
         when(!io.ctrl.pause) {
-          io.regWriter.addr := current.instr.rd
+          io.regWriter.addr := current(instr).instr.rd
         }
         val result32 = Wire(UInt(32.W))
         result32 := 0.U // Default value
 
-        switch(current.instr.funct3) {
+        switch(current(instr).instr.funct3) {
           is(Decoder.OP_FUNC("ADD/SUB")) {
-            when(current.instr.funct7(5)) {
+            when(current(instr).instr.funct7(5)) {
               // SUBW
               result32 := readRs1 - readRs2
             }.otherwise {
@@ -269,7 +288,7 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int) extends Module {
           }
 
           is(Decoder.OP_FUNC("SRL/SRA")) {
-            when(current.instr.funct7(5)) {
+            when(current(instr).instr.funct7(5)) {
               // SRAW
               result32 := (readRs1(31, 0).asSInt >> readRs2(4, 0)).asUInt
             }.otherwise {
@@ -288,16 +307,16 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int) extends Module {
       // Load immediate
 
       is(Decoder.Op("LUI").ident) {
-        io.regWriter.addr := current.instr.rd
+        io.regWriter.addr := current(instr).instr.rd
         val extended = Wire(SInt(64.W))
-        extended := current.instr.imm
+        extended := current(instr).instr.imm
         io.regWriter.data := extended.asUInt
       }
 
       is(Decoder.Op("AUIPC").ident) {
-        io.regWriter.addr := current.instr.rd
+        io.regWriter.addr := current(instr).instr.rd
         val result = Wire(SInt(64.W))
-        result := current.instr.imm + current.addr.asSInt
+        result := current(instr).instr.imm + current(instr).addr.asSInt
         // printf(p"AUIPC Written: ${Hexadecimal(result)}\n")
         io.regWriter.data := result.asUInt
       }
@@ -307,7 +326,7 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int) extends Module {
       is(Decoder.Op("LOAD").ident) {
         switch(lsState) {
           is(lsIDLE) {
-            val lsAddrCompute = readRs1 + current.instr.imm.asUInt
+            val lsAddrCompute = readRs1 + current(instr).instr.imm.asUInt
             lsAddr := lsAddrCompute
             dcache.io.addr := (lsAddrCompute >> 3) << 3 // Align
             dcache.io.read := true.B
@@ -325,7 +344,7 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int) extends Module {
             result := signedResult.asUInt
             io.regWriter.data := result
 
-            switch(current.instr.funct3) {
+            switch(current(instr).instr.funct3) {
               is(Decoder.LOAD_FUNC("LB")) {
                 signedResult := shifted(7, 0).asSInt
               }
@@ -362,7 +381,7 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int) extends Module {
               printf(p"Shifted output: ${Hexadecimal(shifted)}\n")
               */
               // Commit
-              io.regWriter.addr := current.instr.rd
+              io.regWriter.addr := current(instr).instr.rd
               lsNextState := lsIDLE
             }
           }
@@ -372,7 +391,7 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int) extends Module {
       is(Decoder.Op("STORE").ident) {
         switch(lsState) {
           is(lsIDLE) {
-            val lsAddrCompute = readRs1 + current.instr.imm.asUInt
+            val lsAddrCompute = readRs1 + current(instr).instr.imm.asUInt
             val lsAddrShift = lsAddrCompute(2, 0) // By 8 bits
             lsAddr := lsAddrCompute
             dcache.io.addr := (lsAddrCompute >> 3) << 3 // Align
@@ -390,7 +409,7 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int) extends Module {
             dcache.io.wdata := readRs2 << (lsAddrShift * 8.U)
             dcache.io.be := tailMask << lsAddrShift
 
-            switch(current.instr.funct3) {
+            switch(current(instr).instr.funct3) {
               is(Decoder.STORE_FUNC("SB")) { tailMask := 0x01.U }
               is(Decoder.STORE_FUNC("SH")) { tailMask := 0x03.U }
               is(Decoder.STORE_FUNC("SW")) { tailMask := 0x0f.U }
@@ -411,27 +430,37 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int) extends Module {
       // Branch
 
       is(Decoder.Op("JAL").ident) {
-        val linked = current.addr + 4.U
-        val dest = current.instr.imm + current.addr.asSInt
+        val linked = current(instr).addr + 4.U
+        val dest = current(instr).instr.imm + current(instr).addr.asSInt
         io.branch.branch := true.B
         io.branch.target := dest.asUInt
 
-        io.regWriter.addr := current.instr.rd
+        when(io.ctrl.stall || io.ctrl.pause) { // Not last issue
+          branched := true.B
+          branchedAddr := dest.asUInt
+        }
+
+        io.regWriter.addr := current(instr).instr.rd
         io.regWriter.data := linked.asUInt
       }
 
       is(Decoder.Op("JALR").ident) {
-        val linked = current.addr + 4.U
-        when(current.instr.base === InstrType.toInt(InstrType.C)) {
-          val linked = current.addr + 2.U // This is an compressed instr instead
+        val linked = current(instr).addr + 4.U
+        when(current(instr).instr.base === InstrType.toInt(InstrType.C)) {
+          val linked = current(instr).addr + 2.U // This is an compressed instr instead
         }
 
-        val dest = ((readRs1.asSInt + current.instr.imm) >> 1) << 1
+        val dest = ((readRs1.asSInt + current(instr).instr.imm) >> 1) << 1
         // printf(p"JALR dest: ${Hexadecimal(dest)}")
         io.branch.branch := true.B
         io.branch.target := dest.asUInt
 
-        io.regWriter.addr := current.instr.rd
+        when(io.ctrl.stall || io.ctrl.pause) { // Not last issue
+          branched := true.B
+          branchedAddr := dest.asUInt
+        }
+
+        io.regWriter.addr := current(instr).instr.rd
         io.regWriter.data := linked.asUInt
       }
 
@@ -441,7 +470,7 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int) extends Module {
 
         val readRs1S = readRs1.asSInt
         val readRs2S = readRs2.asSInt
-        switch(current.instr.funct3) {
+        switch(current(instr).instr.funct3) {
           is(Decoder.BRANCH_FUNC("BEQ")) {
             branch := readRs1 === readRs2
           }
@@ -468,7 +497,12 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int) extends Module {
         }
 
         io.branch.branch := branch
-        io.branch.target := (current.instr.imm + current.addr.asSInt).asUInt
+        io.branch.target := (current(instr).instr.imm + current(instr).addr.asSInt).asUInt
+
+        when(io.ctrl.stall || io.ctrl.pause) { // Not last issue
+          branched := branch
+          branchedAddr := (current(instr).instr.imm + current(instr).addr.asSInt).asUInt
+        }
       }
     }
   }.otherwise {
