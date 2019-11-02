@@ -6,7 +6,7 @@ import instr.Decoder
 import cache.DCachePort
 import data.AXI
 
-class LSUExt(XLEN: Int) extends Bundle {
+class LSUExt(val XLEN: Int) extends Bundle {
   val wdata = UInt(XLEN.W)
 }
 
@@ -159,4 +159,6 @@ class LSU(ADDR_WIDTH: Int, XLEN: Int) extends ExecUnit(0, new LSUExt(XLEN), ADDR
 
     info
   }
+
+  init()
 }

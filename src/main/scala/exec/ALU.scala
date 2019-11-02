@@ -15,6 +15,7 @@ class ALU(ADDR_WIDTH: Int, XLEN: Int, HALF_SIZE: Boolean)
 
   def map(stage: Int, pipe: PipeInstr, ext: Option[ALUExt]): (ALUExt, Bool) = {
     val ext = Wire(new ALUExt(VAL_SIZE))
+    ext.acc := DontCare
     val op1f = pipe.rs1val
     val op2f = Wire(UInt(XLEN.W))
 
@@ -91,7 +92,7 @@ class ALU(ADDR_WIDTH: Int, XLEN: Int, HALF_SIZE: Boolean)
 
   def finalize(pipe: PipeInstr, ext: ALUExt): RetireInfo = {
     // Sign extend if needed
-    val info = new RetireInfo(ADDR_WIDTH, XLEN)
+    val info = Wire(new RetireInfo(ADDR_WIDTH, XLEN))
     info.branch.nofire()
     info.regWaddr := pipe.instr.instr.rd
 
@@ -101,4 +102,6 @@ class ALU(ADDR_WIDTH: Int, XLEN: Int, HALF_SIZE: Boolean)
 
     info
   }
+
+  init()
 }

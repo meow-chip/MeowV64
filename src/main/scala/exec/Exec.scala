@@ -77,9 +77,9 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int, ISSUE_NUM: Int) extends Module {
 
   val units = List(alu, alu32, imm, lsu, br)
 
-  val placeholder = Wire(new InstrExt(ADDR_WIDTH))
-  placeholder := DontCare
-  placeholder.vacant := true.B
+  val placeholder = Wire(new PipeInstr(ADDR_WIDTH, XLEN))
+  placeholder := 0.U.asTypeOf(placeholder)
+  placeholder.instr.vacant := true.B
 
   var stall = false.B
 

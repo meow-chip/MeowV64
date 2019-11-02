@@ -11,6 +11,7 @@ class ImmExt(val XLEN: Int) extends Bundle {
 class Imm(ADDR_WIDTH: Int, XLEN: Int) extends ExecUnit(0, new ImmExt(XLEN), ADDR_WIDTH, XLEN) {
   def map(stage: Int, pipe: PipeInstr, ext: Option[ImmExt]): (ImmExt, chisel3.Bool) = {
     val ext = Wire(new ImmExt(XLEN))
+    ext.acc := DontCare
 
     switch(pipe.instr.instr.op) {
       is(Decoder.Op("LUI").ident) {
@@ -30,11 +31,13 @@ class Imm(ADDR_WIDTH: Int, XLEN: Int) extends ExecUnit(0, new ImmExt(XLEN), ADDR
     (ext, false.B)
   }
   def finalize(pipe: PipeInstr, ext: ImmExt): RetireInfo = {
-    val info = new RetireInfo(ADDR_WIDTH, XLEN)
+    val info = Wire(new RetireInfo(ADDR_WIDTH, XLEN))
     info.branch.nofire()
     info.regWaddr := pipe.instr.instr.rd
     info.regWdata := ext.acc
 
     info
   }
+
+  init()
 }

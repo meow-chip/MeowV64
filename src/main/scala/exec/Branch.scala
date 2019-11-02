@@ -68,16 +68,18 @@ class Branch(ADDR_WIDTH: Int, XLEN: Int) extends ExecUnit(0, new BranchExt, ADDR
       info.regWaddr := pipe.instr.instr.rd
       info.regWdata := linked.asUInt
 
-      val dest = Wire(UInt(ADDR_WIDTH.W))
+      val dest = Wire(SInt(ADDR_WIDTH.W))
       when(pipe.instr.instr.op === Decoder.Op("JAL").ident) {
         dest := pipe.instr.instr.imm + pipe.instr.addr.asSInt
       }.otherwise { // JALR
         dest := ((pipe.rs1val.asSInt + pipe.instr.instr.imm) >> 1) << 1
       }
 
-      info.branch.fire(dest)
+      info.branch.fire(dest.asUInt)
     }
 
     info
   }
+
+  init()
 }

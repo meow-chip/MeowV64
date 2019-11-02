@@ -58,4 +58,6 @@ class Mul(ADDR_WIDTH: Int, XLEN: Int, USE_IMM: Boolean) extends ExecUnit(1, new 
 
     info
   }
+
+  init()
 }
