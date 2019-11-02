@@ -71,13 +71,21 @@ abstract class ExecUnit[T <: Data](
 
       val (nExt, lStall) = connectStage(DEPTH, current(DEPTH-1).pipe, Some(current(DEPTH-1).ext))
       io.retired := current(DEPTH-1)
-      io.retirement := finalize(current(DEPTH-1).pipe, nExt)
+      when(io.retired.instr.vacant) {
+        io.retirement := vacantFinalize()
+      }.otherwise {
+        io.retirement := finalize(current(DEPTH-1).pipe, nExt)
+      }
       io.stall := stall || lStall
     } else {
       val (nExt, sStall) = connectStage(0, io.next, None)
       // Use chisel's unconnected wire check to enforce that no ext is exported from this exec unit
       io.retired := io.next
-      io.retirement := finalize(io.next, nExt)
+      when(io.retired.instr.vacant) {
+        io.retirement := vacantFinalize()
+      }.otherwise {
+        io.retirement := finalize(io.next, nExt)
+      }
       io.stall := sStall
     }
 
@@ -92,11 +100,10 @@ abstract class ExecUnit[T <: Data](
 
   def finalize(pipe: PipeInstr, ext: T): RetireInfo 
 
-  def trivialFinalize(pipe: PipeInstr, ext: T): RetireInfo = {
+  def vacantFinalize(): RetireInfo = {
     val info = Wire(new RetireInfo(ADDR_WIDTH, XLEN))
 
-    info.branch.branch := false.B
-    info.branch.target := DontCare
+    info.branch.nofire()
     info.regWaddr := 0.U
     info.regWdata := DontCare
 

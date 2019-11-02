@@ -50,12 +50,13 @@ class Branch(ADDR_WIDTH: Int, XLEN: Int) extends ExecUnit(0, new BranchExt, ADDR
     val info = Wire(new RetireInfo(ADDR_WIDTH, XLEN))
 
     when(pipe.instr.instr.op === Decoder.Op("BRANCH").ident) {
-      info.regWaddr := false.B
+      info.regWaddr := 0.U
       info.regWdata := DontCare
       when(ext.branched) {
         val target = pipe.instr.instr.imm + pipe.rs1val.asSInt
         info.branch.fire(target.asUInt)
       }.otherwise {
+        printf(">> No branch within\n")
         info.branch.nofire()
       }
     }.otherwise { // JAL/JALR

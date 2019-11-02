@@ -5,7 +5,7 @@ import chisel3.util._
 import instr.Decoder
 
 class ALUExt(val XLEN: Int) extends Bundle {
-  val acc = UInt(XLEN.W)
+  val acc = SInt(XLEN.W)
 }
 
 class ALU(ADDR_WIDTH: Int, XLEN: Int, HALF_SIZE: Boolean)
@@ -16,19 +16,19 @@ class ALU(ADDR_WIDTH: Int, XLEN: Int, HALF_SIZE: Boolean)
   def map(stage: Int, pipe: PipeInstr, ext: Option[ALUExt]): (ALUExt, Bool) = {
     val ext = Wire(new ALUExt(VAL_SIZE))
     ext.acc := DontCare
-    val op1f = pipe.rs1val
-    val op2f = Wire(UInt(XLEN.W))
+    val op1f = pipe.rs1val.asSInt()
+    val op2f = Wire(SInt(XLEN.W))
 
     val useSub = Wire(Bool())
     when(pipe.instr.instr.op === Decoder.Op("OP-IMM").ident
       || pipe.instr.instr.op === Decoder.Op("OP-IMM-32").ident) {
-        op2f := pipe.instr.instr.imm.asUInt()
+        op2f := pipe.instr.instr.imm
         useSub := false.B
       }.otherwise {
-        op2f := pipe.rs2val
+        op2f := pipe.rs2val.asSInt()
         useSub := pipe.instr.instr.funct7(5)
       }
-    val (op1, op2) = if(HALF_SIZE) (op1f(31, 0), op2f(31, 0)) else (op1f, op2f)
+    val (op1, op2) = if(HALF_SIZE) (op1f(31, 0).asSInt, op2f(31, 0).asSInt) else (op1f, op2f)
 
     switch(pipe.instr.instr.funct3) {
       is(Decoder.OP_FUNC("ADD/SUB")) {
@@ -48,18 +48,18 @@ class ALU(ADDR_WIDTH: Int, XLEN: Int, HALF_SIZE: Boolean)
       }
 
       is(Decoder.OP_FUNC("SLT")) {
-        when(op1.asSInt < op2.asSInt) {
-          ext.acc := 1.U
+        when(op1 < op2) {
+          ext.acc := 1.S
         }.otherwise {
-          ext.acc := 0.U
+          ext.acc := 0.S
         }
       }
 
       is(Decoder.OP_FUNC("SLTU")) {
         when(op1.asUInt < op2.asUInt) {
-          ext.acc := 1.U
+          ext.acc := 1.S
         }.otherwise {
-          ext.acc := 0.U
+          ext.acc := 0.S
         }
       }
 
@@ -72,9 +72,9 @@ class ALU(ADDR_WIDTH: Int, XLEN: Int, HALF_SIZE: Boolean)
           // SRA
           // In RV64I, only the low 6 bits of rs2 are considered for the
           // shift amount. (c.f. spec p.53)
-          ext.acc := (op1.asSInt >> op2(5, 0)).asUInt
+          ext.acc := op1 >> op2(5, 0)
         }.otherwise {
-          ext.acc := op2 >> op2(5, 0)
+          ext.acc := (op1.asUInt >> op2(5, 0)).asSInt
         }
       }
 
@@ -97,7 +97,7 @@ class ALU(ADDR_WIDTH: Int, XLEN: Int, HALF_SIZE: Boolean)
     info.regWaddr := pipe.instr.instr.rd
 
     val extended = Wire(SInt(XLEN.W))
-    extended := ext.acc.asSInt
+    extended := ext.acc
     info.regWdata := extended.asUInt
 
     info

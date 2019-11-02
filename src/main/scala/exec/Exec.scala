@@ -89,39 +89,25 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int, ISSUE_NUM: Int) extends Module {
   unitState := unitStateNext
   unitStateNext := unitState
 
-  for(u <- units) {
-    u.io.next := placeholder
-    u.io.pause := io.ctrl.pause
+  val substall = (!branched) && (!current(instr).vacant) && (stall || unitStateNext =/= sIDLE)
+  io.ctrl.stall := instr =/= ISSUE_NUM.U && !branched
 
-    stall = stall || u.io.stall
-
-    when(u.io.retirement.branch.branch) {
-      branched := true.B
-      branchedAddr := u.io.retirement.branch.target
-      io.branch := u.io.retirement.branch
-    }
-
-    when(u.io.retirement.regWaddr =/= 0.U) {
-      io.regWriter.addr := u.io.retirement.regWaddr
-      io.regWriter.data := u.io.retirement.regWdata
-
-      unitStateNext := sIDLE
-    }
+  when(!substall && instr === (ISSUE_NUM-1).U) {
+    io.ctrl.stall := false.B
   }
-
-  val substall = (!branched) && (!current(instr).vacant) && stall || unitStateNext =/= sIDLE
-  io.ctrl.stall := instr =/= ISSUE_NUM.U || substall
 
   when(!io.ctrl.pause && !io.ctrl.stall) {
     branched := false.B
     when(!io.ctrl.flush) {
+      printf("[FETCH]: \n")
+      printf(p"${io.instr}")
+      printf("\n[FETCH]")
       current := io.instr
     }.otherwise {
       current := default
     }
   }
 
-  /*
   when(!substall && instr < ISSUE_NUM.U) {
     printf(p"EX:\n================\n")
     printf(p"Running:\n${current(instr)}\n")
@@ -130,27 +116,26 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int, ISSUE_NUM: Int) extends Module {
     printf(p"Writing To: 0x${Hexadecimal(io.regWriter.addr)}\n")
     printf(p"Writing Data: 0x${Hexadecimal(io.regWriter.data)}\n")
   }
-  */
 
-  when(!substall) {
-    when(instr =/= ISSUE_NUM.U) {
-      instr := instr + 1.U
-
-      when(instr === (ISSUE_NUM-1).U) {
-        io.ctrl.stall := false.B
-        when(!io.ctrl.pause) {
-          instr := 0.U
-        }
-      }
-    }.elsewhen(!io.ctrl.pause) {
-      instr := 0.U
-    }
+  when(!io.ctrl.stall && !io.ctrl.pause) {
+    instr := 0.U
+  }.elsewhen(!substall && instr =/= ISSUE_NUM.U) {
+    instr := instr + 1.U
   }
 
   val unitInput = Wire(new PipeInstr(ADDR_WIDTH, XLEN))
   unitInput.instr := current(instr)
   unitInput.rs1val := readRs1
   unitInput.rs2val := readRs2
+
+  /*
+  printf(p">>>>>>>>>>>>>>>\n")
+  printf(p"nextup: ${unitInput}\n")
+  */
+
+  for(u <- units) {
+    u.io.next := placeholder
+  }
 
   when(!branched && instr =/= ISSUE_NUM.U && !current(instr).vacant && unitState === sIDLE) {
     unitStateNext := sRUNNING
@@ -192,4 +177,35 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int, ISSUE_NUM: Int) extends Module {
   }.otherwise {
     // printf("Vacant, skipped exec")
   }
+
+  for(u <- units) {
+    u.io.pause := io.ctrl.pause
+
+    stall = stall || u.io.stall
+
+    when(u.io.stall) {
+      printf(p"Stalled by ${u.name}\n")
+    }
+
+    when(u.io.retirement.branch.branch) {
+      branched := true.B
+      branchedAddr := u.io.retirement.branch.target
+      io.branch := u.io.retirement.branch
+      printf(p"[BRANCH] ${Hexadecimal(branchedAddr)}")
+    }
+
+    when(u.io.retirement.regWaddr =/= 0.U) {
+      io.regWriter.addr := u.io.retirement.regWaddr
+      io.regWriter.data := u.io.retirement.regWdata
+    }
+
+    when(!u.io.retired.instr.vacant) {
+      unitStateNext := sIDLE
+    }
+
+    when(io.regWriter.addr =/= 0.U) {
+      printf(p"[Commit]: ${Decimal(io.regWriter.addr)} <- ${Hexadecimal(io.regWriter.data)}\n")
+    }
+  }
+
 }
