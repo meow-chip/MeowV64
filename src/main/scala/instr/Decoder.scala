@@ -110,6 +110,17 @@ object Decoder {
     "CSRRCI" -> "111"
   ).mapValues(Integer.parseInt(_, 2).U(3.W))
 
+  val MULDIV_FUNC: Map[String, UInt] = Map(
+    "MUL" -> "000",
+    "MULH" -> "001",
+    "MULHSU" -> "010",
+    "MULHU" -> "011",
+    "DIV" -> "100",
+    "DIVU" -> "101",
+    "REM" -> "110",
+    "REMU" -> "111"
+  ).mapValues(Integer.parseInt(_, 2).U(3.W))
+
   implicit class ConvertToBin(self: String) {
     def asBin = Integer.parseInt(self, 2)
     def asBits(len: Width) = self.asBin.U(len)
