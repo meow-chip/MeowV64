@@ -99,9 +99,11 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int, ISSUE_NUM: Int) extends Module {
   when(!io.ctrl.pause && !io.ctrl.stall) {
     branched := false.B
     when(!io.ctrl.flush) {
+      /*
       printf("[FETCH]: \n")
       printf(p"${io.instr}")
       printf("\n[FETCH]")
+      */
       current := io.instr
     }.otherwise {
       current := default
@@ -109,12 +111,12 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int, ISSUE_NUM: Int) extends Module {
   }
 
   when(!substall && instr < ISSUE_NUM.U) {
-    printf(p"EX:\n================\n")
-    printf(p"Running:\n${current(instr)}\n")
-    printf(p"readRs1: 0x${Hexadecimal(readRs1)}\n")
-    printf(p"readRs2: 0x${Hexadecimal(readRs2)}\n")
-    printf(p"Writing To: 0x${Hexadecimal(io.regWriter.addr)}\n")
-    printf(p"Writing Data: 0x${Hexadecimal(io.regWriter.data)}\n")
+    // printf(p"EX:\n================\n")
+    printf(p"Running: ${Hexadecimal(current(instr).addr)}\n")
+    // printf(p"readRs1: 0x${Hexadecimal(readRs1)}\n")
+    // printf(p"readRs2: 0x${Hexadecimal(readRs2)}\n")
+    // printf(p"Writing To: 0x${Hexadecimal(io.regWriter.addr)}\n")
+    // printf(p"Writing Data: 0x${Hexadecimal(io.regWriter.data)}\n")
   }
 
   when(!io.ctrl.stall && !io.ctrl.pause) {
@@ -183,15 +185,17 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int, ISSUE_NUM: Int) extends Module {
 
     stall = stall || u.io.stall
 
+    /*
     when(u.io.stall) {
       printf(p"Stalled by ${u.name}\n")
     }
+    */
 
     when(u.io.retirement.branch.branch) {
       branched := true.B
       branchedAddr := u.io.retirement.branch.target
       io.branch := u.io.retirement.branch
-      printf(p"[BRANCH] ${Hexadecimal(branchedAddr)}")
+      // printf(p"[BRANCH] ${Hexadecimal(branchedAddr)}\n")
     }
 
     when(u.io.retirement.regWaddr =/= 0.U) {
@@ -203,9 +207,11 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int, ISSUE_NUM: Int) extends Module {
       unitStateNext := sIDLE
     }
 
+    /*
     when(io.regWriter.addr =/= 0.U) {
       printf(p"[Commit]: ${Decimal(io.regWriter.addr)} <- ${Hexadecimal(io.regWriter.data)}\n")
     }
+    */
   }
 
 }

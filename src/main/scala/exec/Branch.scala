@@ -53,10 +53,9 @@ class Branch(ADDR_WIDTH: Int, XLEN: Int) extends ExecUnit(0, new BranchExt, ADDR
       info.regWaddr := 0.U
       info.regWdata := DontCare
       when(ext.branched) {
-        val target = pipe.instr.instr.imm + pipe.rs1val.asSInt
+        val target = pipe.instr.instr.imm + pipe.instr.addr.asSInt
         info.branch.fire(target.asUInt)
       }.otherwise {
-        printf(">> No branch within\n")
         info.branch.nofire()
       }
     }.otherwise { // JAL/JALR
