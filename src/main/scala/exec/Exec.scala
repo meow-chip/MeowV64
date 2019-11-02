@@ -82,6 +82,9 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int, ISSUE_NUM: Int) extends Module {
   placeholder.instr.vacant := true.B
 
   var stall = false.B
+  for(u <- units) {
+    stall = stall || u.io.stall
+  }
 
   val sIDLE :: sRUNNING :: nil = Enum(2)
   val unitState = RegInit(sIDLE)
@@ -110,14 +113,16 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int, ISSUE_NUM: Int) extends Module {
     }
   }
 
+  /*
   when(!substall && instr < ISSUE_NUM.U) {
-    // printf(p"EX:\n================\n")
+    printf(p"EX:\n================\n")
     printf(p"Running: ${Hexadecimal(current(instr).addr)}\n")
-    // printf(p"readRs1: 0x${Hexadecimal(readRs1)}\n")
-    // printf(p"readRs2: 0x${Hexadecimal(readRs2)}\n")
-    // printf(p"Writing To: 0x${Hexadecimal(io.regWriter.addr)}\n")
-    // printf(p"Writing Data: 0x${Hexadecimal(io.regWriter.data)}\n")
+    printf(p"readRs1: 0x${Hexadecimal(readRs1)}\n")
+    printf(p"readRs2: 0x${Hexadecimal(readRs2)}\n")
+    printf(p"Writing To: 0x${Hexadecimal(io.regWriter.addr)}\n")
+    printf(p"Writing Data: 0x${Hexadecimal(io.regWriter.data)}\n")
   }
+  */
 
   when(!io.ctrl.stall && !io.ctrl.pause) {
     instr := 0.U
@@ -181,13 +186,11 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int, ISSUE_NUM: Int) extends Module {
   }
 
   for(u <- units) {
-    u.io.pause := io.ctrl.pause
-
-    stall = stall || u.io.stall
+    u.io.pause := false.B
 
     /*
     when(u.io.stall) {
-      printf(p"Stalled by ${u.name}\n")
+      printf(p"[STALL ]: Stalled by ${u.name}\n")
     }
     */
 
@@ -209,9 +212,8 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int, ISSUE_NUM: Int) extends Module {
 
     /*
     when(io.regWriter.addr =/= 0.U) {
-      printf(p"[Commit]: ${Decimal(io.regWriter.addr)} <- ${Hexadecimal(io.regWriter.data)}\n")
+      printf(p"[COMMIT]: ${Decimal(io.regWriter.addr)} <- ${Hexadecimal(io.regWriter.data)}\n")
     }
     */
   }
-
 }

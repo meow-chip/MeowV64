@@ -16,25 +16,31 @@ class LSU(ADDR_WIDTH: Int, XLEN: Int) extends ExecUnit(0, new LSUExt(XLEN), ADDR
 
   d$ <> DontCare
   d$.axi <> axi
-  d$.pause := io.pause
+  d$.pause := false.B
 
   d$.read := false.B
   d$.write := false.B
 
   // Load/Store related FSM
-  val lsIDLE :: lsWAIT :: nil = Enum(2)
+  val lsIDLE :: lsWAIT :: lsHOLD :: nil = Enum(3)
   val lsState = RegInit(lsIDLE)
   val lsNextState = Wire(lsState.cloneType)
   val lsAddr = Reg(UInt(ADDR_WIDTH.W))
+  val holdBuf = Reg(UInt(XLEN.W))
 
   lsNextState := lsState
-  when(lsNextState === lsWAIT || !io.pause) {
-    lsState := lsNextState
+  lsState := lsNextState
+  /*
+  when(lsState =/= lsNextState) {
+    printf(p"[LSU   ]: State transfer -> ${Hexadecimal(lsNextState)}\n")
   }
+  */
 
   override def map(stage: Int, pipe: PipeInstr, ext: Option[LSUExt]): (LSUExt, Bool) =  {
     val ext = Wire(new LSUExt(XLEN))
+    val stall = Wire(Bool())
     ext.wdata := DontCare
+    stall := false.B
 
     switch(pipe.instr.instr.op) {
       is(Decoder.Op("LOAD").ident) {
@@ -45,8 +51,9 @@ class LSU(ADDR_WIDTH: Int, XLEN: Int) extends ExecUnit(0, new LSUExt(XLEN), ADDR
             d$.addr := (lsAddrCompute >> 3) << 3 // Align
             d$.read := true.B
 
-            // printf("Transfered by LOAD")
+            // printf("Transfered by LOAD\n")
             lsNextState := lsWAIT
+            stall := true.B
           }
 
           is(lsWAIT) {
@@ -58,6 +65,7 @@ class LSU(ADDR_WIDTH: Int, XLEN: Int) extends ExecUnit(0, new LSUExt(XLEN), ADDR
             signedResult := DontCare
             result := signedResult.asUInt
             ext.wdata := result
+            holdBuf := result
 
             switch(pipe.instr.instr.funct3) {
               is(Decoder.LOAD_FUNC("LB")) {
@@ -89,13 +97,31 @@ class LSU(ADDR_WIDTH: Int, XLEN: Int) extends ExecUnit(0, new LSUExt(XLEN), ADDR
               }
             }
 
+            stall := true.B
+
             when(!d$.stall) {
+              stall := false.B
               /*
               printf(p"Load recv:\n  Rdata: ${Hexadecimal(d$.rdata)}\n")
               printf(p"Addr: ${Hexadecimal((lsAddr >> 3) << 3)}\n")
               printf(p"Shifted output: ${Hexadecimal(shifted)}\n")
               */
               // Commit
+
+              // printf("Transfered by LOAD\n")
+
+              when(io.pause) {
+                lsNextState := lsHOLD
+              }.otherwise {
+                lsNextState := lsIDLE
+              }
+            }
+          }
+
+          is(lsHOLD) {
+            ext.wdata := holdBuf
+            when(!io.pause) {
+              // printf("Transfered by LOAD\n")
               lsNextState := lsIDLE
             }
           }
@@ -130,20 +156,26 @@ class LSU(ADDR_WIDTH: Int, XLEN: Int) extends ExecUnit(0, new LSUExt(XLEN), ADDR
               is(Decoder.STORE_FUNC("SD")) { tailMask := 0xff.U }
             }
 
-            // printf("Transfered by STORE")
+            // printf("Transfered by STORE\n")
             lsNextState := lsWAIT
+            stall := true.B
           }
 
           is(lsWAIT) {
+            stall := true.B
             when(!d$.stall) {
-              lsNextState := lsIDLE
+              stall := false.B
+              when(!io.pause) {
+                // printf("Transfered by STORE\n")
+                lsNextState := lsIDLE
+              }
             }
           }
         }
       }
     }
 
-    (ext, lsNextState =/= lsIDLE)
+    (ext, stall)
   }
   override def finalize(pipe: PipeInstr, ext: LSUExt): RetireInfo = {
     val info = Wire(new RetireInfo(ADDR_WIDTH, XLEN))
