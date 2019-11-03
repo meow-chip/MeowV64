@@ -73,6 +73,8 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int, ISSUE_NUM: Int) extends Module {
   val br = Module(new Branch(ADDR_WIDTH, XLEN))
   val mul = Module(new Mul(ADDR_WIDTH, XLEN, false))
   val mul32 = Module(new Mul(ADDR_WIDTH, XLEN, true))
+  val div = Module(new Div(ADDR_WIDTH, XLEN, false, 4))
+  val div32 = Module(new Div(ADDR_WIDTH, XLEN, true, 4))
 
   lsu.d$ <> dcache.io
   lsu.axi <> io.axi
@@ -156,7 +158,11 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int, ISSUE_NUM: Int) extends Module {
       is(Decoder.Op("OP").ident,
         Decoder.Op("OP-IMM").ident) {
           when(current(instr).instr.funct7 === Decoder.MULDIV_FUNCT7) {
-            mul.io.next := unitInput
+            when(current(instr).instr.funct3(2)) { // funct3 >= 0b100 ==> DIV/REM
+              div.io.next := unitInput
+            }.otherwise {
+              mul.io.next := unitInput
+            }
           }.otherwise {
             alu.io.next := unitInput
           }
@@ -165,7 +171,11 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int, ISSUE_NUM: Int) extends Module {
       is(Decoder.Op("OP-32").ident,
         Decoder.Op("OP-IMM-32").ident) {
           when(current(instr).instr.funct7 === Decoder.MULDIV_FUNCT7) {
-            mul32.io.next := unitInput
+            when(current(instr).instr.funct3(2)) { // funct3 >= 0b100 ==> DIV/REM
+              div32.io.next := unitInput
+            }.otherwise {
+              mul32.io.next := unitInput
+            }
           }.otherwise {
             alu32.io.next := unitInput
           }

@@ -30,7 +30,7 @@ class ExecUnitPort(ADDR_WIDTH: Int = 48, XLEN: Int = 64) extends Bundle {
 }
 
 abstract class ExecUnit[T <: Data](
-  DEPTH: Int,
+  val DEPTH: Int,
   ExtData: T,
   ADDR_WIDTH: Int = 48,
   XLEN: Int = 64
