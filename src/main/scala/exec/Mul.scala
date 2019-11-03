@@ -8,32 +8,43 @@ class MulExt(val XLEN: Int) extends Bundle {
   val acc = UInt((XLEN * 2).W)
 }
 
-class Mul(ADDR_WIDTH: Int, XLEN: Int, USE_IMM: Boolean) extends ExecUnit(1, new MulExt(XLEN), ADDR_WIDTH, XLEN) {
+class Mul(ADDR_WIDTH: Int, XLEN: Int, HALF_WIDTH: Boolean) extends ExecUnit(1, new MulExt(
+  if(HALF_WIDTH) XLEN/2
+  else XLEN
+), ADDR_WIDTH, XLEN) {
   assert(XLEN == 64)
 
   override def map(stage: Int, pipe: PipeInstr, _ext: Option[MulExt]): (MulExt, Bool) = {
     if(stage == 0) {
-      val ext = Wire(new MulExt(XLEN))
-      switch(pipe.instr.instr.funct3) {
-        is(Decoder.MULDIV_FUNC("MUL"), Decoder.MULDIV_FUNC("MULH")) {
-          val op1 = pipe.rs1val.asSInt()
-          val op2 = if(USE_IMM) { pipe.instr.instr.imm } else { pipe.rs2val.asSInt() }
+      // printf(p"[MUL  0]: COMP ${Hexadecimal(pipe.rs1val)} * ${Hexadecimal(pipe.rs2val)}\n")
+      val ext = Wire(new MulExt(
+        if(HALF_WIDTH) XLEN/2
+        else XLEN
+      ))
 
-          ext.acc := (op1 * op2).asUInt
-        }
+      val (op1, op2) = if(HALF_WIDTH) {
+        (pipe.rs1val(31, 0), pipe.rs2val(31, 0))
+      } else {
+        (pipe.rs1val, pipe.rs2val)
+      }
 
-        is(Decoder.MULDIV_FUNC("MULHU")) {
-          val op1 = pipe.rs1val
-          val op2 = if(USE_IMM) { pipe.instr.instr.imm.asUInt } else { pipe.rs2val }
+      if(HALF_WIDTH) {
+        // Can only be MULW
+        ext.acc := (op1.asSInt * op2.asSInt).asUInt
+      } else {
+        ext.acc := DontCare
+        switch(pipe.instr.instr.funct3) {
+          is(Decoder.MULDIV_FUNC("MUL"), Decoder.MULDIV_FUNC("MULH")) {
+            ext.acc := (op1.asSInt * op2.asSInt).asUInt
+          }
 
-          ext.acc := (op1 * op2).asUInt
-        }
+          is(Decoder.MULDIV_FUNC("MULHU")) {
+            ext.acc := (op1.asUInt * op2.asUInt).asUInt
+          }
 
-        is(Decoder.MULDIV_FUNC("MULHSU")) {
-          val op1 = pipe.rs1val.asSInt()
-          val op2 = if(USE_IMM) { pipe.instr.instr.imm } else { pipe.rs2val.asSInt() }
-
-          ext.acc := (op1 * op2).asUInt
+          is(Decoder.MULDIV_FUNC("MULHSU")) {
+            ext.acc := (op1.asSInt * op2.asUInt).asUInt
+          }
         }
       }
 
@@ -49,11 +60,18 @@ class Mul(ADDR_WIDTH: Int, XLEN: Int, USE_IMM: Boolean) extends ExecUnit(1, new 
   override def finalize(pipe: PipeInstr, ext: MulExt): RetireInfo = {
     val info = Wire(new RetireInfo(ADDR_WIDTH, XLEN))
     info.branch.nofire()
-    info.regWaddr := pipe.instr.instr.rd
-    info.regWdata := ext.acc(XLEN*2-1, XLEN)
 
-    when(pipe.instr.instr.funct3 === Decoder.MULDIV_FUNC("MUL")) {
-      info.regWdata := ext.acc(XLEN-1, 0)
+    info.regWaddr := pipe.instr.instr.rd
+    if(HALF_WIDTH) {
+      val extended = Wire(SInt(XLEN.W))
+      extended := ext.acc(31, 0).asSInt
+      info.regWdata := extended.asUInt
+    } else {
+      info.regWdata := ext.acc(XLEN*2-1, XLEN)
+
+      when(pipe.instr.instr.funct3 === Decoder.MULDIV_FUNC("MUL")) {
+        info.regWdata := ext.acc(XLEN-1, 0)
+      }
     }
 
     info

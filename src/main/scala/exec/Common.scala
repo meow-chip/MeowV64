@@ -46,6 +46,7 @@ abstract class ExecUnit[T <: Data](
 
       for(i <- (0 until DEPTH)) {
         storeInit(i) := DontCare
+        storeInit(i).pipe.instr.instr.imm := 0.S // Treadle bug?
         storeInit(i).pipe.instr.vacant := true.B
         storeInit(i).ext := DontCare
       }
@@ -70,7 +71,7 @@ abstract class ExecUnit[T <: Data](
       }
 
       val (nExt, lStall) = connectStage(DEPTH, current(DEPTH-1).pipe, Some(current(DEPTH-1).ext))
-      io.retired := current(DEPTH-1)
+      io.retired := current(DEPTH-1).pipe
       when(io.retired.instr.vacant) {
         io.retirement := vacantFinalize()
       }.otherwise {

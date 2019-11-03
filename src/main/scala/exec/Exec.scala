@@ -71,11 +71,13 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int, ISSUE_NUM: Int) extends Module {
   val imm = Module(new Imm(ADDR_WIDTH, XLEN))
   val lsu = Module(new LSU(ADDR_WIDTH, XLEN))
   val br = Module(new Branch(ADDR_WIDTH, XLEN))
+  val mul = Module(new Mul(ADDR_WIDTH, XLEN, false))
+  val mul32 = Module(new Mul(ADDR_WIDTH, XLEN, true))
 
   lsu.d$ <> dcache.io
   lsu.axi <> io.axi
 
-  val units = List(alu, alu32, imm, lsu, br)
+  val units = List(alu, alu32, imm, lsu, br, mul, mul32)
 
   val placeholder = Wire(new PipeInstr(ADDR_WIDTH, XLEN))
   placeholder := 0.U.asTypeOf(placeholder)
@@ -153,12 +155,20 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int, ISSUE_NUM: Int) extends Module {
       // Arith/Logical
       is(Decoder.Op("OP").ident,
         Decoder.Op("OP-IMM").ident) {
-          alu.io.next := unitInput
+          when(current(instr).instr.funct7 === Decoder.MULDIV_FUNCT7) {
+            mul.io.next := unitInput
+          }.otherwise {
+            alu.io.next := unitInput
+          }
         }
 
       is(Decoder.Op("OP-32").ident,
         Decoder.Op("OP-IMM-32").ident) {
-          alu32.io.next := unitInput
+          when(current(instr).instr.funct7 === Decoder.MULDIV_FUNCT7) {
+            mul32.io.next := unitInput
+          }.otherwise {
+            alu32.io.next := unitInput
+          }
         }
 
       // Load immediate

@@ -31,7 +31,7 @@ class Branch(ADDR_WIDTH: Int, XLEN: Int) extends ExecUnit(0, new BranchExt, ADDR
       }
 
       is(Decoder.BRANCH_FUNC("BGE")) {
-        ext.branched := op1.asSInt > op2.asSInt
+        ext.branched := op1.asSInt >= op2.asSInt
       }
 
       is(Decoder.BRANCH_FUNC("BLTU")) {
@@ -39,7 +39,7 @@ class Branch(ADDR_WIDTH: Int, XLEN: Int) extends ExecUnit(0, new BranchExt, ADDR
       }
 
       is(Decoder.BRANCH_FUNC("BGEU")) {
-        ext.branched := op1 > op2
+        ext.branched := op1 >= op2
       }
     }
 

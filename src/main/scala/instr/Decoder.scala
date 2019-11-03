@@ -110,6 +110,7 @@ object Decoder {
     "CSRRCI" -> "111"
   ).mapValues(Integer.parseInt(_, 2).U(3.W))
 
+  val MULDIV_FUNCT7: UInt = Integer.parseInt("0000001", 2).U(7.W)
   val MULDIV_FUNC: Map[String, UInt] = Map(
     "MUL" -> "000",
     "MULH" -> "001",
