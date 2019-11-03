@@ -45,9 +45,9 @@ class Div(ADDR_WIDTH: Int, XLEN: Int, HALF_WIDTH: Boolean, ROUND_PER_STAGE: Int)
         }
 
         when(sop2(RLEN-1)) {
-          init.r := (-sop2).asUInt
+          init.d := (-sop2).asUInt
         }.otherwise {
-          init.r := op2.asUInt
+          init.d := op2.asUInt
         }
       }
 
@@ -93,8 +93,8 @@ class Div(ADDR_WIDTH: Int, XLEN: Int, HALF_WIDTH: Boolean, ROUND_PER_STAGE: Int)
   }
 
   def finalize(pipe: PipeInstr, ext: DivExt): RetireInfo = {
-    val fq = UInt(RLEN.W)
-    val fr = UInt(RLEN.W)
+    val fq = Wire(UInt(RLEN.W))
+    val fr = Wire(UInt(RLEN.W))
 
     when(ext.neg) {
       fq := (-ext.q.asSInt).asUInt

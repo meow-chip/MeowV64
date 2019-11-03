@@ -67,6 +67,7 @@ object ExecSpec {
     ("Unconditional jumps", "./testcases/hex/jump.hex"),
     ("Branches", "./testcases/hex/branch.hex"),
     ("Serial output", "./testcases/hex/serial.hex"),
+    ("Multiply", "./testcases/hex/mul.hex"),
     ("Fibonacci", "./testcases/hex/fib.hex")
   )
 }

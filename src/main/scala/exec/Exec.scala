@@ -79,7 +79,7 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int, ISSUE_NUM: Int) extends Module {
   lsu.d$ <> dcache.io
   lsu.axi <> io.axi
 
-  val units = List(alu, alu32, imm, lsu, br, mul, mul32)
+  val units = List(alu, alu32, imm, lsu, br, mul, mul32, div, div32)
 
   val placeholder = Wire(new PipeInstr(ADDR_WIDTH, XLEN))
   placeholder := 0.U.asTypeOf(placeholder)
