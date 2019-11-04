@@ -15,7 +15,8 @@ stages:
   - test
 
 before_script:
-  - pacman -S riscv64-linux-gnu-gcc
+  - yes | pacman -v -Syy || true
+  - echo -e "y\n\n\n\n" | pacman -v -S riscv64-linux-gnu-gcc base-devel || true
 
 exec_test:
   stage: test
