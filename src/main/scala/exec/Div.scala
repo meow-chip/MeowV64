@@ -7,7 +7,6 @@ class DivExt(val RLEN: Int) extends Bundle {
   val r = UInt((RLEN*2).W) // Dividend
   val d = UInt(RLEN.W) // Shifted divider
   val q = UInt(RLEN.W)
-  val neg = Bool() // Negative sign
 }
 
 class Div(ADDR_WIDTH: Int, XLEN: Int, HALF_WIDTH: Boolean, ROUND_PER_STAGE: Int) extends ExecUnit(
@@ -31,13 +30,11 @@ class Div(ADDR_WIDTH: Int, XLEN: Int, HALF_WIDTH: Boolean, ROUND_PER_STAGE: Int)
         init.r := op1
         init.d := op2
         init.q := 0.U
-        init.neg := false.B
       }.otherwise { // Signed
         val sop1 = op1.asSInt
         val sop2 = op2.asSInt
 
         init.q := 0.U
-        init.neg := (sop1(RLEN-1) ^ sop2(RLEN-1)) && op2.orR()
         when(sop1(RLEN-1)) {
           init.r := (-sop1).asUInt
         }.otherwise {
@@ -69,7 +66,6 @@ class Div(ADDR_WIDTH: Int, XLEN: Int, HALF_WIDTH: Boolean, ROUND_PER_STAGE: Int)
 
     val fext = (0 until ROUND_PER_STAGE).foldRight(ext)((step, prev) => {
       val next = Wire(new DivExt(RLEN))
-      next.neg := prev.neg
       next.d := prev.d
 
       val shift = (this.DEPTH - stage - 1) * ROUND_PER_STAGE + step
@@ -103,11 +99,28 @@ class Div(ADDR_WIDTH: Int, XLEN: Int, HALF_WIDTH: Boolean, ROUND_PER_STAGE: Int)
     val fq = Wire(UInt(RLEN.W))
     val fr = Wire(UInt(RLEN.W))
 
-    when(ext.neg) {
+    val qneg = Wire(Bool())
+    val rneg = Wire(Bool())
+    when(
+      pipe.instr.instr.funct3 === Decoder.MULDIV_FUNC("DIVU")
+      && pipe.instr.instr.funct3 === Decoder.MULDIV_FUNC("REMU")
+    ) { // Unsigned
+      qneg := false.B
+      rneg := false.B
+    }.otherwise {
+      qneg := (pipe.rs1val(RLEN-1) ^ pipe.rs2val(RLEN-1)) && pipe.rs2val(RLEN-1, 0).orR()
+      rneg := pipe.rs1val(RLEN-1)
+    }
+
+    when(qneg) {
       fq := (-ext.q.asSInt).asUInt
-      fr := (-ext.r.asSInt).asUInt
     }.otherwise {
       fq := ext.q
+    }
+
+    when(rneg) {
+      fr := (-ext.r.asSInt).asUInt
+    }.otherwise {
       fr := ext.r
     }
 
