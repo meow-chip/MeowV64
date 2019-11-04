@@ -343,3 +343,5 @@ hs_err_pid*
 .bloop
 
 test_run_dir
+
+.vscode

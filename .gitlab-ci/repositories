@@ -1,0 +1,4 @@
+[repositories]
+  local
+  ustc-maven: https://maven.proxy.ustclug.org/maven2/
+  ustc-sbt-plugin: https://scala-sbt.proxy.ustclug.org/scalasbt/sbt-plugin-releases/
