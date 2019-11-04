@@ -157,7 +157,10 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int, ISSUE_NUM: Int) extends Module {
       // Arith/Logical
       is(Decoder.Op("OP").ident,
         Decoder.Op("OP-IMM").ident) {
-          when(current(instr).instr.funct7 === Decoder.MULDIV_FUNCT7) {
+          when(
+            current(instr).instr.op === Decoder.Op("OP").ident
+            && current(instr).instr.funct7 === Decoder.MULDIV_FUNCT7
+          ) {
             when(current(instr).instr.funct3(2)) { // funct3 >= 0b100 ==> DIV/REM
               div.io.next := unitInput
             }.otherwise {
@@ -170,7 +173,10 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int, ISSUE_NUM: Int) extends Module {
 
       is(Decoder.Op("OP-32").ident,
         Decoder.Op("OP-IMM-32").ident) {
-          when(current(instr).instr.funct7 === Decoder.MULDIV_FUNCT7) {
+          when(
+            current(instr).instr.op === Decoder.Op("OP-32").ident
+            && current(instr).instr.funct7 === Decoder.MULDIV_FUNCT7
+          ) {
             when(current(instr).instr.funct3(2)) { // funct3 >= 0b100 ==> DIV/REM
               div32.io.next := unitInput
             }.otherwise {
@@ -224,16 +230,19 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int, ISSUE_NUM: Int) extends Module {
     when(u.io.retirement.regWaddr =/= 0.U) {
       io.regWriter.addr := u.io.retirement.regWaddr
       io.regWriter.data := u.io.retirement.regWdata
+      // printf(p"[COMMIT]: By ${u.name}\n")
     }
 
     when(!u.io.retired.instr.vacant) {
       unitStateNext := sIDLE
     }
+  }
 
-    /*
-    when(io.regWriter.addr =/= 0.U) {
+  /*
+  when(io.regWriter.addr =/= 0.U) {
+    when(io.regWriter.addr =/= RegNext(io.regWriter.addr) || io.regWriter.data =/= RegNext(io.regWriter.data)) {
       printf(p"[COMMIT]: ${Decimal(io.regWriter.addr)} <- ${Hexadecimal(io.regWriter.data)}\n")
     }
-    */
   }
+  */
 }

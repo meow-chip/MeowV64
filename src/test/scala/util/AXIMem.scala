@@ -130,7 +130,7 @@ class AXIMem(
 
       when(io.axi.WVALID) {
         when(io.axi.WSTRB(0)) {
-          printf(p"RECV: ${Hexadecimal(io.axi.WDATA)}")
+          // printf(p"RECV: ${Hexadecimal(io.axi.WDATA)}")
           printf(Character(io.axi.WDATA(7, 0)))
         }
 
