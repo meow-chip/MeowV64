@@ -19,7 +19,7 @@ class PipeInstr(val ADDR_WIDTH: Int, val XLEN: Int) extends Bundle {
   val rs2val = UInt(XLEN.W)
 }
 
-class ExecUnitPort(ADDR_WIDTH: Int = 48, XLEN: Int = 64) extends Bundle {
+class ExecUnitPort(val ADDR_WIDTH: Int = 48, val XLEN: Int = 64) extends Bundle {
   val next = Input(new PipeInstr(ADDR_WIDTH, XLEN))
 
   val stall = Output(Bool())
