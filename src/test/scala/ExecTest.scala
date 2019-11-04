@@ -68,6 +68,7 @@ object ExecSpec {
     ("Branches", "./testcases/hex/branch.hex"),
     ("Serial output", "./testcases/hex/serial.hex"),
     ("Multiply", "./testcases/hex/mul.hex"),
+    ("Division", "./testcases/hex/div.hex"),
     ("Fibonacci", "./testcases/hex/fib.hex")
   )
 }

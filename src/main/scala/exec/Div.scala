@@ -67,7 +67,7 @@ class Div(ADDR_WIDTH: Int, XLEN: Int, HALF_WIDTH: Boolean, ROUND_PER_STAGE: Int)
       return (next, false.B)
     }
 
-    val fext = (0 until ROUND_PER_STAGE).foldLeft(ext)((prev, step) => {
+    val fext = (0 until ROUND_PER_STAGE).foldRight(ext)((step, prev) => {
       val next = Wire(new DivExt(RLEN))
       next.neg := prev.neg
       next.d := prev.d
@@ -84,10 +84,17 @@ class Div(ADDR_WIDTH: Int, XLEN: Int, HALF_WIDTH: Boolean, ROUND_PER_STAGE: Int)
         }
       }
 
-      next.q := (prev.q << 1) ## (!next.r(RLEN*2-1))
+      next.q := prev.q ## (!next.r(RLEN*2-1))
 
       next
     })
+
+    /*
+    printf(s"[DIV   ]: After stage ${stage}\n")
+    printf(p"[DIV   ]:   q: ${Hexadecimal(fext.q)}\n")
+    printf(p"[DIV   ]:   r: ${Hexadecimal(fext.r)}\n")
+    printf(p"[DIV   ]:   d: ${Hexadecimal(fext.d)}\n")
+    */
 
     (fext, false.B)
   }
@@ -104,6 +111,8 @@ class Div(ADDR_WIDTH: Int, XLEN: Int, HALF_WIDTH: Boolean, ROUND_PER_STAGE: Int)
       fr := ext.r
     }
 
+    // printf(p"[DIV   ]: Finalized: q = ${Hexadecimal(fq)}, r = ${Hexadecimal(fr)}\n")
+
     val info = Wire(new RetireInfo(ADDR_WIDTH, XLEN))
     info.branch.nofire()
     info.regWaddr := pipe.instr.instr.rd
@@ -112,7 +121,7 @@ class Div(ADDR_WIDTH: Int, XLEN: Int, HALF_WIDTH: Boolean, ROUND_PER_STAGE: Int)
 
     when(
       pipe.instr.instr.funct3 === Decoder.MULDIV_FUNC("DIV")
-      && pipe.instr.instr.funct3 === Decoder.MULDIV_FUNC("DIVU")
+      || pipe.instr.instr.funct3 === Decoder.MULDIV_FUNC("DIVU")
     ) {
       extended := fq.asSInt
     }.otherwise {

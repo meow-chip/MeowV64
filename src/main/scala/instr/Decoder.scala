@@ -434,7 +434,7 @@ object Decoder {
               result.rd := rs1e
               result.imm := DontCare
               result.funct3 := OP_FUNC("ADD/SUB")
-              result.funct7 := "0100000".asBits(7.W)
+              result.funct7 := "0000000".asBits(7.W)
             }
           }
         }
@@ -524,13 +524,13 @@ class Instr extends Bundle {
   override def toPrintable: Printable = {
     // Reverse check op
     p"Instr: \n" +
-    p"  Base: ${Hexadecimal(base)}\n" +
-    p"  Op:   ${Hexadecimal(op)}\n" +
-    p"  Imm:  ${Hexadecimal(imm)}\n" +
-    p"  RS1:  ${Hexadecimal(rs1)}\n" +
-    p"  RS2:  ${Hexadecimal(rs2)}\n" +
-    p"  RD:   ${Hexadecimal(rd)}\n" +
-    p"  F7:   ${Hexadecimal(funct7)}\n" +
-    p"  F3:   ${Hexadecimal(funct3)}"
+    p"  Base: ${Decimal(base)}\n" +
+    p"  Op:   0b${Binary(op)}\n" +
+    p"  Imm:  0x${Hexadecimal(imm)}\n" +
+    p"  RS1:  x${Decimal(rs1)}\n" +
+    p"  RS2:  x${Decimal(rs2)}\n" +
+    p"  RD:   x${Decimal(rd)}\n" +
+    p"  F7:   0b${Binary(funct7)}\n" +
+    p"  F3:   0b${Binary(funct3)}"
   }
 }
