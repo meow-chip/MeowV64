@@ -15,7 +15,7 @@ stages:
   - test
 
 before_script:
-  - pacman -S riscv64-linux-gnu-gcc
+  - yes | pacman -S riscv64-linux-gnu-gcc
 
 exec_test:
   stage: test
