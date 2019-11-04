@@ -16,7 +16,7 @@ stages:
 
 before_script:
   - yes | pacman -v -Syy || true
-  - yes | pacman -v -S riscv64-linux-gnu-gcc
+  - yes | pacman -v -S riscv64-linux-gnu-gcc || true
 
 exec_test:
   stage: test
