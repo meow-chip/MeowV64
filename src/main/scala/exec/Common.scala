@@ -37,21 +37,26 @@ abstract class ExecUnit[T <: Data](
 ) extends MultiIOModule {
   val io = IO(new ExecUnitPort(ADDR_WIDTH, XLEN))
 
+  var current = if(DEPTH != 0) {
+    val storeInit = Wire(Vec(DEPTH, new Bundle {
+      val pipe = new PipeInstr(ADDR_WIDTH, XLEN)
+      val ext = ExtData.cloneType
+    }))
+
+    for(i <- (0 until DEPTH)) {
+      storeInit(i) := DontCare
+      storeInit(i).pipe.instr.instr.imm := 0.S // Treadle bug?
+      storeInit(i).pipe.instr.vacant := true.B
+      storeInit(i).ext := DontCare
+    }
+
+    RegInit(storeInit)
+  } else {
+    null
+  }
+
   def init(): Unit = {
     if(DEPTH != 0) {
-      val storeInit = Wire(Vec(DEPTH, new Bundle {
-        val pipe = new PipeInstr(ADDR_WIDTH, XLEN)
-        val ext = ExtData.cloneType
-      }))
-
-      for(i <- (0 until DEPTH)) {
-        storeInit(i) := DontCare
-        storeInit(i).pipe.instr.instr.imm := 0.S // Treadle bug?
-        storeInit(i).pipe.instr.vacant := true.B
-        storeInit(i).ext := DontCare
-      }
-      val current = RegInit(storeInit)
-
       // Default push
       val (fExt, fStall) = connectStage(0, io.next, None)
       var stall = fStall
@@ -67,10 +72,20 @@ abstract class ExecUnit[T <: Data](
           current(i).pipe := current(i-1).pipe
           current(i).ext := nExt
         }
+
+        when(sStall) {
+          current(i-1).ext := nExt
+        }
+
         stall = stall || sStall
       }
 
       val (nExt, lStall) = connectStage(DEPTH, current(DEPTH-1).pipe, Some(current(DEPTH-1).ext))
+
+      when(lStall) {
+        current(DEPTH-1).ext := nExt
+      }
+
       io.retired := current(DEPTH-1).pipe
       when(io.retired.instr.vacant) {
         io.retirement := vacantFinalize()

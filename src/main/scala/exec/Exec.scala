@@ -73,8 +73,8 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int, ISSUE_NUM: Int) extends Module {
   val br = Module(new Branch(ADDR_WIDTH, XLEN))
   val mul = Module(new Mul(ADDR_WIDTH, XLEN, false))
   val mul32 = Module(new Mul(ADDR_WIDTH, XLEN, true))
-  val div = Module(new Div(ADDR_WIDTH, XLEN, false, 4))
-  val div32 = Module(new Div(ADDR_WIDTH, XLEN, true, 4))
+  val div = Module(new Div(ADDR_WIDTH, XLEN, false, 32))
+  val div32 = Module(new Div(ADDR_WIDTH, XLEN, true, 16))
 
   lsu.d$ <> dcache.io
   lsu.axi <> io.axi
@@ -93,8 +93,11 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int, ISSUE_NUM: Int) extends Module {
   val sIDLE :: sRUNNING :: nil = Enum(2)
   val unitState = RegInit(sIDLE)
   val unitStateNext = Wire(sIDLE.cloneType)
-  unitState := unitStateNext
   unitStateNext := unitState
+
+  when(!stall) {
+    unitState := unitStateNext
+  }
 
   val substall = (!branched) && (!current(instr).vacant) && (stall || unitStateNext =/= sIDLE)
   io.ctrl.stall := instr =/= ISSUE_NUM.U && !branched
@@ -233,7 +236,7 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int, ISSUE_NUM: Int) extends Module {
       // printf(p"[COMMIT]: By ${u.name}\n")
     }
 
-    when(!u.io.retired.instr.vacant) {
+    when(!u.io.retired.instr.vacant && !u.io.stall) {
       unitStateNext := sIDLE
     }
   }

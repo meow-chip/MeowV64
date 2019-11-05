@@ -1,6 +1,7 @@
 package exec
 
 import chisel3._
+import chisel3.util._
 import instr.Decoder
 
 class DivExt(val RLEN: Int) extends Bundle {
@@ -17,8 +18,22 @@ class Div(ADDR_WIDTH: Int, XLEN: Int, HALF_WIDTH: Boolean, ROUND_PER_STAGE: Int)
 ) {
   val RLEN = if(HALF_WIDTH) XLEN / 2 else XLEN
 
+  val round = RegInit(0.U(log2Ceil(ROUND_PER_STAGE).W))
+
+  var idle = true.B
+
+  for(r <- this.current) {
+    idle = idle && r.pipe.instr.vacant
+  }
+
+  when(!idle) {
+    round := round + 1.U
+  }
+
+  val stall = !idle && !round.andR()
+
   def map(stage: Int, pipe: PipeInstr, _ext: Option[DivExt]): (DivExt, Bool) = {
-    var ext = if(stage == 0) {
+    if(stage == 0) {
       val init = Wire(new DivExt(RLEN))
       val op1 = pipe.rs1val(RLEN-1, 0)
       val op2 = pipe.rs2val(RLEN-1, 0)
@@ -48,51 +63,31 @@ class Div(ADDR_WIDTH: Int, XLEN: Int, HALF_WIDTH: Boolean, ROUND_PER_STAGE: Int)
         }
       }
 
-      init
-    } else {
-      _ext.get
+      return (init, false.B)
     }
 
-    if(stage == this.DEPTH) {
-      // Final stage, normalizes 
-      val next = Wire(new DivExt(RLEN))
-      next := ext
-      when(!ext.q(0)) {
-        // Negative reminder, add back divider
-        next.r := ext.r + ext.d
-      }
-      return (next, false.B)
+    val ext = _ext.get
+    val nExt = Wire(new DivExt(RLEN))
+    nExt.d := ext.d
+
+    val shift = ((this.DEPTH - stage + 1) * ROUND_PER_STAGE - 1).U - round
+    val shifted = ext.d << shift
+
+    when(ext.r(RLEN*2-1) && ((stage != 1).B || round =/= 0.U)) { // Prev is negative
+      nExt.r := ext.r + shifted
+    }.otherwise {
+      nExt.r := ext.r - shifted
     }
 
-    val fext = (0 until ROUND_PER_STAGE).foldRight(ext)((step, prev) => {
-      val next = Wire(new DivExt(RLEN))
-      next.d := prev.d
-
-      val shift = (this.DEPTH - stage - 1) * ROUND_PER_STAGE + step
-      val shifted = ext.d << shift
-
-      if(shift == RLEN-1) next.r := prev.r - shifted
-      else {
-        when(prev.r(RLEN*2-1)) { // Prev is negative
-          next.r := prev.r + shifted
-        }.otherwise {
-          next.r := prev.r - shifted
-        }
-      }
-
-      next.q := prev.q ## (!next.r(RLEN*2-1))
-
-      next
-    })
+    nExt.q := ext.q ## (!nExt.r(RLEN*2-1))
 
     /*
-    printf(s"[DIV   ]: After stage ${stage}\n")
-    printf(p"[DIV   ]:   q: ${Hexadecimal(fext.q)}\n")
-    printf(p"[DIV   ]:   r: ${Hexadecimal(fext.r)}\n")
-    printf(p"[DIV   ]:   d: ${Hexadecimal(fext.d)}\n")
+    printf(p"[DIV   ]: After stage ${stage} @ ${round}\n")
+    printf(p"[DIV   ]:   q: ${Hexadecimal(nExt.q)}\n")
+    printf(p"[DIV   ]:   r: ${Hexadecimal(nExt.r)}\n")
     */
 
-    (fext, false.B)
+    (nExt, stall)
   }
 
   def finalize(pipe: PipeInstr, ext: DivExt): RetireInfo = {
@@ -112,19 +107,32 @@ class Div(ADDR_WIDTH: Int, XLEN: Int, HALF_WIDTH: Boolean, ROUND_PER_STAGE: Int)
       rneg := pipe.rs1val(RLEN-1)
     }
 
+    val q = ext.q
+    val r = Wire(UInt())
+    r := ext.r
+
+    when(!q(0)) {
+      // Negative reminder, add back divider
+      r := ext.r + ext.d
+    }
+
     when(qneg) {
-      fq := (-ext.q.asSInt).asUInt
+      fq := (-q.asSInt).asUInt
     }.otherwise {
-      fq := ext.q
+      fq := q
     }
 
     when(rneg) {
-      fr := (-ext.r.asSInt).asUInt
+      fr := (-r.asSInt).asUInt
     }.otherwise {
-      fr := ext.r
+      fr := r
     }
 
-    // printf(p"[DIV   ]: Finalized: q = ${Hexadecimal(fq)}, r = ${Hexadecimal(fr)}\n")
+    /*
+    when(!io.stall) {
+      printf(p"[DIV   ]: Finalized: q = ${Hexadecimal(fq)}, r = ${Hexadecimal(fr)}\n")
+    }
+    */
 
     val info = Wire(new RetireInfo(ADDR_WIDTH, XLEN))
     info.branch.nofire()
