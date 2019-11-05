@@ -71,4 +71,7 @@ class Ctrl(ADDR_WIDTH: Int, INIT_VEC: BigInt, ISSUE_NUM: Int) extends Module {
   }
   printf("\n")
   */
+
+  // Avoid Vivado naming collision. Com'on, Xilinx, write *CORRECT* code plz
+  override def desiredName: String = "PipeCtrl"
 }
