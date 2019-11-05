@@ -26,11 +26,11 @@ class Passthrough(ADDR_WIDTH: Int, DATA_LEN: Int) extends Module {
   val pipeWrite = RegInit(false.B)
 
   io.axi <> 0.U.asTypeOf(io.axi)
-  io.axi.ARLEN := 1.U
+  io.axi.ARLEN := 0.U
   io.axi.ARSIZE := AXI.Constants.Size.S64.U
   io.axi.ARBURST := AXI.Constants.Burst.INCR.U
 
-  io.axi.AWLEN := 1.U
+  io.axi.AWLEN := 0.U
   io.axi.AWSIZE := AXI.Constants.Size.S64.U
   io.axi.AWBURST := AXI.Constants.Burst.INCR.U
 

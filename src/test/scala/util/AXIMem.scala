@@ -46,14 +46,14 @@ class AXIMem(
     is(sIDLE) {
       when(io.axi.ARVALID) {
         target := io.axi.ARADDR
-        remaining := io.axi.ARLEN
+        remaining := io.axi.ARLEN + 1.U
         io.axi.ARREADY := true.B
         state := sREADING
       }
 
       when(io.axi.AWVALID) {
         target := io.axi.AWADDR
-        remaining := io.axi.AWLEN
+        remaining := io.axi.AWLEN + 1.U
         io.axi.AWREADY := true.B
         state := sWRITING
 
