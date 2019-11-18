@@ -8,14 +8,19 @@ class ALUExt(val XLEN: Int) extends Bundle {
   val acc = SInt(XLEN.W)
 }
 
-class ALU(ADDR_WIDTH: Int, XLEN: Int, HALF_SIZE: Boolean)
-  extends ExecUnit(0, new ALUExt(if(HALF_SIZE) XLEN / 2 else XLEN), ADDR_WIDTH, XLEN)
+class ALU(ADDR_WIDTH: Int, XLEN: Int)
+  extends ExecUnit(0, new ALUExt(XLEN), ADDR_WIDTH, XLEN)
 {
-  val VAL_SIZE = if(HALF_SIZE) XLEN / 2 else XLEN
-
   def map(stage: Int, pipe: PipeInstr, ext: Option[ALUExt]): (ALUExt, Bool) = {
-    val ext = Wire(new ALUExt(VAL_SIZE))
-    ext.acc := DontCare
+    val ext = Wire(new ALUExt(XLEN))
+    val acc = Wire(SInt(XLEN.W))
+    acc := DontCare
+
+    val isDWord = (
+      pipe.instr.instr.op === Decoder.Op("OP-IMM").ident
+      || pipe.instr.instr.op === Decoder.Op("OP").ident
+    )
+
     val op1f = pipe.rs1val.asSInt()
     val op2f = Wire(SInt(XLEN.W))
 
@@ -28,43 +33,54 @@ class ALU(ADDR_WIDTH: Int, XLEN: Int, HALF_SIZE: Boolean)
         op2f := pipe.rs2val.asSInt()
         useSub := pipe.instr.instr.funct7(5)
       }
-    val (op1, op2) = if(HALF_SIZE) (op1f(31, 0).asSInt, op2f(31, 0).asSInt) else (op1f, op2f)
+
+    val op1 = Wire(SInt(XLEN.W))
+    val op2 = Wire(SInt(XLEN.W))
+    
+    when(isDWord) {
+      // Is 64-bit instr
+      op1 := op1f.asSInt();
+      op2 := op2f.asSInt();
+    }.otherwise {
+      op1 := op1f(31, 0).asSInt();
+      op2 := op2f(31, 0).asSInt();
+    }
 
     switch(pipe.instr.instr.funct3) {
       is(Decoder.OP_FUNC("ADD/SUB")) {
         when(useSub) {
           // Overflows ignored in ADD/SUB
           // SUB
-          ext.acc := op1 - op2
+          acc := op1 - op2
         }.otherwise {
           // ADD
-          ext.acc := op1 + op2
+          acc := op1 + op2
         }
       }
 
       is(Decoder.OP_FUNC("SLL")) {
         // TODO: check shamt[5] when HALF = true
-        ext.acc := op1 << op2(5, 0)
+        acc := op1 << op2(5, 0)
       }
 
       is(Decoder.OP_FUNC("SLT")) {
         when(op1 < op2) {
-          ext.acc := 1.S
+          acc := 1.S
         }.otherwise {
-          ext.acc := 0.S
+          acc := 0.S
         }
       }
 
       is(Decoder.OP_FUNC("SLTU")) {
         when(op1.asUInt < op2.asUInt) {
-          ext.acc := 1.S
+          acc := 1.S
         }.otherwise {
-          ext.acc := 0.S
+          acc := 0.S
         }
       }
 
       is(Decoder.OP_FUNC("XOR")) {
-        ext.acc := op1 ^ op2
+        acc := op1 ^ op2
       }
 
       is(Decoder.OP_FUNC("SRL/SRA")) {
@@ -72,21 +88,30 @@ class ALU(ADDR_WIDTH: Int, XLEN: Int, HALF_SIZE: Boolean)
           // SRA
           // In RV64I, only the low 6 bits of rs2 are considered for the
           // shift amount. (c.f. spec p.53)
-          ext.acc := op1 >> op2(5, 0)
+          acc := op1 >> op2(5, 0)
         }.otherwise {
-          ext.acc := (op1.asUInt >> op2(5, 0)).asSInt
+          when(isDWord) {
+            acc := (op1.asUInt >> op2(5, 0)).asSInt
+          }.otherwise {
+            acc := (op1(31, 0).asUInt >> op2(4, 0)).asSInt
+          }
         }
       }
 
       is(Decoder.OP_FUNC("OR")) {
-        ext.acc := op1 | op2
+        acc := op1 | op2
       }
 
       is(Decoder.OP_FUNC("AND")) {
-        ext.acc := op1 & op2
+        acc := op1 & op2
       }
     }
 
+    when(isDWord) {
+      ext.acc := acc
+    }.otherwise {
+      ext.acc := acc(31, 0).asSInt // Automatically sign-extends
+    }
     (ext, false.B)
   }
 

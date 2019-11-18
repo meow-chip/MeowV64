@@ -66,8 +66,7 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int, ISSUE_NUM: Int) extends Module {
   readRs1 := io.regReaders(0).data
   readRs2 := io.regReaders(1).data
 
-  val alu = Module(new ALU(ADDR_WIDTH, XLEN, false))
-  val alu32 = Module(new ALU(ADDR_WIDTH, XLEN, true))
+  val alu = Module(new ALU(ADDR_WIDTH, XLEN))
   val imm = Module(new Imm(ADDR_WIDTH, XLEN))
   val lsu = Module(new LSU(ADDR_WIDTH, XLEN))
   val br = Module(new Branch(ADDR_WIDTH, XLEN))
@@ -79,7 +78,7 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int, ISSUE_NUM: Int) extends Module {
   lsu.d$ <> dcache.io
   lsu.axi <> io.axi
 
-  val units = List(alu, alu32, imm, lsu, br, mul, mul32, div, div32)
+  val units = List(alu, imm, lsu, br, mul, mul32, div, div32)
 
   val placeholder = Wire(new PipeInstr(ADDR_WIDTH, XLEN))
   placeholder := 0.U.asTypeOf(placeholder)
@@ -186,7 +185,7 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int, ISSUE_NUM: Int) extends Module {
               mul32.io.next := unitInput
             }
           }.otherwise {
-            alu32.io.next := unitInput
+            alu.io.next := unitInput
           }
         }
 
