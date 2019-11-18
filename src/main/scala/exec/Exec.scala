@@ -71,13 +71,12 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int, ISSUE_NUM: Int) extends Module {
   val lsu = Module(new LSU(ADDR_WIDTH, XLEN))
   val br = Module(new Branch(ADDR_WIDTH, XLEN))
   val mul = Module(new Mul(ADDR_WIDTH, XLEN))
-  val div = Module(new Div(ADDR_WIDTH, XLEN, false, 32))
-  val div32 = Module(new Div(ADDR_WIDTH, XLEN, true, 16))
+  val div = Module(new Div(ADDR_WIDTH, XLEN, 32))
 
   lsu.d$ <> dcache.io
   lsu.axi <> io.axi
 
-  val units = List(alu, imm, lsu, br, mul, div, div32)
+  val units = List(alu, imm, lsu, br, mul, div)
 
   val placeholder = Wire(new PipeInstr(ADDR_WIDTH, XLEN))
   placeholder := 0.U.asTypeOf(placeholder)
@@ -179,7 +178,7 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int, ISSUE_NUM: Int) extends Module {
             && current(instr).instr.funct7 === Decoder.MULDIV_FUNCT7
           ) {
             when(current(instr).instr.funct3(2)) { // funct3 >= 0b100 ==> DIV/REM
-              div32.io.next := unitInput
+              div.io.next := unitInput
             }.otherwise {
               mul.io.next := unitInput
             }

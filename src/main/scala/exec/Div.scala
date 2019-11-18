@@ -4,20 +4,18 @@ import chisel3._
 import chisel3.util._
 import instr.Decoder
 
-class DivExt(val RLEN: Int) extends Bundle {
-  val r = UInt((RLEN*2).W) // Dividend
-  val d = UInt(RLEN.W) // Shifted divider
-  val q = UInt(RLEN.W)
+class DivExt(val XLEN: Int) extends Bundle {
+  val r = UInt((XLEN*2).W) // Dividend
+  val d = UInt(XLEN.W) // Shifted divider
+  val q = UInt(XLEN.W)
 }
 
-class Div(ADDR_WIDTH: Int, XLEN: Int, HALF_WIDTH: Boolean, ROUND_PER_STAGE: Int) extends ExecUnit(
-  if(HALF_WIDTH) XLEN / 2 / ROUND_PER_STAGE else XLEN / ROUND_PER_STAGE,
-  new DivExt(if(HALF_WIDTH) XLEN / 2 else XLEN),
+class Div(ADDR_WIDTH: Int, XLEN: Int, ROUND_PER_STAGE: Int) extends ExecUnit(
+  XLEN / ROUND_PER_STAGE,
+  new DivExt(XLEN),
   ADDR_WIDTH,
   XLEN
 ) {
-  val RLEN = if(HALF_WIDTH) XLEN / 2 else XLEN
-
   val round = RegInit(0.U(log2Ceil(ROUND_PER_STAGE).W))
 
   var idle = true.B
@@ -34,9 +32,25 @@ class Div(ADDR_WIDTH: Int, XLEN: Int, HALF_WIDTH: Boolean, ROUND_PER_STAGE: Int)
 
   def map(stage: Int, pipe: PipeInstr, _ext: Option[DivExt]): (DivExt, Bool) = {
     if(stage == 0) {
-      val init = Wire(new DivExt(RLEN))
-      val op1 = pipe.rs1val(RLEN-1, 0)
-      val op2 = pipe.rs2val(RLEN-1, 0)
+      val init = Wire(new DivExt(XLEN))
+      val op1s = Wire(SInt(XLEN.W))
+      val op2s = Wire(SInt(XLEN.W))
+
+      val isDWord = (
+        pipe.instr.instr.op === Decoder.Op("OP-IMM").ident
+        || pipe.instr.instr.op === Decoder.Op("OP").ident
+      )
+
+      when(isDWord) {
+        op1s := pipe.rs1val.asSInt
+        op2s := pipe.rs2val.asSInt
+      }.otherwise {
+        op1s := pipe.rs1val(31, 0).asSInt
+        op2s := pipe.rs2val(31, 0).asSInt
+      }
+
+      val op1 = op1s.asUInt()
+      val op2 = op2s.asUInt()
 
       when(
         pipe.instr.instr.funct3 === Decoder.MULDIV_FUNC("DIVU")
@@ -50,13 +64,13 @@ class Div(ADDR_WIDTH: Int, XLEN: Int, HALF_WIDTH: Boolean, ROUND_PER_STAGE: Int)
         val sop2 = op2.asSInt
 
         init.q := 0.U
-        when(sop1(RLEN-1)) {
+        when(sop1(XLEN-1)) {
           init.r := (-sop1).asUInt
         }.otherwise {
           init.r := op1
         }
 
-        when(sop2(RLEN-1)) {
+        when(sop2(XLEN-1)) {
           init.d := (-sop2).asUInt
         }.otherwise {
           init.d := op2.asUInt
@@ -67,19 +81,19 @@ class Div(ADDR_WIDTH: Int, XLEN: Int, HALF_WIDTH: Boolean, ROUND_PER_STAGE: Int)
     }
 
     val ext = _ext.get
-    val nExt = Wire(new DivExt(RLEN))
+    val nExt = Wire(new DivExt(XLEN))
     nExt.d := ext.d
 
     val shift = ((this.DEPTH - stage + 1) * ROUND_PER_STAGE - 1).U - round
     val shifted = ext.d << shift
 
-    when(ext.r(RLEN*2-1) && ((stage != 1).B || round =/= 0.U)) { // Prev is negative
+    when(ext.r(XLEN*2-1) && ((stage != 1).B || round =/= 0.U)) { // Prev is negative
       nExt.r := ext.r + shifted
     }.otherwise {
       nExt.r := ext.r - shifted
     }
 
-    nExt.q := ext.q ## (!nExt.r(RLEN*2-1))
+    nExt.q := ext.q ## (!nExt.r(XLEN*2-1))
 
     /*
     printf(p"[DIV   ]: After stage ${stage} @ ${round}\n")
@@ -91,8 +105,24 @@ class Div(ADDR_WIDTH: Int, XLEN: Int, HALF_WIDTH: Boolean, ROUND_PER_STAGE: Int)
   }
 
   def finalize(pipe: PipeInstr, ext: DivExt): RetireInfo = {
-    val fq = Wire(UInt(RLEN.W))
-    val fr = Wire(UInt(RLEN.W))
+    val op1s = Wire(SInt(XLEN.W))
+    val op2s = Wire(SInt(XLEN.W))
+
+    val isDWord = (
+      pipe.instr.instr.op === Decoder.Op("OP-IMM").ident
+      || pipe.instr.instr.op === Decoder.Op("OP").ident
+    )
+
+    when(isDWord) {
+      op1s := pipe.rs1val.asSInt
+      op2s := pipe.rs2val.asSInt
+    }.otherwise {
+      op1s := pipe.rs1val(31, 0).asSInt
+      op2s := pipe.rs2val(31, 0).asSInt
+    }
+
+    val fq = Wire(SInt(XLEN.W))
+    val fr = Wire(SInt(XLEN.W))
 
     val qneg = Wire(Bool())
     val rneg = Wire(Bool())
@@ -103,8 +133,8 @@ class Div(ADDR_WIDTH: Int, XLEN: Int, HALF_WIDTH: Boolean, ROUND_PER_STAGE: Int)
       qneg := false.B
       rneg := false.B
     }.otherwise {
-      qneg := (pipe.rs1val(RLEN-1) ^ pipe.rs2val(RLEN-1)) && pipe.rs2val(RLEN-1, 0).orR()
-      rneg := pipe.rs1val(RLEN-1)
+      qneg := (op1s(XLEN-1) ^ op2s(XLEN-1)) && op2s.asUInt().orR()
+      rneg := op1s(XLEN-1)
     }
 
     val q = ext.q
@@ -116,16 +146,27 @@ class Div(ADDR_WIDTH: Int, XLEN: Int, HALF_WIDTH: Boolean, ROUND_PER_STAGE: Int)
       r := ext.r + ext.d
     }
 
-    when(qneg) {
-      fq := (-q.asSInt).asUInt
+    val hq = Wire(SInt(XLEN.W))
+    val hr = Wire(SInt(XLEN.W))
+
+    when(isDWord) {
+      hq := q.asSInt
+      hr := r.asSInt
     }.otherwise {
-      fq := q
+      hq := q(31, 0).asSInt
+      hr := r(31, 0).asSInt
+    }
+
+    when(qneg) {
+      fq := (-hq)
+    }.otherwise {
+      fq := hq
     }
 
     when(rneg) {
-      fr := (-r.asSInt).asUInt
+      fr := (-hr)
     }.otherwise {
-      fr := r
+      fr := hr
     }
 
     /*
@@ -144,9 +185,9 @@ class Div(ADDR_WIDTH: Int, XLEN: Int, HALF_WIDTH: Boolean, ROUND_PER_STAGE: Int)
       pipe.instr.instr.funct3 === Decoder.MULDIV_FUNC("DIV")
       || pipe.instr.instr.funct3 === Decoder.MULDIV_FUNC("DIVU")
     ) {
-      extended := fq.asSInt
+      extended := fq
     }.otherwise {
-      extended := fr.asSInt
+      extended := fr
     }
 
     info
