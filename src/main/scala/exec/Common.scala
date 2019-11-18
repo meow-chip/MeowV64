@@ -1,7 +1,7 @@
 package exec
 
 import chisel3._
-import chisel3.experimental.MultiIOModule
+import chisel3.MultiIOModule
 import instr.InstrExt
 import org.scalatest.tools.RerunningState
 
