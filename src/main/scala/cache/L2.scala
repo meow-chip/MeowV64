@@ -58,14 +58,28 @@ class L2Assoc(val opts: L2Opts) {
   val lineCount = opts.L2_SIZE / opts.L2_LINE_WIDTH / opts.L2_ASSOC
 
   val directory = SyncReadMem(lineCount, new L2DirEntry(opts))
-  val store = SyncReadMem(lineCount, Vec(opts.L2_LINE_WIDTH / opts.L1_LINE_WIDTH, UInt(opts.L1_LINE_WIDTH.W)));
+  val store = SyncReadMem(lineCount, Vec(opts.L2_LINE_WIDTH / opts.L1_LINE_WIDTH, UInt((opts.L1_LINE_WIDTH * 8).W)));
 }
 
 class L1PortBuffer[T <: L1Port](val port: T, val opts: L2Opts) extends Bundle {
-  val buffer = Vec(opts.L1_LINE_WIDTH / opts.TRANSFER_SIZE, UInt(opts.XLEN.W))
+  val buffer = Vec(opts.L1_LINE_WIDTH / opts.TRANSFER_SIZE, UInt((opts.TRANSFER_SIZE * 8).W))
   val cnt = UInt(log2Ceil(opts.L1_LINE_WIDTH / opts.TRANSFER_SIZE).W)
+
+  val missed = Bool()
   val ready = Bool()
   val done = Bool()
+
+  def hitFill(v: UInt) = {
+    buffer := v.asTypeOf(buffer)
+    missed := false.B
+    ready := true.B
+    done := false.B
+  }
+
+  def miss() = {
+    missed := true.B
+    ready := false.B
+  }
 }
 
 object L1PortBuffer {
@@ -77,10 +91,14 @@ object L1PortBuffer {
 }
 
 object L2MainState extends ChiselEnum {
-  val reset, idle, query = Value
+  val reset, idle, mux = Value
 }
 
 class L2Cache(val opts: L2Opts) extends MultiIOModule {
+  val IGNORE_LENGTH = log2Ceil(opts.L1_LINE_WIDTH)
+  val OFFSET_LENGTH = log2Ceil(opts.L2_LINE_WIDTH)
+  val INDEX_OFFSET_LENGTH = log2Ceil(opts.L2_SIZE)
+
   val i$ = IO(Vec(opts.CORE_COUNT, Flipped(new L1I$Port(opts))))
   val d$ = IO(Vec(opts.CORE_COUNT, Flipped(new L1D$Port(opts))))
 
@@ -88,8 +106,12 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
 
   val assocs = for(_ <- (0 until opts.L2_ASSOC)) yield new L2Assoc(opts)
 
-  val i$bufs = for(i <- (0 until opts.CORE_COUNT)) yield RegInit(L1PortBuffer.default(i$(i), opts))
-  val d$bufs = for(i <- (0 until opts.CORE_COUNT)) yield RegInit(L1PortBuffer.default(d$(i), opts))
+  val i$bufs = VecInit(
+    for(i <- (0 until opts.CORE_COUNT)) yield RegInit(L1PortBuffer.default(i$(i), opts))
+  )
+  val d$bufs = VecInit(
+    for(i <- (0 until opts.CORE_COUNT)) yield RegInit(L1PortBuffer.default(d$(i), opts))
+  )
 
   val target = RegInit(0.U(log2Ceil(opts.CORE_COUNT).W))
   val targetingI$ = RegInit(true.B)
@@ -112,6 +134,15 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
     }
   }
 
+  val targetAddr = Wire(UInt(opts.ADDR_WIDTH.W))
+  when(targetingI$) {
+    targetAddr := i$(target).addr
+  }.otherwise {
+    targetAddr := i$(target).addr
+  }
+  val targetIndex = targetAddr(INDEX_OFFSET_LENGTH-1, OFFSET_LENGTH)
+  val queries = assocs.map(a => (a.directory.read(targetIndex), a.store.read(targetIndex)))
+
   switch(state) {
     is(L2MainState.reset) {
       for(assoc <- assocs) {
@@ -122,6 +153,45 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
 
       when(rstCnt === (opts.L2_SIZE / opts.L2_LINE_WIDTH / opts.L2_ASSOC).U) {
         nstate := L2MainState.idle
+      }
+    }
+
+    is(L2MainState.idle) {
+      // Wait for query result
+      // TODO: pipelining
+      // TODO: check refill
+      nstate := L2MainState.mux
+    }
+
+    is(L2MainState.mux) {
+      val (hit, data) = queries.foldRight((false.B, 0.U))((cur, acc) => {
+        val hit = cur._1.hit(targetAddr)
+        val line = Wire(UInt())
+        when(hit) {
+          line := cur._2
+        }.otherwise {
+          line := 0.U
+        }
+
+        (acc._1 || hit, acc._2 | line)
+      })
+
+      val dataView = Wire(Vec(opts.L2_LINE_WIDTH / opts.L1_LINE_WIDTH, UInt((opts.L1_LINE_WIDTH * 8).W)))
+
+      when(hit) {
+        nstate := L2MainState.idle
+
+        when(targetingI$) {
+          i$bufs(target).hitFill(dataView(targetAddr(OFFSET_LENGTH-1, IGNORE_LENGTH)))
+        }.otherwise {
+          d$bufs(target).hitFill(dataView(targetAddr(OFFSET_LENGTH-1, IGNORE_LENGTH)))
+        }
+      }.otherwise {
+        when(targetingI$) {
+          i$bufs(target).miss()
+        }.otherwise {
+          d$bufs(target).miss()
+        }
       }
     }
   }
