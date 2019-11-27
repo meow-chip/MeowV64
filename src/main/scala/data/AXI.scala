@@ -74,6 +74,17 @@ object AXI {
       val S32 = 5
       val S64 = 6
       val S128 = 7
+
+      def from(width: Int) : Int = width match {
+        case 1 => S1
+        case 2 => S2
+        case 4 => S4
+        case 8 => S8
+        case 16 => S16
+        case 32 => S32
+        case 64 => S64
+        case 128 => S128
+      }
     }
 
     object Burst {

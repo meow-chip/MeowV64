@@ -5,6 +5,11 @@ import chisel3.experimental.ChiselEnum
 
 trait L1Port extends Bundle {
   def getAddr: UInt
+  def getReq: L1D$Port.L1Req.Type
+
+  def getStall: Bool
+  def getRdata: UInt
+  def getWdata: UInt
 }
 
 trait L1Opts {
@@ -13,7 +18,7 @@ trait L1Opts {
 
   val TRANSFER_SIZE: Int
 
-  val L1_LINE_WIDTH: Int
+  val LINE_WIDTH: Int
   val L1_SIZE: Int
 }
 
@@ -24,12 +29,31 @@ trait L1Opts {
  * Also, I$ doesn't have write channel, so we don't have uplink data wires
  */
 class L1I$Port(val opts: L1Opts) extends Bundle with L1Port {
+  val read = Output(Bool())
   val addr = Output(UInt(opts.ADDR_WIDTH.W))
 
   val stall = Input(Bool())
   val data = Input(UInt(opts.TRANSFER_SIZE.W))
 
   override def getAddr: UInt = addr
+  override def getReq = {
+    val result = Wire(L1D$Port.L1Req())
+    when(read) {
+      result := L1D$Port.L1Req.read
+    }.otherwise {
+      result := L1D$Port.L1Req.idle
+    }
+
+    result
+  }
+
+  override def getStall: Bool = stall
+  override def getRdata = data
+  override def getWdata = {
+    val ret = UInt()
+    ret <> DontCare
+    ret
+  }
 }
 
 /**
@@ -57,7 +81,7 @@ class L1D$Port(val opts: L1Opts) extends Bundle with L1Port {
   val l1stall = Input(Bool())
 
   // L1 <- L2 request
-  val l2req = Output(L1D$Port.L2Req())
+  val l2req = Input(L1D$Port.L2Req())
   val l2addr = Input(UInt(opts.ADDR_WIDTH.W))
   val l2stall = Output(UInt(opts.ADDR_WIDTH.W))
 
@@ -66,6 +90,10 @@ class L1D$Port(val opts: L1Opts) extends Bundle with L1Port {
   val rdata = Input(UInt(opts.TRANSFER_SIZE.W))
 
   override def getAddr: UInt = l1addr
+  override def getReq = l1req
+  override def getStall: Bool = l1stall
+  override def getRdata: UInt = rdata
+  override def getWdata: UInt = wdata
 }
 
 object L1D$Port {
@@ -74,16 +102,19 @@ object L1D$Port {
    * 
    * - read: request to read one cache line
    * - write: request to write one cache line
+   * - readWrite: request to write allocate one cache line
    * - modify: request to invalidate all other out-standing cache duplicates
+   * - writeback: request to writeback a line
    */
   object L1Req extends ChiselEnum {
-    val idle, read, write, modify = Value
+    val idle, read, readWrite, write, modify, writeback = Value
   }
 
   /**
    * Downlink requests
    * 
-   * - flush: request to write-back one cache line
+   * - flush: request to write-back one cache line. This should generate a writeback event,
+   *     overriding the pending event on the port
    * - inval: request to invalidate one cache line
    *     If the invalidated cache line is also a target of a pending write in write queue,
    *     especially the head of the write queue, L1 should fetch (write-allocate) the line again before
