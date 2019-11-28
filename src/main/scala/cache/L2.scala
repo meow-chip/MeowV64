@@ -20,6 +20,7 @@ import chisel3.util._
 trait L2Opts extends L1Opts {
   val L2_SIZE: Int // In bytes
   val L2_ASSOC: Int
+  val L2_WB_DEPTH: Int
 
   val CORE_COUNT: Int
 
@@ -89,6 +90,18 @@ object L2MainState extends ChiselEnum {
     waitInval,
     write
     = Value
+}
+
+object L2WBState extends ChiselEnum {
+  val idle,
+    writing,
+    resp = Value
+}
+
+class WBEntry(opts: L2Opts) extends Bundle {
+  val OFFSET_LENGTH = log2Ceil(opts.LINE_WIDTH)
+  val lineaddr = UInt((opts.ADDR_WIDTH - OFFSET_LENGTH).W)
+  val data = UInt((opts.LINE_WIDTH*8).W)
 }
 
 class L2Cache(val opts: L2Opts) extends MultiIOModule {
@@ -180,6 +193,17 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
   val bufs = RegInit(VecInit(Seq.fill(opts.CORE_COUNT * 3)(
     VecInit(Seq.fill(opts.LINE_WIDTH * 8 / axi.DATA_WIDTH)(0.U(axi.DATA_WIDTH.W)))
   )))
+
+  // Writebacks
+  val wbFifo = Reg(Vec(opts.L2_WB_DEPTH, new WBEntry(opts)))
+  val wbFifoHead = RegInit(0.U(log2Ceil(opts.L2_WB_DEPTH).W))
+  val wbFifoTail = RegInit(0.U(log2Ceil(opts.L2_WB_DEPTH).W))
+  val wbFifoEmpty = wbFifoHead === wbFifoTail
+  val wbFifoFull = wbFifoHead === wbFifoTail +% 1.U
+
+  val wbState = RegInit(L2WBState.idle)
+
+  /* Main loop stuff */
 
   // Reset
   val rstCnt = RegInit(0.U)
@@ -509,6 +533,8 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
   }
 
   // Refiller, only deals with AR channel
+  val axiGrpNum = opts.LINE_WIDTH * 8 / axi.DATA_WIDTH
+
   val reqTarget = RegInit(0.U(log2Ceil(opts.CORE_COUNT * 3).W))
   val rawReqAddr = addrs(reqTarget)
 
@@ -528,7 +554,7 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
         opts.LINE_WIDTH * 8 % axi.DATA_WIDTH == 0,
         "Line cannot be filled with a integer number of AXI transfers"
       )
-      axi.ARLEN := (opts.LINE_WIDTH * 8 / axi.DATA_WIDTH).U
+      axi.ARLEN := (axiGrpNum - 1).U
       // axi.ARPROT ignored
       // axi.ARQOS ignored
       // axi.ARREGION ignored
@@ -565,5 +591,55 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
     }
   }
 
-  // TODO: writer, deals with AW/W/B channel
+  // Write-back...er? Handles AXI AW/W/B
+  val wbPtr = RegInit(0.U(log2Ceil(axiGrpNum).W))
+  val wbDataView = wbFifo(wbFifoHead).data.asTypeOf(Vec(axiGrpNum, UInt(axi.DATA_WIDTH.W)))
+  switch(wbState) {
+    is(L2WBState.idle) {
+      when(!wbFifoEmpty) {
+        axi.AWID := 0.U
+        axi.AWADDR := wbFifo(wbFifoHead).lineaddr ## 0.U(OFFSET_LENGTH)
+        axi.AWBURST := AXI.Constants.Burst.INCR.U
+        axi.AWCACHE := 0.U
+        axi.AWLEN := (axiGrpNum - 1).U
+        axi.AWPROT := 0.U
+        axi.AWQOS := 0.U
+        axi.AWREGION := 0.U
+        axi.AWSIZE := AXI.Constants.Size.from(axi.DATA_WIDTH).U
+        axi.AWVALID := true.B
+
+        when(axi.AWREADY) {
+          wbPtr := 0.U
+          wbState := L2WBState.writing
+        }
+      }
+    }
+
+    is(L2WBState.writing) {
+      axi.WDATA := wbDataView(wbPtr)
+      axi.WSTRB := ((1 << (axi.DATA_WIDTH / 8))-1).U
+      axi.WVALID := true.B
+
+      val isLast = wbPtr === axiGrpNum.U
+      axi.WLAST := isLast
+
+      when(axi.WREADY) {
+        wbPtr := wbPtr +% 1.U
+
+        when(isLast) {
+          wbState := L2WBState.resp
+        }
+      }
+    }
+
+    is(L2WBState.resp) {
+      // TODO: poison the cache if an error occurred
+
+      axi.BREADY := true.B
+      when(axi.BVALID) {
+        wbFifoHead := wbFifoHead +% 1.U
+        wbState := L2WBState.idle
+      }
+    }
+  }
 }
