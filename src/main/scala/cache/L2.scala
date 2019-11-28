@@ -79,8 +79,9 @@ class L2Assoc(val opts: L2Opts) {
 object L2MainState extends ChiselEnum {
   val reset,
     idle,
-    read,
-    diredit,
+    readHit,
+    readRefilled,
+    dirEdit,
     write,
     waitL1 // Victimize
     = Value
@@ -187,6 +188,7 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
   state := nstate
 
   val target = RegInit(0.U(log2Ceil(opts.CORE_COUNT * 3).W))
+  val targetUncached = target >= (opts.CORE_COUNT * 2).U
   val targetAddr = addrs(target)
   val targetOps = ops(target)
   val targetIndex = targetAddr(INDEX_OFFSET_LENGTH-1, OFFSET_LENGTH)
@@ -194,7 +196,7 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
   // Compute directory lookups & delayed data fetch
   val lookups = VecInit(assocs.map(_.directory.read(targetIndex)))
   val datas = assocs.map(_.store.read(targetIndex))
-  val pipeHitmask = lookups.map(l => RegNext(l.hit(targetAddr)))
+  val pipeLookups = RegNext(lookups)
 
   // Randomly picks victim, even if it's not full yet, because I'm lazy
   // TODO: PLRU, and fill in blanks
@@ -247,7 +249,38 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
         }
 
         is(L1D$Port.L1Req.read, L1D$Port.L1Req.readWrite) {
-          nstate := L2MainState.read
+          val hit = (!targetUncached) && lookups.foldLeft(false.B)((acc, l) => acc || l.hit(targetAddr))
+
+          when(misses(target)) {
+            when(refilled(target)) {
+              when(targetUncached) {
+                val rdata = bufs(target).asTypeOf(UInt(opts.LINE_WIDTH.W))
+                rdatas(target) := rdata
+                stalls(target) := false.B
+
+                misses(target) := false.B
+                refilled(target) := false.B
+
+                nstate := L2MainState.idle
+                step(target)
+              }.otherwise {
+                nstate := L2MainState.readRefilled
+              }
+            }.otherwise {
+              nstate := L2MainState.idle
+              step(target)
+            }
+          }.elsewhen(hit) {
+            nstate := L2MainState.readHit
+          }.otherwise {
+            // hit == false && missed == false
+            // Init a refill
+            misses(target) := true.B
+            refilled(target) := false.B
+
+            nstate := L2MainState.idle
+            step(target)
+          }
         }
 
         is(L1D$Port.L1Req.write, L1D$Port.L1Req.modify) {
@@ -260,7 +293,7 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
       }
     }
 
-    is(L2MainState.read) {
+    is(L2MainState.readHit) {
       val (hit, data) = lookups.zip(datas).foldRight((false.B, 0.U))((cur, acc) => {
         val hit = cur._1.hit(targetAddr)
         val line = Wire(UInt())
@@ -273,67 +306,60 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
         (acc._1 || hit, acc._2 | line)
       })
 
-      when(hit) {
-        nstate := L2MainState.idle
-        step(target)
+      // Asserts hit
 
-        rdatas(target) := data
-        stalls(target) := false.B // Unstall for one cycle
+      nstate := L2MainState.idle
+      step(target)
+
+      rdatas(target) := data
+      stalls(target) := false.B // Unstall for one cycle
+      misses(target) := false.B
+      refilled(target) := false.B
+    }
+
+    is(L2MainState.readRefilled) {
+      val curVictim = rand(log2Ceil(opts.L2_ASSOC)-1, 0)
+      victim := curVictim
+
+      def commit(useOriginal: Boolean) = {
+        val rdata = bufs(target).asTypeOf(UInt(opts.LINE_WIDTH.W))
+        // TODO: check if CORE_COUNT = 2^n
+        val coreWidth = log2Ceil(opts.CORE_COUNT)
+        dirWriters(curVictim).addr := targetAddr
+        if(!useOriginal) {
+          dirWriters(curVictim).dir :=
+            L2DirEntry.withAddr(opts, targetAddr).editState(target(coreWidth-1, 0), L2DirState.shared)
+        } else {
+          dirWriters(curVictim).dir := pipeLookups(curVictim).editState(target(coreWidth-1, 0), L2DirState.shared)
+        }
+
+        dataWriters(curVictim).addr := targetAddr
+        dataWriters(curVictim).addr := rdata
+        dataWriters(curVictim).commit := true.B
+
+        rdatas(target) := rdata
+        stalls(target) := false.B
+
         misses(target) := false.B
         refilled(target) := false.B
+
+        step(target)
+      }
+
+      when(!lookups(curVictim).valid) {
+        commit(false)
       }.otherwise {
-        // TODO: lift check into the first cycle
-        // For example, we can have a "requires action" bool, and based on that we stop our ptr
-        when(!misses(target)) {
-          nstate := L2MainState.idle
-          step(target)
+        val hasDirty = lookups(curVictim).states.foldLeft(false.B)((acc, s) => acc || s === L2DirState.modified)
+        for((s, p) <- lookups(curVictim).states.zip(pendings)) {
+          when(s === L2DirState.modified) {
+            p := L1D$Port.L2Req.flush
+          }
+        }
 
-          misses(target) := true.B
-          refilled(target) := false.B
-        }.elsewhen(!refilled(target)) {
-          nstate := L2MainState.idle
-          step(target)
+        when(!hasDirty) {
+          commit(true)
         }.otherwise {
-          val curVictim = rand(log2Ceil(opts.L2_ASSOC)-1, 0)
-          victim := curVictim
-
-          def commit() = {
-            val rdata = bufs(target).asTypeOf(UInt(opts.LINE_WIDTH.W))
-            // TODO: check if CORE_COUNT = 2^n
-            val coreWidth = log2Ceil(opts.CORE_COUNT)
-            dirWriters(curVictim).addr := targetAddr
-            dirWriters(curVictim).dir :=
-              L2DirEntry.withAddr(opts, targetAddr).editState(target(coreWidth-1, 0), L2DirState.shared)
-
-            dataWriters(curVictim).addr := targetAddr
-            dataWriters(curVictim).addr := rdata
-            dataWriters(curVictim).commit := true.B
-
-            rdatas(target) := rdata
-            stalls(target) := false.B
-
-            misses(target) := false.B
-            refilled(target) := false.B
-
-            step(target)
-          }
-
-          when(!lookups(curVictim).valid) {
-            commit()
-          }.otherwise {
-            val hasDirty = lookups(curVictim).states.foldLeft(false.B)((acc, s) => acc || s === L2DirState.modified)
-            for((s, p) <- lookups(curVictim).states.zip(pendings)) {
-              when(s === L2DirState.modified) {
-                p := L1D$Port.L2Req.flush
-              }
-            }
-
-            when(!hasDirty) {
-              commit()
-            }.otherwise {
-              nstate := L2MainState.waitL1
-            }
-          }
+          nstate := L2MainState.waitL1
         }
       }
     }
