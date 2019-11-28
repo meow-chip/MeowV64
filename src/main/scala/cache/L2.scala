@@ -136,14 +136,18 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
 
     ret
   }))
+
+  // Little helper class
+  class DataWriter extends Bundle {
+    val addr = Wire(UInt(opts.ADDR_WIDTH.W))
+    val data = Wire(UInt((opts.LINE_WIDTH * 8).W))
+    val commit = Wire(Bool())
+  }
+ 
   val dataWriters = VecInit(assocs.map(assoc => {
     val store = assoc.store
 
-    val ret = new Bundle {
-      val addr = Wire(UInt(opts.ADDR_WIDTH.W))
-      val data = Wire(UInt((opts.LINE_WIDTH * 8).W))
-      val commit = Wire(Bool())
-    }
+    val ret = new DataWriter
 
     when(ret.commit) {
       store.write(ret.addr >> OFFSET_LENGTH, ret.data)
@@ -417,6 +421,7 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
             wbFifo(wbFifoTail).lineaddr := lookups(curVictim).tag ## targetAddr(INDEX_OFFSET_LENGTH-1, OFFSET_LENGTH)
             // Datas should be ready now, after one cycle after jumped from idle
             wbFifo(wbFifoTail).data := datas(curVictim)
+            wbFifoTail := wbFifoTail +% 1.U
 
             commit()
           }
@@ -468,29 +473,38 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
 
     is(L2MainState.waitFlush) {
       val ent = Wire(new L2DirEntry(opts))
+      val writer = Wire(new DataWriter)
 
       when(pendingVictim) {
         ent := pipeLookups(victim)
+        dataWriters(victim) := writer
       }.otherwise {
         // TODO: pipe hit
-        ent := pipeLookups.foldLeft(0.U.asTypeOf(new L2DirEntry(opts)))((acc, ent) => {
-          val h = ent.hit(targetAddr)
-          val mask = Wire(new L2DirEntry(opts))
-          when(h) {
-            mask := 0.U.asTypeOf(mask)
+        // TODO: use mux
+        var ret = 0.U.asTypeOf(new L2DirEntry(opts))
+        for((lookup, idx) <- pipeLookups.zipWithIndex) {
+          var cur = Wire(new L2DirEntry(opts))
+          when(lookup.hit(targetAddr)) {
+            cur := lookup
+            dataWriters(idx) := writer
           }.otherwise {
-            mask := ent
+            cur := 0.U.asTypeOf(cur)
           }
 
-          (acc.asUInt | ent.asUInt).asTypeOf(acc)
-        })
+          ret = (ret.asUInt | cur.asUInt).asTypeOf(ret)
+        }
+
+        ent := ret
       }
 
       for((d, p) <- d$.zip(pendings)) {
-        // TODO: mark dirty
         when(!d.l2stall) {
-          // FIXME: handle write
           p := L1D$Port.L2Req.idle
+
+          // Commits data
+          writer.addr := ent.tag ## targetAddr(INDEX_OFFSET_LENGTH-1, 0)
+          writer.data := d.wdata
+          writer.commit := true.B
         }
       }
 
@@ -514,30 +528,46 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
 
       when(!pending) {
         when(pendingVictim) { // Refilled
-          val rdata = bufs(target).asTypeOf(UInt(opts.LINE_WIDTH.W))
-          // TODO: check if CORE_COUNT = 2^n
-          val coreWidth = log2Ceil(opts.CORE_COUNT)
+          val hasDirty = lookups(victim).states.foldLeft(false.B)((acc, s) => acc || s === L2DirState.modified)
 
-          val sinit = Wire(L2DirState())
-          when(targetOps === L1D$Port.L1Req.read) {
-            sinit := L2DirState.shared
-          }.otherwise {
-            sinit := L2DirState.modified
+          def commit() = {
+            val rdata = bufs(target).asTypeOf(UInt(opts.LINE_WIDTH.W))
+            // TODO: check if CORE_COUNT = 2^n
+            val coreWidth = log2Ceil(opts.CORE_COUNT)
+
+            val sinit = Wire(L2DirState())
+            when(targetOps === L1D$Port.L1Req.read) {
+              sinit := L2DirState.shared
+            }.otherwise {
+              sinit := L2DirState.modified
+            }
+
+            dirWriters(victim).addr := targetAddr
+            dirWriters(victim).dir := L2DirEntry.withAddr(opts, targetAddr).editState(target(coreWidth-1, 0), sinit)
+            dirWriters(victim).commit := true.B
+
+            dataWriters(victim).addr := targetAddr
+            dataWriters(victim).data := rdata
+            dataWriters(victim).commit := true.B
+
+            rdatas(target) := rdata
+            stalls(target) := false.B
+
+            misses(target) := false.B
+            refilled(target) := false.B
           }
 
-          dirWriters(victim).addr := targetAddr
-          dirWriters(victim).dir := L2DirEntry.withAddr(opts, targetAddr).editState(target(coreWidth-1, 0), sinit)
-          dirWriters(victim).commit := true.B
+          when(hasDirty) {
+            when(!wbFifoFull) {
+              wbFifo(wbFifoTail).lineaddr := lookups(victim).tag ## targetAddr(INDEX_OFFSET_LENGTH-1, OFFSET_LENGTH)
+              wbFifo(wbFifoTail).data := datas(victim)
+              wbFifoTail := wbFifoTail +% 1.U
 
-          dataWriters(victim).addr := targetAddr
-          dataWriters(victim).data := rdata
-          dataWriters(victim).commit := true.B
-
-          rdatas(target) := rdata
-          stalls(target) := false.B
-
-          misses(target) := false.B
-          refilled(target) := false.B
+              commit()
+            }
+          }.otherwise {
+            commit()
+          }
         }.otherwise {
           for(lookup <- lookups) {
             when(lookup.hit(targetAddr)) {

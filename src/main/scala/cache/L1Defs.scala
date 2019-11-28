@@ -84,6 +84,7 @@ class L1D$Port(val opts: L1Opts) extends Bundle with L1Port {
   val l2req = Input(L1D$Port.L2Req())
   val l2addr = Input(UInt(opts.ADDR_WIDTH.W))
   val l2stall = Output(UInt(opts.ADDR_WIDTH.W))
+  // TODO: add a debug signal to show if L1 really has the entry
 
   // Data bus
   val wdata = Output(UInt(opts.TRANSFER_SIZE.W))
