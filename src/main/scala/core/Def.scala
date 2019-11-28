@@ -8,6 +8,7 @@ abstract class CoreDef {
   val ADDR_WIDTH: Int = 48
   val FETCH_NUM: Int = 2
   val INIT_VEC: BigInt = BigInt("FFFFFFFF8000", 16)
+  val HART_ID: Int = 0
 
   val L12_LINE_WIDTH: Int = 16 // In bytes
 

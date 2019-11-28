@@ -33,7 +33,7 @@ class Core(val coredef: CoreDef = DefaultDef) extends Module {
   val exec = Module(new Exec(coredef.ADDR_WIDTH, coredef.XLEN, coredef.FETCH_NUM))
   val reg = Module(new RegFile(coredef.XLEN))
 
-  val (csrWriter, csr) = CSR.gen(coredef.XLEN)
+  val (csrWriter, csr) = CSR.gen(coredef.XLEN, coredef.HART_ID)
 
   fetch.io.rst := false.B // For FENCE.I
   fetch.io.icache <> l1i.toCPU
