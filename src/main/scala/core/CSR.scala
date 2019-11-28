@@ -26,10 +26,10 @@ object CSRHelper {
  */
 class CSR(val XLEN: Int, HART_ID: Int) {
   val csr = Map(
-    "mvendorid" -> RegInit(0.U(XLEN.W)),
-    "marchid" -> RegInit(0.U(XLEN.W)),
-    "mimpid" -> RegInit(0.U(XLEN.W)),
-    "mhartid" -> RegInit(HART_ID.U(XLEN.W)),
+    "mvendorid" -> 0.U(XLEN.W),
+    "marchid" -> 0.U(XLEN.W),
+    "mimpid" -> 0.U(XLEN.W),
+    "mhartid" -> HART_ID.U(XLEN.W),
     "mstatus" -> RegInit(0.U(XLEN.W)), // Only have M mode, everything hardwired/initialized to 0
     "misa" -> RegInit(2.U(2.W) ## 0.U((XLEN-2-26).W) ## CSRHelper.buildExt("IMAC").U(26.W)),
     "mie" -> RegInit(0.U(XLEN.W)),
@@ -63,6 +63,7 @@ object CSR {
     0xF14 -> ("mhartid", false),
     0x300 -> ("mstatus", true),
     0x301 -> ("misa", false),
+    // m[e|i]deleg should not exist on M mode only machine
     0x304 -> ("mie", true),
     0x305 -> ("mtvec", true),
     0x306 -> ("mcounteren", false),
@@ -71,6 +72,13 @@ object CSR {
     0x342 -> ("mcause", true),
     0x343 -> ("mtval", true),
     0x344 -> ("mip", true)
+  )
+
+  // Some bit fields shall be perserved to be WPRI/WARL.
+  val maskMap = Map(
+    0x300 -> 0x88.U, // Having only M mode, only MPIE and MIE writable
+    0x304 -> 0x333.U, // Only [U|S][S|T|E]IP writable (does we actually have them?)
+    0x344 -> 0xBBB.U
   )
 
   def gen(XLEN: Int, HART_ID: Int): (CSRWriter, CSR) = {
@@ -83,6 +91,12 @@ object CSR {
       addrMap.mapValues(value => value match {
         case (name, _) => csr.csr(name)
       }).toSeq.map(_ match { case (addr, r) => (addr.U, r) })
+    )
+
+    val mask = MuxLookup[UInt, UInt](
+      endpoint.addr,
+      0xFFFF.S(XLEN.W).asUInt, // sign extended
+      maskMap.toSeq.map(_ match { case (addr, m) => (addr.U, m) })
     )
 
     endpoint.rdata := data
@@ -112,7 +126,7 @@ object CSR {
       for((addr, (name, isMut)) <- addrMap)
         if(isMut)
           when(addr.U === endpoint.addr) {
-            csr.csr(name) := wdata
+            csr.csr(name) := wdata & mask
           }
     }
 
