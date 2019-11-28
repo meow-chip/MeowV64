@@ -113,7 +113,7 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
   val directs = IO(Vec(opts.CORE_COUNT, Flipped(new L1D$Port(opts))))
 
   // Iterator for all ports
-  // d$ comes first to match MESI directory
+  // d$ comes first to match MSI directory
   def ports = d$.iterator ++ i$.iterator ++ directs.iterator
 
   val axi = IO(new AXI(opts.XLEN, opts.ADDR_WIDTH))
@@ -131,7 +131,7 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
     }
 
     when(ret.commit) {
-      store.write(ret.addr >> OFFSET_LENGTH, ret.dir)
+      store.write(ret.addr(INDEX_OFFSET_LENGTH-1, OFFSET_LENGTH), ret.dir)
     }
 
     ret
@@ -150,7 +150,7 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
     val ret = new DataWriter
 
     when(ret.commit) {
-      store.write(ret.addr >> OFFSET_LENGTH, ret.data)
+      store.write(ret.addr(INDEX_OFFSET_LENGTH-1, OFFSET_LENGTH), ret.data)
     }
 
     ret
@@ -325,7 +325,27 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
         }
 
         is(L1D$Port.L1Req.writeback) {
-          // FIXME: impl
+          // We can do one cycle write?
+          // Asserts MSI modified
+          val coreWidth = log2Ceil(opts.CORE_COUNT)
+
+          for((lookup, idx) <- lookups.zipWithIndex) {
+            when(lookup.hit(targetAddr)) {
+              dirWriters(idx).dir := L2DirEntry.withAddr(opts, targetAddr).editState(target(coreWidth-1, 0), L2DirState.shared)
+              dataWriters(idx).data := d$(target(coreWidth-1, 0)).wdata
+
+              dirWriters(idx).addr := targetAddr
+              dataWriters(idx).addr := targetAddr
+
+              dirWriters(idx).commit := true.B
+              dataWriters(idx).commit := true.B
+            }
+          }
+
+          stalls(target) := false.B
+
+          nstate := L2MainState.idle
+          step(target)
         }
       }
     }
@@ -569,7 +589,7 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
             commit()
           }
         }.otherwise {
-          for(lookup <- lookups) {
+          for((lookup, idx) <- lookups.zipWithIndex) {
             when(lookup.hit(targetAddr)) {
               val coreWidth = log2Ceil(opts.CORE_COUNT)
               val modified = Wire(lookup.cloneType)
@@ -577,7 +597,9 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
               modified.states := VecInit(Seq.fill(opts.CORE_COUNT)(L2DirState.vacant))
               modified.states(target(coreWidth-1, 0)) := L2DirState.modified
 
-              lookup := modified
+              dirWriters(idx).addr := targetAddr
+              dirWriters(idx).dir := modified
+              dirWriters(idx).commit := true.B
             }
           }
         }
