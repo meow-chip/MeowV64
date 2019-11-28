@@ -358,9 +358,17 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
         val rdata = bufs(target).asTypeOf(UInt(opts.LINE_WIDTH.W))
         // TODO: check if CORE_COUNT = 2^n
         val coreWidth = log2Ceil(opts.CORE_COUNT)
+
+        val sinit = Wire(L2DirState())
+        when(targetOps === L1D$Port.L1Req.read) {
+          sinit := L2DirState.shared
+        }.otherwise {
+          sinit := L2DirState.modified
+        }
+
         dirWriters(curVictim).addr := targetAddr
         dirWriters(curVictim).dir :=
-          L2DirEntry.withAddr(opts, targetAddr).editState(target(coreWidth-1, 0), L2DirState.shared)
+          L2DirEntry.withAddr(opts, targetAddr).editState(target(coreWidth-1, 0), sinit)
 
         dataWriters(curVictim).addr := targetAddr
         dataWriters(curVictim).data := rdata
@@ -510,8 +518,15 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
           // TODO: check if CORE_COUNT = 2^n
           val coreWidth = log2Ceil(opts.CORE_COUNT)
 
+          val sinit = Wire(L2DirState())
+          when(targetOps === L1D$Port.L1Req.read) {
+            sinit := L2DirState.shared
+          }.otherwise {
+            sinit := L2DirState.modified
+          }
+
           dirWriters(victim).addr := targetAddr
-          dirWriters(victim).dir := L2DirEntry.withAddr(opts, targetAddr).editState(target(coreWidth-1, 0), L2DirState.shared)
+          dirWriters(victim).dir := L2DirEntry.withAddr(opts, targetAddr).editState(target(coreWidth-1, 0), sinit)
           dirWriters(victim).commit := true.B
 
           dataWriters(victim).addr := targetAddr
