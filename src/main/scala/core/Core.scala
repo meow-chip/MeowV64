@@ -29,6 +29,8 @@ class Core(val coredef: CoreDef = DefaultDef) extends Module {
   val exec = Module(new Exec(coredef.ADDR_WIDTH, coredef.XLEN, coredef.ISSUE_NUM))
   val reg = Module(new RegFile(coredef.XLEN))
 
+  val (csrWriter, csr) = CSR.gen(coredef.XLEN)
+
   fetch.io.icache <> ic.io
   fetch.io.pc <> ctrl.io.pc
   fetch.io.skip <> ctrl.io.skip
@@ -43,6 +45,7 @@ class Core(val coredef: CoreDef = DefaultDef) extends Module {
   exec.io.ctrl <> ctrl.io.exec
   exec.io.branch <> DontCare
   exec.io.axi <> io.daxi
+  exec.io.csrWriter <> csrWriter
   
   ctrl.io.branch <> exec.io.branch.branch
   ctrl.io.baddr <> exec.io.branch.target

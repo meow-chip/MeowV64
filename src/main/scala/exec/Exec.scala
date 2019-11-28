@@ -8,6 +8,7 @@ import _root_.core.StageCtrl
 import cache.DCachePort
 import cache.DCache
 import instr.Decoder.InstrType
+import _root_.core.CSRWriter
 
 class BranchResult(val ADDR_WIDTH: Int = 48) extends Bundle {
   val branch = Bool()
@@ -36,6 +37,8 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int, ISSUE_NUM: Int) extends Module {
     val ctrl = StageCtrl.stage()
 
     val branch = Output(new BranchResult(ADDR_WIDTH))
+
+    val csrWriter = new CSRWriter(XLEN)
   })
 
   io.branch := 0.U.asTypeOf(io.branch)
@@ -72,11 +75,14 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int, ISSUE_NUM: Int) extends Module {
   val br = Module(new Branch(ADDR_WIDTH, XLEN))
   val mul = Module(new Mul(ADDR_WIDTH, XLEN))
   val div = Module(new Div(ADDR_WIDTH, XLEN, 32))
+  val csr = Module(new CSR(ADDR_WIDTH, XLEN))
 
   lsu.d$ <> dcache.io
   lsu.axi <> io.axi
 
-  val units = List(alu, imm, lsu, br, mul, div)
+  csr.writer <> io.csrWriter
+
+  val units = List(alu, imm, lsu, br, mul, div, csr)
 
   val placeholder = Wire(new PipeInstr(ADDR_WIDTH, XLEN))
   placeholder := 0.U.asTypeOf(placeholder)
@@ -205,6 +211,14 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int, ISSUE_NUM: Int) extends Module {
         Decoder.Op("BRANCH").ident) {
           br.io.next := unitInput
         }
+      
+      // System
+      is(Decoder.Op("SYSTEM").ident) {
+        // ECALL and EBREAK actually falls into here.
+        // TODO: impl ECALL/EBREAK
+
+        csr.io.next := unitInput
+      }
 
     }
   }.otherwise {
