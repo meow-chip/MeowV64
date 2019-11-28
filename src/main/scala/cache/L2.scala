@@ -623,14 +623,14 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
   switch(wbState) {
     is(L2WBState.idle) {
       when(!wbFifoEmpty) {
-        axi.AWID := 0.U
+        // axi.AWID omitted
         axi.AWADDR := wbFifo(wbFifoHead).lineaddr ## 0.U(OFFSET_LENGTH)
         axi.AWBURST := AXI.Constants.Burst.INCR.U
-        axi.AWCACHE := 0.U
+        // axi.AWCACHE := omitted
         axi.AWLEN := (axiGrpNum - 1).U
-        axi.AWPROT := 0.U
-        axi.AWQOS := 0.U
-        axi.AWREGION := 0.U
+        // axi.AWPROT := omitted
+        // axi.AWQOS := omitted
+        // axi.AWREGION := omitted
         axi.AWSIZE := AXI.Constants.Size.from(axi.DATA_WIDTH).U
         axi.AWVALID := true.B
 
