@@ -223,7 +223,7 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
 
   // Compute directory lookups & delayed data fetch
   val lookups = VecInit(assocs.map(_.directory.read(targetIndex)))
-  val datas = assocs.map(_.store.read(targetIndex))
+  val datas = VecInit(assocs.map(_.store.read(targetIndex)))
   val pipeLookups = RegNext(lookups)
 
   // Randomly picks victim, even if it's not full yet, because I'm lazy
@@ -401,8 +401,19 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
           }
 
           nstate := L2MainState.waitInval
+        }.elsewhen(lookups(curVictim).dirty) {
+          // Is an dirty entry, place into wb fifo
+
+          // Wait until not full
+          when(!wbFifoFull) {
+            wbFifo(wbFifoTail).lineaddr := lookups(curVictim).tag ## targetAddr(INDEX_OFFSET_LENGTH-1, OFFSET_LENGTH)
+            // Datas should be ready now, after one cycle after jumped from idle
+            wbFifo(wbFifoTail).data := datas(curVictim)
+
+            commit()
+          }
         }.otherwise {
-          // TODO: writeback
+          // Not dirty, commit directly
           commit()
         }
       }
