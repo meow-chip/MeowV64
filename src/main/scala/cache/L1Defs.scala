@@ -101,13 +101,13 @@ object L1D$Port {
    * Uplink requests
    * 
    * - read: request to read one cache line
-   * - write: request to write one cache line
    * - readWrite: request to write allocate one cache line
    * - modify: request to invalidate all other out-standing cache duplicates
    * - writeback: request to writeback a line
    */
   object L1Req extends ChiselEnum {
-    val idle, read, readWrite, write, modify, writeback = Value
+    // TODO: do we include inval here? is it worth it?
+    val idle, read, readWrite, modify, writeback = Value
   }
 
   /**

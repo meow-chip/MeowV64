@@ -36,6 +36,7 @@ class L2DirEntry(val opts: L2Opts) extends Bundle {
   val TAG_LENGTH = opts.ADDR_WIDTH - TAIL_LENGTH
 
   val valid = Bool()
+  val dirty = Bool()
   val tag = UInt(TAG_LENGTH.W)
   val states = Vec(opts.CORE_COUNT, L2DirState())
 
@@ -54,6 +55,7 @@ object L2DirEntry {
     val w = Wire(new L2DirEntry(opts))
     w := DontCare
     w.valid := false.B
+    w.dirty := false.B
 
     w
   }
@@ -63,6 +65,7 @@ object L2DirEntry {
 
     val w = Wire(new L2DirEntry(opts))
     w.valid := true.B
+    w.dirty := false.B
     w.tag := addr >> INDEX_OFFSET_LENGTH
     w.states := VecInit(Seq.fill(opts.CORE_COUNT)(L2DirState.vacant))
     w
@@ -81,9 +84,11 @@ object L2MainState extends ChiselEnum {
     idle,
     readHit,
     readRefilled,
-    dirEdit,
+    modifyInit,
+    modifyWaitFlush,
+    modifyWaitInval,
     write,
-    waitL1 // Victimize
+    readWaitDir // Victimize
     = Value
 }
 
@@ -283,8 +288,8 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
           }
         }
 
-        is(L1D$Port.L1Req.write, L1D$Port.L1Req.modify) {
-          // FIXME: impl
+        is(L1D$Port.L1Req.modify) {
+          nstate := L2MainState.modifyInit
         }
 
         is(L1D$Port.L1Req.writeback) {
@@ -357,19 +362,61 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
         }
 
         when(!hasDirty) {
+          // TODO: writeback
           commit(true)
         }.otherwise {
-          nstate := L2MainState.waitL1
+          nstate := L2MainState.readWaitDir
         }
       }
     }
 
-    is(L2MainState.waitL1) {
+    is(L2MainState.modifyInit) {
+      val ent = pipeLookups.foldLeft(0.U.asTypeOf(new L2DirEntry(opts)))((acc, ent) => {
+        val h = ent.hit(targetAddr)
+        val mask = Wire(new L2DirEntry(opts))
+        when(h) {
+          mask := 0.U.asTypeOf(mask)
+        }.otherwise {
+          mask := ent
+        }
+
+        (acc.asUInt | ent.asUInt).asTypeOf(acc)
+      })
+
+      // TODO: asserts ent.valid
+
+      val hasDirty = ent.states.foldLeft(false.B)((acc, s) => acc || s === L2DirState.modified)
+      val hasShared = ent.states.foldLeft(false.B)((acc, s) => acc || s =/= L2DirState.vacant)
+
+      when(hasDirty) {
+        for((s, p) <- ent.states.zip(pendings)) {
+          when(s === L2DirState.modified) {
+            p := L1D$Port.L2Req.flush
+          }
+        }
+
+        // TODO: mark dirty
+
+        nstate := L2MainState.modifyWaitFlush
+      }.otherwise {
+        for((s, p) <- ent.states.zip(pendings)) {
+          when(s =/= L2DirState.vacant) {
+            p := L1D$Port.L2Req.inval
+          }
+        }
+
+        nstate := L2MainState.modifyWaitInval
+      }
+    }
+
+    is(L2MainState.readWaitDir) {
       for((d, p) <- d$.zip(pendings)) {
         when(!d.l2stall) {
           p := L1D$Port.L2Req.idle
         }
       }
+
+      // TODO: writeback
 
       when(!pending) {
         val rdata = bufs(target).asTypeOf(UInt(opts.LINE_WIDTH.W))
@@ -403,6 +450,61 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
         misses(target) := false.B
         refilled(target) := false.B
 
+        step(target)
+      }
+    }
+
+    is(L2MainState.modifyWaitFlush) {
+      val ent = pipeLookups.foldLeft(0.U.asTypeOf(new L2DirEntry(opts)))((acc, ent) => {
+        val h = ent.hit(targetAddr)
+        val mask = Wire(new L2DirEntry(opts))
+        when(h) {
+          mask := 0.U.asTypeOf(mask)
+        }.otherwise {
+          mask := ent
+        }
+
+        (acc.asUInt | ent.asUInt).asTypeOf(acc)
+      })
+
+      for((d, p) <- d$.zip(pendings)) {
+        when(!d.l2stall) {
+          p := L1D$Port.L2Req.idle
+        }
+      }
+
+      when(!pending) {
+        for((s, p) <- ent.states.zip(pendings)) {
+          when(s =/= L2DirState.vacant) {
+            p := L1D$Port.L2Req.inval
+          }
+        }
+
+        nstate := L2MainState.modifyWaitInval
+      }
+    }
+
+    is(L2MainState.modifyWaitInval) {
+      for((d, p) <- d$.zip(pendings)) {
+        when(!d.l2stall) {
+          p := L1D$Port.L2Req.idle
+        }
+      }
+
+      when(!pending) {
+        for(lookup <- lookups) {
+          when(lookup.hit(targetAddr)) {
+            val coreWidth = log2Ceil(opts.CORE_COUNT)
+            val modified = Wire(lookup.cloneType)
+            modified := lookup
+            modified.states := VecInit(Seq.fill(opts.CORE_COUNT)(L2DirState.vacant))
+            modified.states(target(coreWidth-1, 0)) := L2DirState.modified
+
+            lookup := modified
+          }
+        }
+
+        nstate := L2MainState.idle
         step(target)
       }
     }
