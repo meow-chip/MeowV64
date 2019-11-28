@@ -32,6 +32,7 @@ class AXIMem(
 
   val sIDLE :: sREADING :: sWRITING :: sRESP :: sSERIAL_PRINT :: nil = Enum(5)
 
+  val rid = RegInit(0.U(4.W))
   val target = RegInit(0.U(addrWidth.W))
   val remaining: UInt = RegInit(0.U(log2Ceil(addrWidth).W))
   val state = RegInit(sIDLE)
@@ -45,6 +46,7 @@ class AXIMem(
   switch(state) {
     is(sIDLE) {
       when(io.axi.ARVALID) {
+        rid := io.axi.ARID
         target := io.axi.ARADDR
         remaining := io.axi.ARLEN + 1.U
         io.axi.ARREADY := true.B
@@ -70,6 +72,7 @@ class AXIMem(
     is(sREADING) {
       // TODO: make 3 configurable
       val output = for(i <- 0 until dataWidth/8) yield memory(target(addrWidth-1, 3) ## i.U(3.W))
+      io.axi.RID := rid
       io.axi.RDATA := VecInit(output).asUInt
       io.axi.RVALID := true.B
       io.axi.RLAST := remaining === 1.U
