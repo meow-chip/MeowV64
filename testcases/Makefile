@@ -20,7 +20,7 @@ bin/%.bin: src/%.S Makefile
 
 hex/%.hex: bin/%.bin Makefile
 	mkdir -p hex
-	hexdump $< -ve '1/1 "%02x" "\n"' > $@
+	hexdump -ve '1/1 "%02x" "\n"' $< > $@
 
 ref: $(REFS)
 

@@ -5,6 +5,7 @@ abstract class CoreDef {
   val ADDR_WIDTH: Int = 48
   val ISSUE_NUM: Int = 2
   val INIT_VEC: BigInt = BigInt("FFFFFFFF8000", 16)
+  val HART_ID: Int = 0
 }
 
 object DefaultDef extends CoreDef
