@@ -19,31 +19,30 @@ class InstrExt(val ADDR_WIDTH: Int = 48) extends Bundle {
   }
 }
 
-class InstrFetch(ADDR_WIDTH: Int = 48, FETCH_NUM: Int = 1, DATA_WIDTH: Int = 64) extends Module {
+class InstrFetch(coredef: CoreDef) extends Module {
   val io = IO(new Bundle {
-    val pc = Input(UInt(ADDR_WIDTH.W))
-    val skip = Input(UInt(log2Ceil(FETCH_NUM).W))
+    val pc = Input(UInt(coredef.ADDR_WIDTH.W))
+    val skip = Input(UInt(log2Ceil(coredef.FETCH_NUM).W))
 
-    val icache = Flipped(new ICachePort(ADDR_WIDTH, Const.INSTR_MIN_WIDTH * FETCH_NUM, DATA_WIDTH))
+    val icache = Flipped(new ICPort(coredef.L1I))
     val fetch = Input(Bool())
-    val output = Output(Vec(FETCH_NUM, new InstrExt(ADDR_WIDTH)))
-
-    val axi = new AXI(DATA_WIDTH)
+    val output = Output(Vec(coredef.FETCH_NUM, new InstrExt(coredef.ADDR_WIDTH)))
 
     val ctrl = StageCtrl.stage()
+    val rst = Input(Bool())
   })
 
+  io.icache.rst <> io.rst
   io.ctrl.stall <> io.icache.stall
-  io.ctrl.pause <> io.icache.pause
+  io.ctrl.pause <> DontCare // FIXME: impl issue fifo
   io.ctrl.flush <> io.icache.flush
-  io.axi <> io.icache.axi
   io.pc <> io.icache.addr
   io.fetch <> io.icache.read
 
   val tailFailed = RegInit(false.B)
   val tail = RegInit(0.U(Const.INSTR_MIN_WIDTH.W))
 
-  val pipePc = RegInit(0.U(ADDR_WIDTH.W))
+  val pipePc = RegInit(0.U(coredef.ADDR_WIDTH.W))
   val pipeSkip = RegInit(0.U)
   when(!io.ctrl.stall && !io.ctrl.pause) {
     pipePc := io.pc
@@ -59,13 +58,13 @@ class InstrFetch(ADDR_WIDTH: Int = 48, FETCH_NUM: Int = 1, DATA_WIDTH: Int = 64)
     */
   }
 
-  val vecView = io.icache.data.asTypeOf(Vec(FETCH_NUM, UInt(Const.INSTR_MIN_WIDTH.W)))
+  val vecView = io.icache.data.asTypeOf(Vec(coredef.FETCH_NUM, UInt(Const.INSTR_MIN_WIDTH.W)))
 
-  for(i <- (0 until FETCH_NUM)) {
+  for(i <- (0 until coredef.FETCH_NUM)) {
     io.output(i).addr := pipePc + (i*Const.INSTR_MIN_WIDTH/8).U
     io.output(i).vacant := io.icache.vacant || i.U < pipeSkip
 
-    if(i == FETCH_NUM-1) {
+    if(i == coredef.FETCH_NUM-1) {
       val (parsed, success) = vecView(i).tryAsInstr16
       io.output(i).instr := parsed
 
@@ -103,7 +102,7 @@ class InstrFetch(ADDR_WIDTH: Int = 48, FETCH_NUM: Int = 1, DATA_WIDTH: Int = 64)
       when(cond) {
         io.output(i).vacant := true.B
 
-        if(i == FETCH_NUM-1) {
+        if(i == coredef.FETCH_NUM-1) {
           when(!io.ctrl.pause && !io.ctrl.stall) {
             tailFailed := false.B
           }

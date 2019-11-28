@@ -16,27 +16,31 @@ class Core(val coredef: CoreDef = DefaultDef) extends Module {
     val pc = Output(UInt(coredef.ADDR_WIDTH.W))
   })
 
-  assert(coredef.ISSUE_NUM % 2 == 0, "issue num can only be multiples of two, because we need to support compressed instructions")
+  assert(coredef.FETCH_NUM % 2 == 0, "issue num can only be multiples of two, because we need to support compressed instructions")
 
-  val ctrl = Module(new Ctrl(coredef.ADDR_WIDTH, coredef.INIT_VEC, coredef.ISSUE_NUM))
+  val ctrl = Module(new Ctrl(coredef.ADDR_WIDTH, coredef.INIT_VEC, coredef.FETCH_NUM))
+  
+  // Caches
+  val l2 = Module(new L2Cache(coredef.L2))
+  val l1i = Module(new L1IC(coredef.L1I))
 
-  val ic = Module(new ICache(
-    coredef.ADDR_WIDTH,
-    Const.INSTR_MIN_WIDTH * coredef.ISSUE_NUM,
-    coredef.XLEN
-  ))
-  val fetch = Module(new InstrFetch(coredef.ADDR_WIDTH, coredef.ISSUE_NUM, coredef.XLEN))
-  val exec = Module(new Exec(coredef.ADDR_WIDTH, coredef.XLEN, coredef.ISSUE_NUM))
+  l2.axi <> io.iaxi
+  l2.ic <> VecInit(Seq(l1i.toL2))
+  l2.dc(0) <> L1DCPort.empty(coredef.L1D)
+  l2.directs(0) <> L1DCPort.empty(coredef.L1D)
+
+  val fetch = Module(new InstrFetch(coredef))
+  val exec = Module(new Exec(coredef.ADDR_WIDTH, coredef.XLEN, coredef.FETCH_NUM))
   val reg = Module(new RegFile(coredef.XLEN))
 
   val (csrWriter, csr) = CSR.gen(coredef.XLEN)
 
-  fetch.io.icache <> ic.io
+  fetch.io.rst := false.B // For FENCE.I
+  fetch.io.icache <> l1i.toCPU
   fetch.io.pc <> ctrl.io.pc
   fetch.io.skip <> ctrl.io.skip
   fetch.io.fetch := !ctrl.io.fetch.pause
   fetch.io.ctrl <> ctrl.io.fetch
-  fetch.io.axi <> io.iaxi
 
   // Now we forces FETCH_NUM = 1
   exec.io.instr <> fetch.io.output

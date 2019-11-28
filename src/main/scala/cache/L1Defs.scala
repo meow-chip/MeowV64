@@ -5,7 +5,7 @@ import chisel3.experimental.ChiselEnum
 
 trait L1Port extends Bundle {
   def getAddr: UInt
-  def getReq: L1D$Port.L1Req.Type
+  def getReq: L1DCPort.L1Req.Type
 
   def getStall: Bool
   def getRdata: UInt
@@ -19,7 +19,11 @@ trait L1Opts {
   val TRANSFER_SIZE: Int
 
   val LINE_WIDTH: Int
-  val L1_SIZE: Int
+  val SIZE: Int
+  val ASSOC: Int
+
+  // TODO: check is log2
+  assume(SIZE % LINE_WIDTH == 0)
 }
 
 /**
@@ -28,20 +32,20 @@ trait L1Opts {
  * I$ doesn't enforce cache coherence restrictions, so we don't have coherence protocol-related wires
  * Also, I$ doesn't have write channel, so we don't have uplink data wires
  */
-class L1I$Port(val opts: L1Opts) extends Bundle with L1Port {
+class L1ICPort(val opts: L1Opts) extends Bundle with L1Port {
   val read = Output(Bool())
   val addr = Output(UInt(opts.ADDR_WIDTH.W))
 
   val stall = Input(Bool())
-  val data = Input(UInt(opts.TRANSFER_SIZE.W))
+  val data = Input(UInt(opts.LINE_WIDTH.W))
 
   override def getAddr: UInt = addr
   override def getReq = {
-    val result = Wire(L1D$Port.L1Req())
+    val result = Wire(L1DCPort.L1Req())
     when(read) {
-      result := L1D$Port.L1Req.read
+      result := L1DCPort.L1Req.read
     }.otherwise {
-      result := L1D$Port.L1Req.idle
+      result := L1DCPort.L1Req.idle
     }
 
     result
@@ -74,16 +78,16 @@ class L1I$Port(val opts: L1Opts) extends Bundle with L1Port {
  * L1 should enforce the write-allocate policy. A read must be issued if the written line is missed
  * L2 should enforce that all valid lines in L1 is also valid in L2
  */
-class L1D$Port(val opts: L1Opts) extends Bundle with L1Port {
+class L1DCPort(val opts: L1Opts) extends Bundle with L1Port {
   // L1 -> L2 request
-  val l1req = Output(L1D$Port.L1Req())
+  val l1req = Output(L1DCPort.L1Req())
   val l1addr = Output(UInt(opts.ADDR_WIDTH.W))
   val l1stall = Input(Bool())
 
   // L1 <- L2 request
-  val l2req = Input(L1D$Port.L2Req())
+  val l2req = Input(L1DCPort.L2Req())
   val l2addr = Input(UInt(opts.ADDR_WIDTH.W))
-  val l2stall = Output(UInt(opts.ADDR_WIDTH.W))
+  val l2stall = Output(Bool())
   // TODO: add a debug signal to show if L1 really has the entry
 
   // Data bus
@@ -97,7 +101,7 @@ class L1D$Port(val opts: L1Opts) extends Bundle with L1Port {
   override def getWdata: UInt = wdata
 }
 
-object L1D$Port {
+object L1DCPort {
   /**
    * Uplink requests
    * 
@@ -123,5 +127,14 @@ object L1D$Port {
    */
   object L2Req extends ChiselEnum {
     val idle, flush, inval = Value
+  }
+
+  def empty(opts: L1Opts): L1DCPort = {
+    val port = Wire(Flipped(new L1DCPort(opts)))
+    port := DontCare
+    port.l1req := L1Req.idle
+    port.l2stall := false.B
+
+    port
   }
 }

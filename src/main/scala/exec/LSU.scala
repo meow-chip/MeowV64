@@ -11,15 +11,15 @@ class LSUExt(val XLEN: Int) extends Bundle {
 }
 
 class LSU(ADDR_WIDTH: Int, XLEN: Int) extends ExecUnit(0, new LSUExt(XLEN), ADDR_WIDTH, XLEN) {
-  val d$ = IO(Flipped(new DCachePort(ADDR_WIDTH, XLEN)))
+  val dc = IO(Flipped(new DCachePort(ADDR_WIDTH, XLEN)))
   val axi = IO(new AXI(XLEN))
 
-  d$ <> DontCare
-  d$.axi <> axi
-  d$.pause := false.B
+  dc <> DontCare
+  dc.axi <> axi
+  dc.pause := false.B
 
-  d$.read := false.B
-  d$.write := false.B
+  dc.read := false.B
+  dc.write := false.B
 
   // Load/Store related FSM
   val lsIDLE :: lsWAIT :: lsHOLD :: nil = Enum(3)
@@ -48,8 +48,8 @@ class LSU(ADDR_WIDTH: Int, XLEN: Int) extends ExecUnit(0, new LSUExt(XLEN), ADDR
           is(lsIDLE) {
             val lsAddrCompute = (pipe.rs1val.asSInt + pipe.instr.instr.imm).asUInt
             lsAddr := lsAddrCompute
-            d$.addr := (lsAddrCompute >> 3) << 3 // Align
-            d$.read := true.B
+            dc.addr := (lsAddrCompute >> 3) << 3 // Align
+            dc.read := true.B
 
             // printf("Transfered by LOAD\n")
             lsNextState := lsWAIT
@@ -57,7 +57,7 @@ class LSU(ADDR_WIDTH: Int, XLEN: Int) extends ExecUnit(0, new LSUExt(XLEN), ADDR
           }
 
           is(lsWAIT) {
-            val data = d$.rdata
+            val data = dc.rdata
             val shifted = data >> (lsAddr(2, 0) * 8.U)
             val result = Wire(UInt(XLEN.W))
             val signedResult = Wire(SInt(XLEN.W))
@@ -99,10 +99,10 @@ class LSU(ADDR_WIDTH: Int, XLEN: Int) extends ExecUnit(0, new LSUExt(XLEN), ADDR
 
             stall := true.B
 
-            when(!d$.stall) {
+            when(!dc.stall) {
               stall := false.B
               /*
-              printf(p"Load recv:\n  Rdata: ${Hexadecimal(d$.rdata)}\n")
+              printf(p"Load recv:\n  Rdata: ${Hexadecimal(dc.rdata)}\n")
               printf(p"Addr: ${Hexadecimal((lsAddr >> 3) << 3)}\n")
               printf(p"Shifted output: ${Hexadecimal(shifted)}\n")
               */
@@ -134,20 +134,20 @@ class LSU(ADDR_WIDTH: Int, XLEN: Int) extends ExecUnit(0, new LSUExt(XLEN), ADDR
             val lsAddrCompute = pipe.rs1val + pipe.instr.instr.imm.asUInt
             val lsAddrShift = lsAddrCompute(2, 0) // By 8 bits
             lsAddr := lsAddrCompute
-            d$.addr := (lsAddrCompute >> 3) << 3 // Align
-            d$.write := true.B
+            dc.addr := (lsAddrCompute >> 3) << 3 // Align
+            dc.write := true.B
 
             val tailMask = Wire(UInt((XLEN/8).W))
             tailMask := 0.U
 
             /*
             printf("Store emit: \n")
-            printf(p"  Addr: ${Hexadecimal(d$.addr)}\n")
-            printf(p"  Wdata: ${Hexadecimal(d$.wdata)}\n")
-            printf(p"  BE: ${Hexadecimal(d$.be)}\n")
+            printf(p"  Addr: ${Hexadecimal(dc.addr)}\n")
+            printf(p"  Wdata: ${Hexadecimal(dc.wdata)}\n")
+            printf(p"  BE: ${Hexadecimal(dc.be)}\n")
             */
-            d$.wdata := pipe.rs2val << (lsAddrShift * 8.U)
-            d$.be := tailMask << lsAddrShift
+            dc.wdata := pipe.rs2val << (lsAddrShift * 8.U)
+            dc.be := tailMask << lsAddrShift
 
             switch(pipe.instr.instr.funct3) {
               is(Decoder.STORE_FUNC("SB")) { tailMask := 0x01.U }
@@ -163,7 +163,7 @@ class LSU(ADDR_WIDTH: Int, XLEN: Int) extends ExecUnit(0, new LSUExt(XLEN), ADDR
 
           is(lsWAIT) {
             stall := true.B
-            when(!d$.stall) {
+            when(!dc.stall) {
               stall := false.B
               when(!io.pause) {
                 // printf("Transfered by STORE\n")

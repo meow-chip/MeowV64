@@ -77,7 +77,7 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int, ISSUE_NUM: Int) extends Module {
   val div = Module(new Div(ADDR_WIDTH, XLEN, 32))
   val csr = Module(new CSR(ADDR_WIDTH, XLEN))
 
-  lsu.d$ <> dcache.io
+  lsu.dc <> dcache.io
   lsu.axi <> io.axi
 
   csr.writer <> io.csrWriter
