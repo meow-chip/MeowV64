@@ -59,10 +59,16 @@ class L1IC(opts: L1Opts) extends MultiIOModule {
   def toAligned(addr: UInt) = getTag(addr) ## getIndex(addr) ## 0.U(OFFSET_WIDTH.W)
 
   // Stage 1, tag fetch, data fetch
-  val readouts = stores.map(s => s.read(getIndex(toCPU.addr), !toCPU.stall))
-
   val pipeRead = RegInit(false.B)
   val pipeAddr = RegInit(0.U(opts.ADDR_WIDTH.W))
+
+  val readingAddr = Wire(UInt(opts.ADDR_WIDTH.W))
+  when(toCPU.stall) {
+    readingAddr := pipeAddr
+  }.otherwise {
+    readingAddr := toCPU.addr
+  }
+  val readouts = stores.map(s => s.read(getIndex(readingAddr)))
 
   // Stage 2, data mux, refilling, reset
   val state = RegInit(S2State.rst)
