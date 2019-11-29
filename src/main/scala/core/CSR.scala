@@ -39,7 +39,8 @@ class CSR(val XLEN: Int, HART_ID: Int) {
     "mepc" -> RegInit(0.U(XLEN.W)),
     "mcause" -> RegInit(0.U(XLEN.W)),
     "mtval" -> RegInit(0.U(XLEN.W)),
-    "mip" -> RegInit(0.U(XLEN.W))
+    "mip" -> RegInit(0.U(XLEN.W)),
+    "mcycle" -> 0.U(64.W) // this should not be taken
   )
 }
 
@@ -71,7 +72,8 @@ object CSR {
     0x341 -> ("mepc", true),
     0x342 -> ("mcause", true),
     0x343 -> ("mtval", true),
-    0x344 -> ("mip", true)
+    0x344 -> ("mip", true),
+    0xB00 -> ("mcycle", true)
   )
 
   // Some bit fields shall be perserved to be WPRI/WARL.
@@ -81,9 +83,13 @@ object CSR {
     0x344 -> 0xBBB.U
   )
 
-  def gen(XLEN: Int, HART_ID: Int): (CSRWriter, CSR) = {
+  def gen(XLEN: Int, HART_ID: Int): (CSRWriter, CSR, CounterPort) = {
     val csr = new CSR(XLEN, HART_ID)
     val endpoint = Wire(Flipped(new CSRWriter(csr.XLEN)))
+    val counterport = Wire(new CounterPort)
+    counterport.valid := false.B
+    counterport.op := DontCare
+    counterport.wdata := DontCare
 
     val data = MuxLookup[UInt, UInt](
       endpoint.addr,
@@ -123,13 +129,19 @@ object CSR {
     }
 
     when(wcommit) {
-      for((addr, (name, isMut)) <- addrMap)
-        if(isMut)
+      for((addr, (name, isMut)) <- addrMap) {
+        if(addr == 0xB00) {
+          counterport.valid := true.B
+          counterport.op := endpoint.op
+          counterport.wdata := endpoint.wdata
+          endpoint.rdata := counterport.rdata
+        } else if(isMut)
           when(addr.U === endpoint.addr) {
             csr.csr(name) := wdata & mask
-          }
+        }
+      }
     }
 
-    (endpoint, csr)
+    (endpoint, csr, counterport)
   }
 }
