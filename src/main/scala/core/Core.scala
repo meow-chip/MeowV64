@@ -64,6 +64,7 @@ class Core(val coredef: CoreDef = DefaultDef) extends Module {
   csr.attach("mepc").connect(ctrl.csr.mepc)
   csr.attach("mie").connect(ctrl.csr.mie)
   csr.attach("mip").connect(ctrl.csr.mip)
+  csr.attach("mcountinhibit").connect(ctrl.csr.mcountinhibit)
 
   val mscratch = RegInit(0.U(coredef.XLEN.W))
   csr.attach("mscratch").connect(CSRPort.fromReg(coredef.XLEN, mscratch))

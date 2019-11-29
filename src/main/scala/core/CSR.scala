@@ -22,6 +22,7 @@ object CSRHelper {
     csr.readers("marchid") := 0.U(csr.XLEN.W)
     csr.readers("mimpid") := 0.U(csr.XLEN.W)
     csr.readers("misa") := 2.U(2.W) ## 0.U((csr.XLEN-2-26).W) ## CSRHelper.buildExt("IMAC").U(26.W)
+    csr.readers("mcounteren") := 0.U(csr.XLEN.W)
   }
 }
 
@@ -105,7 +106,8 @@ object CSR {
     // m[e|i]deleg should not exist on M mode only machine
     0x304 -> ("mie", true),
     0x305 -> ("mtvec", true),
-    // 0x306 -> ("mcounteren", false),
+    0x306 -> ("mcounteren", false),
+    0x320 -> ("mcountinhibit", true),
     0x340 -> ("mscratch", true),
     0x341 -> ("mepc", true),
     0x342 -> ("mcause", true),

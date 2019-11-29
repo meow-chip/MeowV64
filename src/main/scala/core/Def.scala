@@ -12,6 +12,8 @@ abstract class CoreDef {
   val INIT_VEC: BigInt = BigInt("FFFFFFFF8000", 16)
   val HART_ID: Int = 0
 
+  val CYCLE_PER_TIMEUNIT: Int = 50 // We're running on 50M
+
   val L12_LINE_WIDTH: Int = 16 // In bytes
 
   object L2 extends {

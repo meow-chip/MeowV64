@@ -34,6 +34,8 @@ class Ctrl(coredef: CoreDef) extends MultiIOModule {
     val mepc = new CSRPort(coredef.XLEN)
     val mcause = new CSRPort(coredef.XLEN)
     val mtval = new CSRPort(coredef.XLEN)
+
+    val mcountinhibit = new CSRPort(coredef.XLEN)
   });
 
   val pc = RegInit(coredef.INIT_VEC.U(coredef.ADDR_WIDTH.W))
@@ -85,8 +87,12 @@ class Ctrl(coredef: CoreDef) extends MultiIOModule {
   */
 
   val mcycle = RegInit(0.U(coredef.XLEN.W))
-  mcycle := mcycle + 1.U
+  val mcountinhibit = RegInit(0.U(coredef.XLEN.W))
+  when(!mcountinhibit(0)) {
+    mcycle := mcycle + 1.U
+  }
   csr.mcycle <> CSRPort.fromReg(coredef.XLEN, mcycle)
+  csr.mcountinhibit <> CSRPort.fromReg(coredef.XLEN, mcountinhibit)
 
   // mstatus
   val mie = RegInit(false.B)
@@ -136,7 +142,6 @@ class Ctrl(coredef: CoreDef) extends MultiIOModule {
   csr.mtval <> CSRPort.fromReg(coredef.XLEN, mtval)
   csr.mepc <> CSRPort.fromReg(coredef.XLEN, mepc)
   csr.mcause <> CSRPort.fromReg(coredef.XLEN, mcause)
-
 
   // Avoid Vivado naming collision. Com'on, Xilinx, write *CORRECT* code plz
   override def desiredName: String = "PipeCtrl"
