@@ -2,6 +2,8 @@ package core
 
 import chisel3._
 import chisel3.util._
+import chisel3.experimental.ChiselEnum
+import exec.BranchResult
 
 class StageCtrl extends Bundle {
   val stall = Input(Bool())
@@ -13,16 +15,39 @@ object StageCtrl {
   def stage() = Flipped(new StageCtrl)
 }
 
+object ExType extends ChiselEnum {
+  val INSTR_ADDR_MISALIGN = Value(0.U)
+  val INSTR_ACCESS_FAULT = Value(1.U)
+  val ILLEGAL_INSTR = Value(2.U)
+  val BREAKPOINT = Value(3.U)
+  val LOAD_ADDR_MISALIGN = Value(4.U)
+  val LOAD_ACCESS_FAULT = Value(5.U)
+  val STORE_ADDR_MISALIGN = Value(6.U)
+  val STORE_ACCESS_FAULT = Value(7.U)
+  val U_CALL = Value(8.U)
+  val S_CALL = Value(9.U)
+  val M_CALL = Value(11.U)
+  val INSTR_PAGE_FAULT = Value(12.U)
+  val LOAD_PAGE_FAULT = Value(13.U)
+  val STORE_PAGE_FAULT = Value(15.U)
+}
+
+object ExReq extends ChiselEnum {
+  val none, ex, ret = Value
+}
+
 class Ctrl(coredef: CoreDef) extends MultiIOModule {
   val io = IO(new Bundle{
     val pc = Output(UInt(coredef.ADDR_WIDTH.W))
     val skip = Output(UInt(log2Ceil(coredef.FETCH_NUM).W))
 
-    val branch = Input(Bool())
-    val baddr = Input(UInt(coredef.ADDR_WIDTH.W))
-
     val fetch = StageCtrl.ctrl()
     val exec = StageCtrl.ctrl()
+  })
+
+  val br = IO(new Bundle {
+    val req = Input(new BranchResult(coredef.ADDR_WIDTH))
+    val src = Input(UInt(coredef.ADDR_WIDTH.W))
   })
 
   val csr = IO(new Bundle {
@@ -46,31 +71,33 @@ class Ctrl(coredef: CoreDef) extends MultiIOModule {
 
   io.skip := 0.U
 
+  val branch = Wire(Bool())
+  val baddr = Wire(UInt(coredef.ADDR_WIDTH.W))
+
   // Rst comes together with an branch
   // TODO: impl rst (a.k.a. FENCE.I)
-  val performingBranch = io.branch && !io.exec.stall
 
   // IF control && PC controllert
-  when(performingBranch) {
+  when(branch) {
     // printf(p"Branched, baddr: ${Hexadecimal(io.baddr)}\n")
     io.fetch.flush := true.B
+    io.exec.flush := true.B
+
     assert(!io.fetch.stall)
+    assert(!io.exec.stall)
 
     val instrOffset = log2Ceil(Const.INSTR_MIN_WIDTH / 8)
     val issueOffset = log2Ceil(coredef.FETCH_NUM)
     val pcAlign = instrOffset + issueOffset
-    val alignedPC = io.baddr(coredef.ADDR_WIDTH-1, pcAlign) ## 0.U(pcAlign.W)
+    val alignedPC = baddr(coredef.ADDR_WIDTH-1, pcAlign) ## 0.U(pcAlign.W)
 
     pc := alignedPC + (Const.INSTR_MIN_WIDTH / 8 * coredef.FETCH_NUM).U
     io.pc := alignedPC
-    io.skip := io.baddr(pcAlign, 0) >> instrOffset
+    io.skip := baddr(pcAlign, 0) >> instrOffset
   }.elsewhen(!io.fetch.stall) {
     // printf(p"PC: ${Hexadecimal(io.pc)}\n")
     pc := pc + (Const.INSTR_MIN_WIDTH / 8 * coredef.FETCH_NUM).U
   }
-
-  // Exec ctrl
-  io.exec.flush := performingBranch
 
   /*
   printf("Ctrl status:\n")
@@ -142,6 +169,31 @@ class Ctrl(coredef: CoreDef) extends MultiIOModule {
   csr.mtval <> CSRPort.fromReg(coredef.XLEN, mtval)
   csr.mepc <> CSRPort.fromReg(coredef.XLEN, mepc)
   csr.mcause <> CSRPort.fromReg(coredef.XLEN, mcause)
+
+  branch := br.req.branch
+  baddr := br.req.target
+
+  // Exceptions
+  // FIXME: support vercotized mtvec
+  when(br.req.ex === ExReq.ex) {
+    // Branch into mtvec
+    branch := true.B
+    baddr := mtvec(coredef.ADDR_WIDTH-1, 2) ## 0.U(2.W)
+
+    // Save related stuffs
+    mepc := br.src
+    mcause := (false.B << (coredef.XLEN-1)) | br.req.extype.asUInt()
+    mtval := 0.U
+
+    mpie := mie
+    mie := false.B
+  }.elsewhen(br.req.ex === ExReq.ret) {
+    branch := true.B
+    baddr := mepc
+
+    mie := mpie
+    mpie := true.B
+  }
 
   // Avoid Vivado naming collision. Com'on, Xilinx, write *CORRECT* code plz
   override def desiredName: String = "PipeCtrl"

@@ -101,7 +101,7 @@ object Decoder {
   ).mapValues(Integer.parseInt(_, 2).U(3.W))
 
   val SYSTEM_FUNC: Map[String, UInt] = Map(
-    "ECALL/EBREAK" -> "000",
+    "PRIV" -> "000",
     "CSRRW" -> "001",
     "CSRRS" -> "010",
     "CSRRC" -> "011",
@@ -109,6 +109,12 @@ object Decoder {
     "CSRRSI" -> "110",
     "CSRRCI" -> "111"
   ).mapValues(Integer.parseInt(_, 2).U(3.W))
+
+  val PRIV_RS2: Map[String, UInt] = Map(
+    "ECALL" -> "00000",
+    "EBREAK" -> "00001",
+    "RET" -> "00010"
+  ).mapValues(Integer.parseInt(_, 2).U(5.W))
 
   val MULDIV_FUNCT7: UInt = Integer.parseInt("0000001", 2).U(7.W)
   val MULDIV_FUNC: Map[String, UInt] = Map(

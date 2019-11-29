@@ -48,8 +48,8 @@ class Core(val coredef: CoreDef = DefaultDef) extends Module {
   exec.io.axi <> io.daxi
   exec.io.csrWriter <> csrWriter
   
-  ctrl.io.branch <> exec.io.branch.branch
-  ctrl.io.baddr <> exec.io.branch.target
+  ctrl.br.req <> exec.io.branch
+  ctrl.br.src <> exec.io.brSrc
 
   io.pc := ctrl.io.pc
 

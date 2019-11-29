@@ -10,19 +10,46 @@ import cache.DCache
 import instr.Decoder.InstrType
 import _root_.core.CSRWriter
 import _root_.core.CoreDef
+import _root_.core.ExReq
+import _root_.core.ExType
 
 class BranchResult(val ADDR_WIDTH: Int = 48) extends Bundle {
   val branch = Bool()
   val target = UInt(ADDR_WIDTH.W)
 
+  val ex = ExReq()
+  val extype = ExType()
+
   def nofire() = {
     branch := false.B
     target := DontCare
+
+    ex := ExReq.none
+    extype := DontCare
   }
 
   def fire(addr: UInt) = {
     branch := true.B
     target := addr
+
+    ex := ExReq.none
+    extype := DontCare
+  }
+
+  def ex(et: ExType.Type) {
+    branch := false.B
+    target := DontCare
+
+    ex := ExReq.ex
+    extype := et
+  }
+
+  def eret() {
+    branch := false.B
+    target := DontCare
+
+    ex := ExReq.ret
+    extype := DontCare
   }
 }
 
@@ -37,6 +64,7 @@ class Exec(coredef: CoreDef) extends MultiIOModule {
     val ctrl = StageCtrl.stage()
 
     val branch = Output(new BranchResult(coredef.ADDR_WIDTH))
+    val brSrc = Output(UInt(coredef.ADDR_WIDTH.W))
 
     val csrWriter = new CSRWriter(coredef.XLEN)
   })
@@ -57,11 +85,13 @@ class Exec(coredef: CoreDef) extends MultiIOModule {
   val readRs1 = Wire(UInt(coredef.XLEN.W))
   val readRs2 = Wire(UInt(coredef.XLEN.W))
 
-  val branched = RegInit(false.B)
-  val branchedAddr = Reg(UInt(coredef.ADDR_WIDTH.W))
+  io.branch.branch := false.B
+  io.branch.target := DontCare
 
-  io.branch.branch := branched
-  io.branch.target := branchedAddr
+  io.branch.ex := ExReq.none
+  io.branch.extype := DontCare
+
+  io.brSrc := DontCare
 
   io.regReaders(0).addr := current(instr).instr.rs1
   io.regReaders(1).addr := current(instr).instr.rs2
@@ -101,8 +131,8 @@ class Exec(coredef: CoreDef) extends MultiIOModule {
     unitState := unitStateNext
   }
 
-  val substall = (!branched) && (!current(instr).vacant) && (stall || unitStateNext =/= sIDLE)
-  io.ctrl.stall := instr =/= coredef.ISSUE_NUM.U && !branched
+  val substall = (!current(instr).vacant) && (stall || unitStateNext =/= sIDLE)
+  io.ctrl.stall := instr =/= coredef.ISSUE_NUM.U && !io.ctrl.flush
 
   when(!substall && instr === (coredef.ISSUE_NUM-1).U) {
     io.ctrl.stall := false.B
@@ -112,9 +142,7 @@ class Exec(coredef: CoreDef) extends MultiIOModule {
 
   when(io.ctrl.flush) {
     current := default
-    branched := false.B
   }.elsewhen(ifReady && !io.ctrl.stall) {
-    branched := false.B
     /*
     printf("[FETCH]: \n")
     printf(p"${io.instr}")
@@ -135,7 +163,9 @@ class Exec(coredef: CoreDef) extends MultiIOModule {
   }
   */
 
-  when(!io.ctrl.stall && ifReady) {
+  when(io.ctrl.flush) {
+    instr := 0.U
+  } .elsewhen(!io.ctrl.stall && ifReady) {
     instr := 0.U
   }.elsewhen(!substall && instr =/= coredef.ISSUE_NUM.U) {
     instr := instr + 1.U
@@ -155,7 +185,7 @@ class Exec(coredef: CoreDef) extends MultiIOModule {
     u.io.next := placeholder
   }
 
-  when(!branched && instr =/= coredef.ISSUE_NUM.U && !current(instr).vacant && unitState === sIDLE) {
+  when(instr =/= coredef.ISSUE_NUM.U && !current(instr).vacant && unitState === sIDLE) {
     unitStateNext := sRUNNING
 
     // printf(p"current instr: ${instr}\n")
@@ -218,7 +248,12 @@ class Exec(coredef: CoreDef) extends MultiIOModule {
         // ECALL and EBREAK actually falls into here.
         // TODO: impl ECALL/EBREAK
 
-        csr.io.next := unitInput
+        when(unitInput.instr.instr.funct3 === Decoder.SYSTEM_FUNC("PRIV")) {
+          // ECALL/EBREAK/xRET
+          br.io.next := unitInput
+        }.otherwise {
+          csr.io.next := unitInput
+        }
       }
 
     }
@@ -228,7 +263,7 @@ class Exec(coredef: CoreDef) extends MultiIOModule {
 
   for(u <- units) {
     u.io.pause := false.B
-    u.io.flush := io.ctrl.flush && !io.ctrl.stall
+    u.io.flush := io.ctrl.flush
 
     /*
     when(u.io.stall) {
@@ -236,10 +271,9 @@ class Exec(coredef: CoreDef) extends MultiIOModule {
     }
     */
 
-    when(u.io.retirement.branch.branch) {
-      branched := true.B
-      branchedAddr := u.io.retirement.branch.target
+    when(!u.io.stall && (u.io.retirement.branch.branch || u.io.retirement.branch.ex =/= ExReq.none)) {
       io.branch := u.io.retirement.branch
+      io.brSrc := u.io.retired.instr.addr
       io.ctrl.stall := false.B // Forcefully unstall
       // printf(p"[BRANCH] ${Hexadecimal(branchedAddr)}\n")
     }

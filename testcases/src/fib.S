@@ -1,6 +1,6 @@
   li sp, 0x10000
 	li ra, 0x100000
-	j main
+	j _start
 print:
 	addi	sp,sp,-64
 	sd	s0,56(sp)
@@ -61,7 +61,9 @@ print:
 	ld	s0,56(sp)
 	addi	sp,sp,64
 	jr	ra
-main:
+.section .text
+.globl _start
+_start:
 	addi	sp,sp,-32
 	sd	ra,24(sp)
 	sd	s0,16(sp)

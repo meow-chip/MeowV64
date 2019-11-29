@@ -4,42 +4,67 @@ import chisel3._
 import chisel3.util._
 import instr.Decoder
 import instr.Decoder.InstrType
+import _root_.core.ExType
+import _root_.core.ExReq
 
 class BranchExt extends Bundle {
   val branched = Bool()
+
+  val ex = ExReq()
+  val extype = ExType()
 }
 
 class Branch(ADDR_WIDTH: Int, XLEN: Int) extends ExecUnit(0, new BranchExt, ADDR_WIDTH, XLEN) {
   def map(stage: Int, pipe: PipeInstr, ext: Option[BranchExt]): (BranchExt, Bool) = {
     val ext = Wire(new BranchExt)
     ext.branched := false.B
+    ext.ex := ExReq.none
+    ext.extype := DontCare
 
     val op1 = pipe.rs1val
     val op2 = pipe.rs2val
 
-    switch(pipe.instr.instr.funct3) {
-      is(Decoder.BRANCH_FUNC("BEQ")) {
-        ext.branched := op1 === op2
-      }
+    when(pipe.instr.instr.op === Decoder.Op("BRANCH").ident) {
+      switch(pipe.instr.instr.funct3) {
+        is(Decoder.BRANCH_FUNC("BEQ")) {
+          ext.branched := op1 === op2
+        }
 
-      is(Decoder.BRANCH_FUNC("BNE")) {
-        ext.branched := op1 =/= op2
-      }
+        is(Decoder.BRANCH_FUNC("BNE")) {
+          ext.branched := op1 =/= op2
+        }
 
-      is(Decoder.BRANCH_FUNC("BLT")) {
-        ext.branched := op1.asSInt < op2.asSInt
-      }
+        is(Decoder.BRANCH_FUNC("BLT")) {
+          ext.branched := op1.asSInt < op2.asSInt
+        }
 
-      is(Decoder.BRANCH_FUNC("BGE")) {
-        ext.branched := op1.asSInt >= op2.asSInt
-      }
+        is(Decoder.BRANCH_FUNC("BGE")) {
+          ext.branched := op1.asSInt >= op2.asSInt
+        }
 
-      is(Decoder.BRANCH_FUNC("BLTU")) {
-        ext.branched := op1 < op2
-      }
+        is(Decoder.BRANCH_FUNC("BLTU")) {
+          ext.branched := op1 < op2
+        }
 
-      is(Decoder.BRANCH_FUNC("BGEU")) {
-        ext.branched := op1 >= op2
+        is(Decoder.BRANCH_FUNC("BGEU")) {
+          ext.branched := op1 >= op2
+        }
+      }
+    }.elsewhen(pipe.instr.instr.op === Decoder.Op("SYSTEM").ident) { // ECALL...
+      switch(pipe.instr.instr.rs2) {
+        is(Decoder.PRIV_RS2("ECALL")) {
+          ext.ex := ExReq.ex
+          ext.extype := ExType.M_CALL
+        }
+
+        is(Decoder.PRIV_RS2("EBREAK")) {
+          ext.ex := ExReq.ex
+          ext.extype := ExType.BREAKPOINT
+        }
+
+        is(Decoder.PRIV_RS2("RET")) {
+          ext.ex := ExReq.ret
+        }
       }
     }
 
@@ -49,7 +74,15 @@ class Branch(ADDR_WIDTH: Int, XLEN: Int) extends ExecUnit(0, new BranchExt, ADDR
   def finalize(pipe: PipeInstr, ext: BranchExt): RetireInfo = {
     val info = Wire(new RetireInfo(ADDR_WIDTH, XLEN))
 
-    when(pipe.instr.instr.op === Decoder.Op("BRANCH").ident) {
+    when(ext.ex === ExReq.ret) {
+      info.regWaddr := 0.U
+      info.regWdata := DontCare
+      info.branch.eret()
+    }.elsewhen(ext.ex === ExReq.ex) {
+      info.regWaddr := 0.U
+      info.regWdata := DontCare
+      info.branch.ex(ext.extype)
+    }.elsewhen(pipe.instr.instr.op === Decoder.Op("BRANCH").ident) {
       info.regWaddr := 0.U
       info.regWdata := DontCare
       when(ext.branched) {
