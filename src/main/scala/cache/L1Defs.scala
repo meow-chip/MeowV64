@@ -37,7 +37,7 @@ class L1ICPort(val opts: L1Opts) extends Bundle with L1Port {
   val addr = Output(UInt(opts.ADDR_WIDTH.W))
 
   val stall = Input(Bool())
-  val data = Input(UInt(opts.LINE_WIDTH.W))
+  val data = Input(UInt((opts.LINE_WIDTH * 8).W))
 
   override def getAddr: UInt = addr
   override def getReq = {

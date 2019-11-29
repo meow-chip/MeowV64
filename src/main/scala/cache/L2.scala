@@ -6,6 +6,7 @@ import chisel3.experimental._
 import _root_.data._
 import chisel3.util._
 import cache.L1DCPort.L2Req
+import cache.L1DCPort.L1Req
 
 /**
  * L2 cache
@@ -122,7 +123,7 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
   axi <> 0.U.asTypeOf(axi)
 
   // Assoc and writers
-  val assocs = for(_ <- (0 until opts.ASSOC)) yield new L2Assoc(opts)
+  val assocs = Seq.fill(opts.ASSOC)(new L2Assoc(opts))
 
   def writeData(idx: UInt, addr: UInt, data: UInt) {
     for((assoc, aidx) <- assocs.zipWithIndex) {
@@ -151,7 +152,7 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
   // Joint ports
   val addrs = Wire(Vec(opts.CORE_COUNT * 3, UInt(opts.ADDR_WIDTH.W)))
   val ops = Wire(Vec(opts.CORE_COUNT * 3, L1DCPort.L1Req()))
-  val rdatas = Wire(Vec(opts.CORE_COUNT * 3, UInt(opts.LINE_WIDTH.W)))
+  val rdatas = Wire(Vec(opts.CORE_COUNT * 3, UInt((opts.LINE_WIDTH * 8).W)))
   val stalls = Wire(Vec(opts.CORE_COUNT * 3, Bool()))
   for((p, a) <- ports.zip(addrs.iterator)) {
     a := p.getAddr
@@ -170,7 +171,7 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
   }
 
   for(r <- rdatas) r := DontCare
-  stalls := VecInit(Seq.fill(opts.CORE_COUNT * 3)(true.B))
+  stalls := VecInit(ops.map(op => op =/= L1Req.idle))
 
   // Refillers
   val misses = RegInit(VecInit(Seq.fill(opts.CORE_COUNT * 3)(false.B)))
@@ -246,7 +247,7 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
 
       rstCnt := rstCnt + 1.U
 
-      when(rstCnt === (opts.SIZE / opts.LINE_WIDTH / opts.ASSOC).U) {
+      when(rstCnt.andR) {
         nstate := L2MainState.idle
       }
     }
@@ -270,7 +271,7 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
           when(misses(target)) {
             when(refilled(target)) {
               when(targetUncached) {
-                val rdata = bufs(target).asTypeOf(UInt(opts.LINE_WIDTH.W))
+                val rdata = bufs(target).asTypeOf(UInt((opts.LINE_WIDTH * 8).W))
                 rdatas(target) := rdata
                 stalls(target) := false.B
 
@@ -280,6 +281,7 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
                 nstate := L2MainState.idle
                 step(target)
               }.otherwise {
+                victim := rand(log2Ceil(opts.ASSOC)-1, 0)
                 nstate := L2MainState.readRefilled
               }
             }.otherwise {
@@ -363,11 +365,9 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
     }
 
     is(L2MainState.readRefilled) {
-      val curVictim = rand(log2Ceil(opts.ASSOC)-1, 0)
-      victim := curVictim
 
       def commit() = {
-        val rdata = bufs(target).asTypeOf(UInt(opts.LINE_WIDTH.W))
+        val rdata = bufs(target).asTypeOf(UInt((opts.LINE_WIDTH * 8).W))
         // TODO: check if CORE_COUNT = 2^n
         val coreWidth = if(opts.CORE_COUNT != 1) { log2Ceil(opts.CORE_COUNT) } else { 1 }
 
@@ -379,13 +379,13 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
         }
 
         writeDir(
-          curVictim,
+          victim,
           targetAddr,
           L2DirEntry.withAddr(opts, targetAddr).editState(target(coreWidth-1, 0), sinit)
         )
 
         writeData(
-          curVictim,
+          victim,
           targetAddr,
           rdata
         )
@@ -397,18 +397,19 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
         refilled(target) := false.B
 
         step(target)
+        nstate := L2MainState.idle
       }
 
-      when(!lookups(curVictim).valid) {
+      when(!lookups(victim).valid) {
         commit()
       }.otherwise {
-        val hasDirty = lookups(curVictim).states.foldLeft(false.B)((acc, s) => acc || s === L2DirState.modified)
-        val hasShared = lookups(curVictim).states.foldLeft(false.B)((acc, s) => acc || s =/= L2DirState.vacant)
+        val hasDirty = lookups(victim).states.foldLeft(false.B)((acc, s) => acc || s === L2DirState.modified)
+        val hasShared = lookups(victim).states.foldLeft(false.B)((acc, s) => acc || s =/= L2DirState.vacant)
 
         when(hasDirty) {
           pendingVictim := true.B
 
-          for((s, p) <- lookups(curVictim).states.zip(pendings)) {
+          for((s, p) <- lookups(victim).states.zip(pendings)) {
             when(s === L2DirState.modified) {
               p := L1DCPort.L2Req.flush
             }
@@ -418,21 +419,21 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
         }.elsewhen(hasShared) {
           pendingVictim := true.B
 
-          for((s, p) <- lookups(curVictim).states.zip(pendings)) {
+          for((s, p) <- lookups(victim).states.zip(pendings)) {
             when(s === L2DirState.modified) {
               p := L1DCPort.L2Req.inval
             }
           }
 
           nstate := L2MainState.waitInval
-        }.elsewhen(lookups(curVictim).dirty) {
+        }.elsewhen(lookups(victim).dirty) {
           // Is an dirty entry, place into wb fifo
 
           // Wait until not full
           when(!wbFifoFull) {
-            wbFifo(wbFifoTail).lineaddr := lookups(curVictim).tag ## targetAddr(INDEX_OFFSET_LENGTH-1, OFFSET_LENGTH)
+            wbFifo(wbFifoTail).lineaddr := lookups(victim).tag ## targetAddr(INDEX_OFFSET_LENGTH-1, OFFSET_LENGTH)
             // Datas should be ready now, after one cycle after jumped from idle
-            wbFifo(wbFifoTail).data := datas(curVictim)
+            wbFifo(wbFifoTail).data := datas(victim)
             wbFifoTail := wbFifoTail +% 1.U
 
             commit()
@@ -552,6 +553,8 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
 
             misses(target) := false.B
             refilled(target) := false.B
+
+            nstate := L2MainState.idle
           }
 
           when(hasDirty) {
@@ -632,7 +635,7 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
   }
 
   // Receiver, deals with R channel, and victimize
-  val bufptrs = RegInit(VecInit(Seq.fill(opts.CORE_COUNT * 2)(
+  val bufptrs = RegInit(VecInit(Seq.fill(opts.CORE_COUNT * 3)(
     0.U(log2Ceil(opts.LINE_WIDTH * 8 / axi.DATA_WIDTH).W)
   )))
 

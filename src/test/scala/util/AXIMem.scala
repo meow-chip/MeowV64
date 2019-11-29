@@ -71,7 +71,7 @@ class AXIMem(
 
     is(sREADING) {
       // TODO: make 3 configurable
-      val output = for(i <- 0 until dataWidth/8) yield memory(target(addrWidth-1, 3) ## i.U(3.W))
+      val output = (0 until dataWidth/8).map(i => memory(target(addrWidth-1, 3) ## i.U(3.W)))
       io.axi.RID := rid
       io.axi.RDATA := VecInit(output).asUInt
       io.axi.RVALID := true.B

@@ -5,6 +5,7 @@ import _root_.data._
 import chisel3.util.log2Ceil
 import chisel3.experimental.ChiselEnum
 import chisel3.util._
+import Chisel.experimental.chiselName
 
 class ICPort(val opts: L1Opts) extends Bundle {
   val addr = Input(UInt(opts.ADDR_WIDTH.W))
@@ -33,6 +34,7 @@ class Line(val opts: L1Opts) extends Bundle {
 }
 
 // TODO: Change to xpm_tdpmem
+@chiselName
 class L1IC(opts: L1Opts) extends MultiIOModule {
   val toCPU = IO(new ICPort(opts))
   val toL2 = IO(new L1ICPort(opts))
@@ -51,7 +53,7 @@ class L1IC(opts: L1Opts) extends MultiIOModule {
   val INDEX_WIDTH = INDEX_OFFSET_WIDTH - OFFSET_WIDTH
   val IGNORED_WIDTH = log2Ceil(opts.TRANSFER_SIZE / 8)
 
-  val stores = for(i <- Seq(0 until opts.ASSOC)) yield SyncReadMem(LINE_PER_ASSOC, new Line(opts))
+  val stores = Seq.fill(opts.ASSOC)({ SyncReadMem(LINE_PER_ASSOC, new Line(opts)) })
 
   def getTransferOffset(addr: UInt) = addr(OFFSET_WIDTH-1, IGNORED_WIDTH)
   def getIndex(addr: UInt) = addr(INDEX_OFFSET_WIDTH-1, OFFSET_WIDTH)
@@ -68,11 +70,19 @@ class L1IC(opts: L1Opts) extends MultiIOModule {
   }.otherwise {
     readingAddr := toCPU.addr
   }
-  val readouts = stores.map(s => s.read(getIndex(readingAddr)))
+  val rawReadouts = stores.map(s => s.read(getIndex(readingAddr)))
+  val savedReadouts = Seq.fill(opts.ASSOC)(Reg(new Line(opts)))
+
+  val readouts = Seq.fill(opts.ASSOC)(Wire(new Line(opts)))
 
   // Stage 2, data mux, refilling, reset
   val state = RegInit(S2State.rst)
   val nstate = Wire(S2State())
+
+  // To prevents RAW
+  for((r, (raw, saved)) <- readouts.iterator.zip(rawReadouts.iterator.zip(savedReadouts.iterator))) {
+    r := Mux(RegNext(state) === S2State.refill && state === S2State.idle, raw, raw)
+  }
 
   val rand = chisel3.util.random.LFSR(8)
   val victim = RegInit(0.U(log2Ceil(opts.ASSOC)))
@@ -95,9 +105,21 @@ class L1IC(opts: L1Opts) extends MultiIOModule {
     pipeAddr := toCPU.addr
   }
 
-  when(toCPU.flush) {
-    when(toCPU.rst) {
+  when(state === S2State.rst) {
+    for(assoc <- stores) {
+      assoc.write(rstCnt, rstLine)
+    }
+
+    rstCnt := rstCnt +% 1.U
+
+    when(rstCnt.andR()) {
+      // Omit current request
+      toCPU.vacant := true.B
       nstate := S2State.idle
+    }
+  }.elsewhen(toCPU.flush) {
+    when(toCPU.rst) {
+      nstate := S2State.rst
     }.otherwise {
       toCPU.vacant := true.B
       toCPU.stall := false.B
@@ -106,22 +128,8 @@ class L1IC(opts: L1Opts) extends MultiIOModule {
     }
   }.otherwise {
     switch(state) {
-      is(S2State.rst) {
-        for(assoc <- stores) {
-          assoc.write(rstCnt, rstLine)
-        }
-
-        rstCnt := rstCnt +% 1.U
-
-        when(rstCnt.andR()) {
-          // Omit current request
-          toCPU.vacant := true.B
-          nstate := S2State.idle
-        }
-      }
-
       is(S2State.idle) {
-        val hit = readouts.foldLeft(false.B)((acc, line) => line.tag === getTag(pipeAddr))
+        val hit = readouts.foldLeft(false.B)((acc, line) => acc || line.valid && line.tag === getTag(pipeAddr))
         val rdata = MuxCase(0.U.asTypeOf(new Line(opts).data), readouts.map(line => (line.valid && getTag(pipeAddr) === line.tag, line.data)))
 
         when(pipeRead) {
@@ -148,14 +156,17 @@ class L1IC(opts: L1Opts) extends MultiIOModule {
           written.valid := true.B
 
           for((store, idx) <- stores.zipWithIndex) {
+            savedReadouts(idx) := rawReadouts(idx)
             when(rand(ASSOC_IDX_WIDTH-1, 0) === idx.U(ASSOC_IDX_WIDTH.W)) {
               store.write(getIndex(pipeAddr), written)
+              savedReadouts(idx) := written
             }
           }
 
           toCPU.data := written.data(getTransferOffset(pipeAddr))
+          toCPU.vacant := false.B
 
-          nstate := S2State.finished
+          nstate := S2State.idle
         }
       }
     }
