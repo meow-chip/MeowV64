@@ -29,7 +29,9 @@ class Core(val coredef: CoreDef = DefaultDef) extends Module {
   val exec = Module(new Exec(coredef.ADDR_WIDTH, coredef.XLEN, coredef.ISSUE_NUM))
   val reg = Module(new RegFile(coredef.XLEN))
 
-  val (csrWriter, csr) = CSR.gen(coredef.XLEN, coredef.HART_ID)
+  val (csrWriter, csr, counterPort) = CSR.gen(coredef.XLEN, coredef.HART_ID)
+  val mcycle = Module(new Counter(coredef.XLEN))
+  counterPort <> mcycle.io
 
   fetch.io.icache <> ic.io
   fetch.io.pc <> ctrl.io.pc
