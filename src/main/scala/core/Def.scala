@@ -7,6 +7,8 @@ abstract class CoreDef {
   val XLEN: Int = 64
   val ADDR_WIDTH: Int = 48
   val FETCH_NUM: Int = 2
+  val ISSUE_NUM: Int = 2
+  val ISSUE_FIFO_DEPTH: Int = FETCH_NUM * 4
   val INIT_VEC: BigInt = BigInt("FFFFFFFF8000", 16)
   val HART_ID: Int = 0
 

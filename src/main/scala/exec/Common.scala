@@ -12,6 +12,18 @@ class RetireInfo(val ADDR_WIDTH: Int, val XLEN: Int) extends Bundle {
   val branch = new BranchResult(ADDR_WIDTH)
 }
 
+object RetireInfo {
+  def vacant(ADDR_WIDTH: Int, XLEN: Int): RetireInfo = {
+    val info = Wire(new RetireInfo(ADDR_WIDTH, XLEN))
+
+    info.branch.nofire()
+    info.regWaddr := 0.U
+    info.regWdata := DontCare
+
+    info
+  }
+}
+
 class PipeInstr(val ADDR_WIDTH: Int, val XLEN: Int) extends Bundle {
   val instr = new InstrExt
 
@@ -19,11 +31,23 @@ class PipeInstr(val ADDR_WIDTH: Int, val XLEN: Int) extends Bundle {
   val rs2val = UInt(XLEN.W)
 }
 
+object PipeInstr {
+  def empty(ADDR_WIDTH: Int, XLEN: Int): PipeInstr = {
+    val ret = Wire(new PipeInstr(ADDR_WIDTH, XLEN))
+    ret.instr := InstrExt.empty(ADDR_WIDTH)
+    ret.rs1val := DontCare
+    ret.rs2val := DontCare
+
+    ret
+  }
+}
+
 class ExecUnitPort(val ADDR_WIDTH: Int = 48, val XLEN: Int = 64) extends Bundle {
   val next = Input(new PipeInstr(ADDR_WIDTH, XLEN))
 
   val stall = Output(Bool())
   val pause = Input(Bool())
+  val flush = Input(Bool())
 
   val retirement = Output(new RetireInfo(ADDR_WIDTH, XLEN))
   val retired = Output(new PipeInstr(ADDR_WIDTH, XLEN))
@@ -57,7 +81,6 @@ abstract class ExecUnit[T <: Data](
 
   def init(): Unit = {
     if(DEPTH != 0) {
-      // Default push
       val (fExt, fStall) = connectStage(0, io.next, None)
       var stall = fStall
 
@@ -86,9 +109,16 @@ abstract class ExecUnit[T <: Data](
         current(DEPTH-1).ext := nExt
       }
 
+      when(io.flush) { // Override current
+        for(c <- current) {
+          c.pipe := PipeInstr.empty(ADDR_WIDTH, XLEN)
+          c.ext := DontCare
+        }
+      }
+
       io.retired := current(DEPTH-1).pipe
       when(io.retired.instr.vacant) {
-        io.retirement := vacantFinalize()
+        io.retirement := RetireInfo.vacant(ADDR_WIDTH, XLEN)
       }.otherwise {
         io.retirement := finalize(current(DEPTH-1).pipe, nExt)
       }
@@ -98,7 +128,7 @@ abstract class ExecUnit[T <: Data](
       // Use chisel's unconnected wire check to enforce that no ext is exported from this exec unit
       io.retired := io.next
       when(io.retired.instr.vacant) {
-        io.retirement := vacantFinalize()
+        io.retirement := RetireInfo.vacant(ADDR_WIDTH, XLEN)
       }.otherwise {
         io.retirement := finalize(io.next, nExt)
       }
@@ -115,16 +145,6 @@ abstract class ExecUnit[T <: Data](
   def map(stage: Int, pipe: PipeInstr, ext: Option[T]): (T, Bool)
 
   def finalize(pipe: PipeInstr, ext: T): RetireInfo 
-
-  def vacantFinalize(): RetireInfo = {
-    val info = Wire(new RetireInfo(ADDR_WIDTH, XLEN))
-
-    info.branch.nofire()
-    info.regWaddr := 0.U
-    info.regWdata := DontCare
-
-    info
-  }
 
   def connectStage(stage: Int, pipe: PipeInstr, ext: Option[T]): (T, Bool) = {
     val nExt = Wire(ExtData.cloneType)

@@ -20,7 +20,7 @@ class ICPort(val opts: L1Opts) extends Bundle {
 }
 
 object S2State extends ChiselEnum {
-  val rst, idle, refill, finished = Value
+  val rst, idle, refill, refillWait = Value
 }
 
 class Line(val opts: L1Opts) extends Bundle {
@@ -105,6 +105,9 @@ class L1IC(opts: L1Opts) extends MultiIOModule {
     pipeAddr := toCPU.addr
   }
 
+  val waitBufAddr = RegInit(0.U(opts.ADDR_WIDTH.W))
+  val waitBufFull = RegInit(false.B)
+
   when(state === S2State.rst) {
     for(assoc <- stores) {
       assoc.write(rstCnt, rstLine)
@@ -124,7 +127,26 @@ class L1IC(opts: L1Opts) extends MultiIOModule {
       toCPU.vacant := true.B
       toCPU.stall := false.B
       // Omit current request
+      // FIXME: may break refiller
+
       nstate := S2State.idle
+
+      when(state === S2State.refillWait) {
+        when(toL2.stall) {
+          waitBufFull := false.B
+        }.otherwise {
+          nstate := S2State.idle
+        }
+      }
+
+      when(state === S2State.refill) {
+        when(toL2.stall) {
+          nstate := S2State.refillWait
+          waitBufFull := false.B
+        }.otherwise {
+          nstate := S2State.idle
+        }
+      }
     }
   }.otherwise {
     switch(state) {
@@ -167,6 +189,26 @@ class L1IC(opts: L1Opts) extends MultiIOModule {
           toCPU.vacant := false.B
 
           nstate := S2State.idle
+        }
+      }
+
+      is(S2State.refillWait) {
+        toL2.addr := toAligned(pipeAddr)
+        toL2.read := true.B
+
+        // Override stall signal, so that IF doesn't proceed
+        toCPU.vacant := true.B
+        toCPU.stall := waitBufFull
+
+        when(!toL2.stall) {
+          nstate := S2State.idle
+          // Ignore returned value
+          when(waitBufFull) {
+            pipeAddr := waitBufAddr
+          }
+        }.elsewhen(toCPU.read) {
+          waitBufAddr := toCPU.addr
+          waitBufFull := true.B
         }
       }
     }

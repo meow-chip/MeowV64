@@ -49,7 +49,7 @@ object ExecTest {
     args match {
       case None => chisel3.iotesters.Driver(
         () => new WrappedCore(ExecDef, file),
-        "treadle"
+        "verilator"
       ) { new ExecTest(_) }
 
       case Some(args) => chisel3.iotesters.Driver.execute(

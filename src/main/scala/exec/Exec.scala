@@ -9,6 +9,7 @@ import cache.DCachePort
 import cache.DCache
 import instr.Decoder.InstrType
 import _root_.core.CSRWriter
+import _root_.core.CoreDef
 
 class BranchResult(val ADDR_WIDTH: Int = 48) extends Bundle {
   val branch = Bool()
@@ -26,40 +27,38 @@ class BranchResult(val ADDR_WIDTH: Int = 48) extends Bundle {
 }
 
 
-class Exec(ADDR_WIDTH: Int, XLEN: Int, ISSUE_NUM: Int) extends Module {
+class Exec(coredef: CoreDef) extends MultiIOModule {
   val io = IO(new Bundle {
     val regReaders = Vec(2, new RegReader)
     val regWriter = new RegWriter
-    val instr = Input(Vec(ISSUE_NUM, new InstrExt(ADDR_WIDTH)))
 
-    val axi = new AXI(XLEN)
+    val axi = new AXI(coredef.XLEN)
 
     val ctrl = StageCtrl.stage()
 
-    val branch = Output(new BranchResult(ADDR_WIDTH))
+    val branch = Output(new BranchResult(coredef.ADDR_WIDTH))
 
-    val csrWriter = new CSRWriter(XLEN)
+    val csrWriter = new CSRWriter(coredef.XLEN)
   })
+
+  val toIF = IO(new InstrFifoReader(coredef))
 
   io.branch := 0.U.asTypeOf(io.branch)
   io.regWriter.addr := 0.U
   io.regWriter.data := 0.U
 
-  val dcache = Module(new DCache(ADDR_WIDTH, XLEN))
+  toIF.pop := 0.U
 
-  val default = Wire(Vec(ISSUE_NUM, new InstrExt))
-  for(i <- default) {
-    i.addr := DontCare
-    i.instr := 0.U.asTypeOf(i.instr)
-    i.vacant := true.B
-  }
+  val dcache = Module(new DCache(coredef.ADDR_WIDTH, coredef.XLEN))
+
+  val default = VecInit(Seq.fill(coredef.ISSUE_NUM)(InstrExt.empty(coredef.ADDR_WIDTH)))
   val current = RegInit(default)
-  val instr = RegInit(0.U(log2Ceil(ISSUE_NUM+1).W))
-  val readRs1 = Wire(UInt(XLEN.W))
-  val readRs2 = Wire(UInt(XLEN.W))
+  val instr = RegInit(0.U(log2Ceil(coredef.ISSUE_NUM+1).W))
+  val readRs1 = Wire(UInt(coredef.XLEN.W))
+  val readRs2 = Wire(UInt(coredef.XLEN.W))
 
   val branched = RegInit(false.B)
-  val branchedAddr = Reg(UInt(ADDR_WIDTH.W))
+  val branchedAddr = Reg(UInt(coredef.ADDR_WIDTH.W))
 
   io.branch.branch := branched
   io.branch.target := branchedAddr
@@ -69,13 +68,13 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int, ISSUE_NUM: Int) extends Module {
   readRs1 := io.regReaders(0).data
   readRs2 := io.regReaders(1).data
 
-  val alu = Module(new ALU(ADDR_WIDTH, XLEN))
-  val imm = Module(new Imm(ADDR_WIDTH, XLEN))
-  val lsu = Module(new LSU(ADDR_WIDTH, XLEN))
-  val br = Module(new Branch(ADDR_WIDTH, XLEN))
-  val mul = Module(new Mul(ADDR_WIDTH, XLEN))
-  val div = Module(new Div(ADDR_WIDTH, XLEN, 32))
-  val csr = Module(new CSR(ADDR_WIDTH, XLEN))
+  val alu = Module(new ALU(coredef.ADDR_WIDTH, coredef.XLEN))
+  val imm = Module(new Imm(coredef.ADDR_WIDTH, coredef.XLEN))
+  val lsu = Module(new LSU(coredef.ADDR_WIDTH, coredef.XLEN))
+  val br = Module(new Branch(coredef.ADDR_WIDTH, coredef.XLEN))
+  val mul = Module(new Mul(coredef.ADDR_WIDTH, coredef.XLEN))
+  val div = Module(new Div(coredef.ADDR_WIDTH, coredef.XLEN, 32))
+  val csr = Module(new CSR(coredef.ADDR_WIDTH, coredef.XLEN))
 
   lsu.dc <> dcache.io
   lsu.axi <> io.axi
@@ -84,7 +83,7 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int, ISSUE_NUM: Int) extends Module {
 
   val units = List(alu, imm, lsu, br, mul, div, csr)
 
-  val placeholder = Wire(new PipeInstr(ADDR_WIDTH, XLEN))
+  val placeholder = Wire(new PipeInstr(coredef.ADDR_WIDTH, coredef.XLEN))
   placeholder := 0.U.asTypeOf(placeholder)
   placeholder.instr.vacant := true.B
 
@@ -103,24 +102,26 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int, ISSUE_NUM: Int) extends Module {
   }
 
   val substall = (!branched) && (!current(instr).vacant) && (stall || unitStateNext =/= sIDLE)
-  io.ctrl.stall := instr =/= ISSUE_NUM.U && !branched
+  io.ctrl.stall := instr =/= coredef.ISSUE_NUM.U && !branched
 
-  when(!substall && instr === (ISSUE_NUM-1).U) {
+  when(!substall && instr === (coredef.ISSUE_NUM-1).U) {
     io.ctrl.stall := false.B
   }
 
-  when(!io.ctrl.pause && !io.ctrl.stall) {
+  val ifReady = toIF.cnt === coredef.ISSUE_NUM.U
+
+  when(io.ctrl.flush) {
+    current := default
     branched := false.B
-    when(!io.ctrl.flush) {
-      /*
-      printf("[FETCH]: \n")
-      printf(p"${io.instr}")
-      printf("\n[FETCH]")
-      */
-      current := io.instr
-    }.otherwise {
-      current := default
-    }
+  }.elsewhen(ifReady && !io.ctrl.stall) {
+    branched := false.B
+    /*
+    printf("[FETCH]: \n")
+    printf(p"${io.instr}")
+    printf("\n[FETCH]")
+    */
+    current := toIF.view
+    toIF.pop := coredef.ISSUE_NUM.U
   }
 
   /*
@@ -134,13 +135,13 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int, ISSUE_NUM: Int) extends Module {
   }
   */
 
-  when(!io.ctrl.stall && !io.ctrl.pause) {
+  when(!io.ctrl.stall && ifReady) {
     instr := 0.U
-  }.elsewhen(!substall && instr =/= ISSUE_NUM.U) {
+  }.elsewhen(!substall && instr =/= coredef.ISSUE_NUM.U) {
     instr := instr + 1.U
   }
 
-  val unitInput = Wire(new PipeInstr(ADDR_WIDTH, XLEN))
+  val unitInput = Wire(new PipeInstr(coredef.ADDR_WIDTH, coredef.XLEN))
   unitInput.instr := current(instr)
   unitInput.rs1val := readRs1
   unitInput.rs2val := readRs2
@@ -154,7 +155,7 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int, ISSUE_NUM: Int) extends Module {
     u.io.next := placeholder
   }
 
-  when(!branched && instr =/= ISSUE_NUM.U && !current(instr).vacant && unitState === sIDLE) {
+  when(!branched && instr =/= coredef.ISSUE_NUM.U && !current(instr).vacant && unitState === sIDLE) {
     unitStateNext := sRUNNING
 
     // printf(p"current instr: ${instr}\n")
@@ -227,6 +228,7 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int, ISSUE_NUM: Int) extends Module {
 
   for(u <- units) {
     u.io.pause := false.B
+    u.io.flush := io.ctrl.flush && !io.ctrl.stall
 
     /*
     when(u.io.stall) {
@@ -238,13 +240,14 @@ class Exec(ADDR_WIDTH: Int, XLEN: Int, ISSUE_NUM: Int) extends Module {
       branched := true.B
       branchedAddr := u.io.retirement.branch.target
       io.branch := u.io.retirement.branch
+      io.ctrl.stall := false.B // Forcefully unstall
       // printf(p"[BRANCH] ${Hexadecimal(branchedAddr)}\n")
     }
 
     when(u.io.retirement.regWaddr =/= 0.U) {
       io.regWriter.addr := u.io.retirement.regWaddr
       io.regWriter.data := u.io.retirement.regWdata
-      // printf(p"[COMMIT]: By ${u.name}\n")
+      // printf(p"[COMMIT]: By ${u.name}: ${io.regWriter.addr} <- 0x${Hexadecimal(io.regWriter.data)}\n")
     }
 
     when(!u.io.retired.instr.vacant && !u.io.stall) {
