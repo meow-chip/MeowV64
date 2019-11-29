@@ -16,6 +16,39 @@ object CSRHelper {
 
     ret
   }
+
+  def defaults(csr: CSR) {
+    csr.readers("mvendorid") := 0.U(csr.XLEN.W)
+    csr.readers("marchid") := 0.U(csr.XLEN.W)
+    csr.readers("mimpid") := 0.U(csr.XLEN.W)
+    csr.readers("misa") := 2.U(2.W) ## 0.U((csr.XLEN-2-26).W) ## CSRHelper.buildExt("IMAC").U(26.W)
+  }
+}
+
+class CSRPort(val XLEN: Int) extends Bundle {
+  val rdata = Output(UInt(XLEN.W))
+
+  val wdata = Input(UInt(XLEN.W))
+  val write = Input(Bool())
+
+  def connect(ano: CSRPort) {
+    this.rdata := ano.rdata
+    ano.wdata := this.wdata
+    ano.write := this.write
+  }
+}
+
+object CSRPort extends Bundle {
+  def fromReg(XLEN: Int, reg: UInt): CSRPort = {
+    val port = Wire(new CSRPort(XLEN))
+
+    port.rdata := reg
+    when(port.write) {
+      reg := port.wdata
+    }
+
+    port
+  }
 }
 
 /**
@@ -24,24 +57,29 @@ object CSRHelper {
  * We are not declearing it as a bundle, because we are not passing it around as a whole,
  * and it's not an individual module as well
  */
-class CSR(val XLEN: Int, HART_ID: Int) {
-  val csr = Map(
-    "mvendorid" -> 0.U(XLEN.W),
-    "marchid" -> 0.U(XLEN.W),
-    "mimpid" -> 0.U(XLEN.W),
-    "mhartid" -> HART_ID.U(XLEN.W),
-    "mstatus" -> RegInit(0.U(XLEN.W)), // Only have M mode, everything hardwired/initialized to 0
-    "misa" -> RegInit(2.U(2.W) ## 0.U((XLEN-2-26).W) ## CSRHelper.buildExt("IMAC").U(26.W)),
-    "mie" -> RegInit(0.U(XLEN.W)),
-    "mtvec" -> RegInit(0.U(XLEN.W)),
-    "mcounteren" -> RegInit(0.U(XLEN.W)),
-    "mscratch" -> RegInit(0.U(XLEN.W)),
-    "mepc" -> RegInit(0.U(XLEN.W)),
-    "mcause" -> RegInit(0.U(XLEN.W)),
-    "mtval" -> RegInit(0.U(XLEN.W)),
-    "mip" -> RegInit(0.U(XLEN.W)),
-    "mcycle" -> 0.U(64.W) // this should not be taken
-  )
+class CSR(val XLEN: Int) {
+  val readers = CSR.addrMap.values.map(_ match {
+    case (name, _) => (name -> Wire(UInt(XLEN.W)))
+  }).toMap
+
+  val writers = CSR.addrMap.values.flatMap(_ match {
+    case (name, true) => Some(name -> (Wire(UInt(XLEN.W)), Wire(Bool())))
+    case (_, false) => None
+  }).toMap
+
+  def attach(name: String): CSRPort = {
+    val port = Wire(Flipped(new CSRPort(XLEN)))
+
+    readers.get(name).get := port.rdata
+    port.write := writers.get(name).map(_._2).getOrElse(false.B)
+    port.wdata := writers.get(name).map(_._1).getOrElse(DontCare)
+
+    port
+  }
+
+  def const(name: String): UInt = {
+    readers.get(name).get
+  }
 }
 
 object CSROp extends ChiselEnum {
@@ -67,7 +105,7 @@ object CSR {
     // m[e|i]deleg should not exist on M mode only machine
     0x304 -> ("mie", true),
     0x305 -> ("mtvec", true),
-    0x306 -> ("mcounteren", false),
+    // 0x306 -> ("mcounteren", false),
     0x340 -> ("mscratch", true),
     0x341 -> ("mepc", true),
     0x342 -> ("mcause", true),
@@ -76,33 +114,25 @@ object CSR {
     0xB00 -> ("mcycle", true)
   )
 
+  /*
   // Some bit fields shall be perserved to be WPRI/WARL.
   val maskMap = Map(
     0x300 -> 0x88.U, // Having only M mode, only MPIE and MIE writable
     0x304 -> 0x333.U, // Only [U|S][S|T|E]IP writable (does we actually have them?)
     0x344 -> 0xBBB.U
   )
+  */
 
-  def gen(XLEN: Int, HART_ID: Int): (CSRWriter, CSR, CounterPort) = {
-    val csr = new CSR(XLEN, HART_ID)
+  def gen(XLEN: Int, HART_ID: Int): (CSRWriter, CSR) = {
+    val csr = new CSR(XLEN)
     val endpoint = Wire(Flipped(new CSRWriter(csr.XLEN)))
-    val counterport = Wire(new CounterPort)
-    counterport.valid := false.B
-    counterport.op := DontCare
-    counterport.wdata := DontCare
 
     val data = MuxLookup[UInt, UInt](
       endpoint.addr,
       0.U,
       addrMap.mapValues(value => value match {
-        case (name, _) => csr.csr(name)
+        case (name, _) => csr.readers(name)
       }).toSeq.map(_ match { case (addr, r) => (addr.U, r) })
-    )
-
-    val mask = MuxLookup[UInt, UInt](
-      endpoint.addr,
-      0xFFFF.S(XLEN.W).asUInt, // sign extended
-      maskMap.toSeq.map(_ match { case (addr, m) => (addr.U, m) })
     )
 
     endpoint.rdata := data
@@ -128,20 +158,22 @@ object CSR {
       }
     }
 
+    for((d, e) <- csr.writers.values) {
+      e := false.B
+      d := DontCare
+    }
+
     when(wcommit) {
       for((addr, (name, isMut)) <- addrMap) {
-        if(addr == 0xB00) {
-          counterport.valid := true.B
-          counterport.op := endpoint.op
-          counterport.wdata := endpoint.wdata
-          endpoint.rdata := counterport.rdata
-        } else if(isMut)
+        if(isMut) {
           when(addr.U === endpoint.addr) {
-            csr.csr(name) := wdata & mask
+            csr.writers(name)._1 := wdata
+            csr.writers(name)._2 := true.B
+          }
         }
       }
     }
 
-    (endpoint, csr, counterport)
+    (endpoint, csr)
   }
 }

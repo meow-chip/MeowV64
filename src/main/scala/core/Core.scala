@@ -18,7 +18,7 @@ class Core(val coredef: CoreDef = DefaultDef) extends Module {
 
   assert(coredef.FETCH_NUM % 2 == 0, "issue num can only be multiples of two, because we need to support compressed instructions")
 
-  val ctrl = Module(new Ctrl(coredef.ADDR_WIDTH, coredef.INIT_VEC, coredef.FETCH_NUM))
+  val ctrl = Module(new Ctrl(coredef))
   
   // Caches
   val l2 = Module(new L2Cache(coredef.L2))
@@ -33,9 +33,7 @@ class Core(val coredef: CoreDef = DefaultDef) extends Module {
   val exec = Module(new Exec(coredef))
   val reg = Module(new RegFile(coredef.XLEN))
 
-  val (csrWriter, csr, counterPort) = CSR.gen(coredef.XLEN, coredef.HART_ID)
-  val mcycle = Module(new Counter(coredef.XLEN))
-  counterPort <> mcycle.io
+  val (csrWriter, csr) = CSR.gen(coredef.XLEN, coredef.HART_ID)
 
   fetch.toCtrl.irst := false.B // For FENCE.I
   fetch.toIC <> l1i.toCPU
@@ -54,4 +52,19 @@ class Core(val coredef: CoreDef = DefaultDef) extends Module {
   ctrl.io.baddr <> exec.io.branch.target
 
   io.pc := ctrl.io.pc
+
+  // CSR
+  CSRHelper.defaults(csr)
+  csr.const("mhartid") := coredef.HART_ID.U
+  csr.attach("mcycle").connect(ctrl.csr.mcycle)
+  csr.attach("mstatus").connect(ctrl.csr.mstatus)
+  csr.attach("mtvec").connect(ctrl.csr.mtvec)
+  csr.attach("mcause").connect(ctrl.csr.mcause)
+  csr.attach("mtval").connect(ctrl.csr.mtval)
+  csr.attach("mepc").connect(ctrl.csr.mepc)
+  csr.attach("mie").connect(ctrl.csr.mie)
+  csr.attach("mip").connect(ctrl.csr.mip)
+
+  val mscratch = RegInit(0.U(coredef.XLEN.W))
+  csr.attach("mscratch").connect(CSRPort.fromReg(coredef.XLEN, mscratch))
 }
