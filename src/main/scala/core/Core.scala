@@ -66,6 +66,11 @@ class Core(val coredef: CoreDef = DefaultDef) extends Module {
   csr.attach("mip").connect(ctrl.csr.mip)
   csr.attach("mcountinhibit").connect(ctrl.csr.mcountinhibit)
 
+  val medeleg = RegInit(0.U(coredef.XLEN.W))
+  csr.attach("medeleg").connect(CSRPort.fromReg(coredef.XLEN, medeleg))
+  val mideleg = RegInit(0.U(coredef.XLEN.W))
+  csr.attach("mideleg").connect(CSRPort.fromReg(coredef.XLEN, mideleg))
+
   val mscratch = RegInit(0.U(coredef.XLEN.W))
   csr.attach("mscratch").connect(CSRPort.fromReg(coredef.XLEN, mscratch))
 }
