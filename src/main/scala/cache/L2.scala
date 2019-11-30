@@ -111,6 +111,7 @@ object WBEntry {
   }
 }
 
+@chiselName
 class L2Cache(val opts: L2Opts) extends MultiIOModule {
   val OFFSET_LENGTH = log2Ceil(opts.LINE_WIDTH)
   val INDEX_OFFSET_LENGTH = log2Ceil(opts.SIZE / opts.ASSOC)
@@ -167,6 +168,8 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
   val stalls = Wire(Vec(opts.CORE_COUNT * 3, Bool()))
   for((p, a) <- ports.zip(addrs.iterator)) {
     a := p.getAddr
+    // Asserts alignment
+    assert(a(OFFSET_LENGTH-1, 0) === 0.U)
   }
 
   for((p, o) <- ports.zip(ops.iterator)) {
@@ -236,7 +239,7 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
 
   // Refilling from FIFO
   val fifoHit = wbFifo.foldLeft(false.B)(
-    (acc, ent) => acc || ent.lineaddr === targetAddr >> OFFSET_LENGTH
+    (acc, ent) => acc || ent.valid && ent.lineaddr === targetAddr >> OFFSET_LENGTH
   )
   val fifoHitData = wbFifo.foldLeft(0.U)(
     (acc, ent) => acc | Mux(ent.lineaddr === targetAddr >> OFFSET_LENGTH, ent.data, 0.U)
@@ -264,8 +267,7 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
   }
 
   def step(ptr: UInt) {
-    // Do not iterate over uncached channels in our main loop
-    when(ptr === (opts.CORE_COUNT * 2 - 1).U) {
+    when(ptr === (opts.CORE_COUNT * 3 - 1).U) {
       ptr := 0.U
     }.otherwise {
       ptr := ptr + 1.U
@@ -287,9 +289,6 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
 
     is(L2MainState.idle) {
       // TODO: pipelining
-      // TODO: check refill
-
-      // TODO: check directory
 
       switch(targetOps) {
         is(L1DCPort.L1Req.idle) {
@@ -338,7 +337,6 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
 
         is(L1DCPort.L1Req.writeback) {
           // We can do one cycle write?
-          // Asserts MSI modified
           val writtenTowards = MuxCase(
             0.U(ASSOC_IDX_WIDTH.W),
             lookups.zipWithIndex.map(_ match {
@@ -355,7 +353,7 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
             }
           }
 
-          val writtenDir = L2DirEntry.withAddr(opts, targetAddr).editState(target, L2DirState.shared)
+          val writtenDir = L2DirEntry.withAddr(opts, targetAddr).editState(target, L2DirState.vacant)
           val writtenData = dc(target).wdata
 
           writeDir(

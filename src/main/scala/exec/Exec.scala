@@ -5,13 +5,13 @@ import data._
 import instr._
 import chisel3.util._
 import _root_.core.StageCtrl
-import cache.DCachePort
-import cache.DCache
 import instr.Decoder.InstrType
 import _root_.core.CSRWriter
 import _root_.core.CoreDef
 import _root_.core.ExReq
 import _root_.core.ExType
+import cache.DCReader
+import cache.DCWriter
 
 class BranchResult(val ADDR_WIDTH: Int = 48) extends Bundle {
   val branch = Bool()
@@ -59,8 +59,6 @@ class Exec(coredef: CoreDef) extends MultiIOModule {
     val regReaders = Vec(2, new RegReader)
     val regWriter = new RegWriter
 
-    val axi = new AXI(coredef.XLEN)
-
     val ctrl = StageCtrl.stage()
 
     val branch = Output(new BranchResult(coredef.ADDR_WIDTH))
@@ -71,13 +69,16 @@ class Exec(coredef: CoreDef) extends MultiIOModule {
 
   val toIF = IO(new InstrFifoReader(coredef))
 
+  val toDC = IO(new Bundle {
+    val r = new DCReader(coredef.L1D)
+    val w = new DCWriter(coredef.L1D)
+  })
+
   io.branch := 0.U.asTypeOf(io.branch)
   io.regWriter.addr := 0.U
   io.regWriter.data := 0.U
 
   toIF.pop := 0.U
-
-  val dcache = Module(new DCache(coredef.ADDR_WIDTH, coredef.XLEN))
 
   val default = VecInit(Seq.fill(coredef.ISSUE_NUM)(InstrExt.empty(coredef.ADDR_WIDTH)))
   val current = RegInit(default)
@@ -100,14 +101,14 @@ class Exec(coredef: CoreDef) extends MultiIOModule {
 
   val alu = Module(new ALU(coredef.ADDR_WIDTH, coredef.XLEN))
   val imm = Module(new Imm(coredef.ADDR_WIDTH, coredef.XLEN))
-  val lsu = Module(new LSU(coredef.ADDR_WIDTH, coredef.XLEN))
+  val lsu = Module(new LSU(coredef.ADDR_WIDTH, coredef.XLEN, coredef.L1D))
   val br = Module(new Branch(coredef.ADDR_WIDTH, coredef.XLEN))
   val mul = Module(new Mul(coredef.ADDR_WIDTH, coredef.XLEN))
   val div = Module(new Div(coredef.ADDR_WIDTH, coredef.XLEN, 32))
   val csr = Module(new CSR(coredef.ADDR_WIDTH, coredef.XLEN))
 
-  lsu.dc <> dcache.io
-  lsu.axi <> io.axi
+  lsu.reader <> toDC.r
+  lsu.writer <> toDC.w
 
   csr.writer <> io.csrWriter
 

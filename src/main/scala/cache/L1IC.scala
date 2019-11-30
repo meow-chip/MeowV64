@@ -23,7 +23,7 @@ object S2State extends ChiselEnum {
   val rst, idle, refill, refillWait = Value
 }
 
-class Line(val opts: L1Opts) extends Bundle {
+class ILine(val opts: L1Opts) extends Bundle {
   val INDEX_OFFSET_WIDTH = log2Ceil(opts.SIZE)
   val TAG_WIDTH = opts.ADDR_WIDTH - INDEX_OFFSET_WIDTH
   val TRANSFER_COUNT = opts.LINE_WIDTH * 8 / opts.TRANSFER_SIZE
@@ -53,7 +53,7 @@ class L1IC(opts: L1Opts) extends MultiIOModule {
   val INDEX_WIDTH = INDEX_OFFSET_WIDTH - OFFSET_WIDTH
   val IGNORED_WIDTH = log2Ceil(opts.TRANSFER_SIZE / 8)
 
-  val stores = Seq.fill(opts.ASSOC)({ SyncReadMem(LINE_PER_ASSOC, new Line(opts)) })
+  val stores = Seq.fill(opts.ASSOC)({ SyncReadMem(LINE_PER_ASSOC, new ILine(opts)) })
 
   def getTransferOffset(addr: UInt) = addr(OFFSET_WIDTH-1, IGNORED_WIDTH)
   def getIndex(addr: UInt) = addr(INDEX_OFFSET_WIDTH-1, OFFSET_WIDTH)
@@ -71,9 +71,9 @@ class L1IC(opts: L1Opts) extends MultiIOModule {
     readingAddr := toCPU.addr
   }
   val rawReadouts = stores.map(s => s.read(getIndex(readingAddr)))
-  val savedReadouts = Seq.fill(opts.ASSOC)(Reg(new Line(opts)))
+  val savedReadouts = Seq.fill(opts.ASSOC)(Reg(new ILine(opts)))
 
-  val readouts = Seq.fill(opts.ASSOC)(Wire(new Line(opts)))
+  val readouts = Seq.fill(opts.ASSOC)(Wire(new ILine(opts)))
 
   // Stage 2, data mux, refilling, reset
   val state = RegInit(S2State.rst)
@@ -88,7 +88,7 @@ class L1IC(opts: L1Opts) extends MultiIOModule {
   val victim = RegInit(0.U(log2Ceil(opts.ASSOC)))
 
   val rstCnt = RegInit(0.U(INDEX_WIDTH.W))
-  val rstLine = Wire(new Line(opts))
+  val rstLine = Wire(new ILine(opts))
   rstLine.data := 0.U.asTypeOf(rstLine.data)
   rstLine.tag := 0.U
   rstLine.valid := false.B
@@ -152,7 +152,7 @@ class L1IC(opts: L1Opts) extends MultiIOModule {
     switch(state) {
       is(S2State.idle) {
         val hit = readouts.foldLeft(false.B)((acc, line) => acc || line.valid && line.tag === getTag(pipeAddr))
-        val rdata = MuxCase(0.U.asTypeOf(new Line(opts).data), readouts.map(line => (line.valid && getTag(pipeAddr) === line.tag, line.data)))
+        val rdata = MuxCase(0.U.asTypeOf(new ILine(opts).data), readouts.map(line => (line.valid && getTag(pipeAddr) === line.tag, line.data)))
 
         when(pipeRead) {
           when(hit) {
@@ -172,7 +172,7 @@ class L1IC(opts: L1Opts) extends MultiIOModule {
         toL2.read := true.B
 
         when(!toL2.stall) {
-          val written = Wire(new Line(opts))
+          val written = Wire(new ILine(opts))
           written.tag := getTag(pipeAddr)
           written.data := toL2.data.asTypeOf(written.data)
           written.valid := true.B

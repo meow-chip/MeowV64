@@ -3,27 +3,28 @@ package exec
 import chisel3._
 import chisel3.util._
 import instr.Decoder
-import cache.DCachePort
-import data.AXI
+import cache._
+import chisel3.experimental.ChiselEnum
 
 class LSUExt(val XLEN: Int) extends Bundle {
   val wdata = UInt(XLEN.W)
 }
 
-class LSU(ADDR_WIDTH: Int, XLEN: Int) extends ExecUnit(0, new LSUExt(XLEN), ADDR_WIDTH, XLEN) {
-  val dc = IO(Flipped(new DCachePort(ADDR_WIDTH, XLEN)))
-  val axi = IO(new AXI(XLEN))
+class LSU(ADDR_WIDTH: Int, XLEN: Int, dcopt: L1DOpts) extends ExecUnit(0, new LSUExt(XLEN), ADDR_WIDTH, XLEN) {
+  val reader = IO(new DCReader(dcopt))
+  val writer = IO(new DCWriter(dcopt))
 
-  dc <> DontCare
-  dc.axi <> axi
-  dc.pause := false.B
+  reader := DontCare
+  reader.read := false.B
 
-  dc.read := false.B
-  dc.write := false.B
+  writer := DontCare
+  writer.write := false.B
 
   // Load/Store related FSM
-  val lsIDLE :: lsWAIT :: lsHOLD :: nil = Enum(3)
-  val lsState = RegInit(lsIDLE)
+  object State extends ChiselEnum {
+    val idle, waiting, hold, flushed = Value
+  }
+  val lsState = RegInit(State.idle)
   val lsNextState = Wire(lsState.cloneType)
   val lsAddr = Reg(UInt(ADDR_WIDTH.W))
   val holdBuf = Reg(UInt(XLEN.W))
@@ -42,133 +43,139 @@ class LSU(ADDR_WIDTH: Int, XLEN: Int) extends ExecUnit(0, new LSUExt(XLEN), ADDR
     ext.wdata := DontCare
     stall := false.B
 
-    switch(pipe.instr.instr.op) {
-      is(Decoder.Op("LOAD").ident) {
-        switch(lsState) {
-          is(lsIDLE) {
-            val lsAddrCompute = (pipe.rs1val.asSInt + pipe.instr.instr.imm).asUInt
-            lsAddr := lsAddrCompute
-            dc.addr := (lsAddrCompute >> 3) << 3 // Align
-            dc.read := true.B
+    when(lsState === State.flushed) {
+    }.otherwise {
+      switch(pipe.instr.instr.op) {
+        is(Decoder.Op("LOAD").ident) {
+          switch(lsState) {
+            is(State.idle) {
+              val lsAddrCompute = (pipe.rs1val.asSInt + pipe.instr.instr.imm).asUInt
+              lsAddr := lsAddrCompute
+              reader.addr := (lsAddrCompute >> 3) << 3 // Align
+              reader.read := true.B
 
-            // printf("Transfered by LOAD\n")
-            lsNextState := lsWAIT
-            stall := true.B
-          }
+              // printf("Transfered by LOAD\n")
+              lsNextState := State.waiting
+              stall := true.B
+            }
 
-          is(lsWAIT) {
-            val data = dc.rdata
-            val shifted = data >> (lsAddr(2, 0) * 8.U)
-            val result = Wire(UInt(XLEN.W))
-            val signedResult = Wire(SInt(XLEN.W))
+            is(State.waiting) {
+              val data = reader.data
+              val shifted = data >> (lsAddr(2, 0) * 8.U)
+              val result = Wire(UInt(XLEN.W))
+              val signedResult = Wire(SInt(XLEN.W))
 
-            signedResult := DontCare
-            result := signedResult.asUInt
-            ext.wdata := result
-            holdBuf := result
+              signedResult := DontCare
+              result := signedResult.asUInt
+              ext.wdata := result
+              holdBuf := result
 
-            switch(pipe.instr.instr.funct3) {
-              is(Decoder.LOAD_FUNC("LB")) {
-                signedResult := shifted(7, 0).asSInt
+              switch(pipe.instr.instr.funct3) {
+                is(Decoder.LOAD_FUNC("LB")) {
+                  signedResult := shifted(7, 0).asSInt
+                }
+
+                is(Decoder.LOAD_FUNC("LH")) {
+                  signedResult := shifted(15, 0).asSInt
+                }
+
+                is(Decoder.LOAD_FUNC("LW")) {
+                  signedResult := shifted(31, 0).asSInt
+                }
+
+                is(Decoder.LOAD_FUNC("LD")) {
+                  result := shifted
+                }
+
+                is(Decoder.LOAD_FUNC("LBU")) {
+                  result := shifted(7, 0)
+                }
+
+                is(Decoder.LOAD_FUNC("LHU")) {
+                  result := shifted(16, 0)
+                }
+
+                is(Decoder.LOAD_FUNC("LWU")) {
+                  result := shifted(32, 0)
+                }
               }
 
-              is(Decoder.LOAD_FUNC("LH")) {
-                signedResult := shifted(15, 0).asSInt
-              }
+              stall := true.B
 
-              is(Decoder.LOAD_FUNC("LW")) {
-                signedResult := shifted(31, 0).asSInt
-              }
+              when(!reader.stall) {
+                stall := false.B
+                /*
+                printf(p"Load recv:\n  Rdata: ${Hexadecimal(dc.rdata)}\n")
+                printf(p"Addr: ${Hexadecimal((lsAddr >> 3) << 3)}\n")
+                printf(p"Shifted output: ${Hexadecimal(shifted)}\n")
+                */
+                // Commit
 
-              is(Decoder.LOAD_FUNC("LD")) {
-                result := shifted
-              }
+                // printf("Transfered by LOAD\n")
 
-              is(Decoder.LOAD_FUNC("LBU")) {
-                result := shifted(7, 0)
-              }
-
-              is(Decoder.LOAD_FUNC("LHU")) {
-                result := shifted(16, 0)
-              }
-
-              is(Decoder.LOAD_FUNC("LWU")) {
-                result := shifted(32, 0)
+                when(io.pause) {
+                  lsNextState := State.waiting
+                }.otherwise {
+                  lsNextState := State.idle
+                }
               }
             }
 
-            stall := true.B
-
-            when(!dc.stall) {
-              stall := false.B
-              /*
-              printf(p"Load recv:\n  Rdata: ${Hexadecimal(dc.rdata)}\n")
-              printf(p"Addr: ${Hexadecimal((lsAddr >> 3) << 3)}\n")
-              printf(p"Shifted output: ${Hexadecimal(shifted)}\n")
-              */
-              // Commit
-
-              // printf("Transfered by LOAD\n")
-
-              when(io.pause) {
-                lsNextState := lsHOLD
-              }.otherwise {
-                lsNextState := lsIDLE
+            is(State.hold) {
+              ext.wdata := holdBuf
+              when(!io.pause) {
+                // printf("Transfered by LOAD\n")
+                lsNextState := State.idle
               }
-            }
-          }
-
-          is(lsHOLD) {
-            ext.wdata := holdBuf
-            when(!io.pause) {
-              // printf("Transfered by LOAD\n")
-              lsNextState := lsIDLE
             }
           }
         }
-      }
 
-      is(Decoder.Op("STORE").ident) {
-        switch(lsState) {
-          is(lsIDLE) {
-            val lsAddrCompute = pipe.rs1val + pipe.instr.instr.imm.asUInt
-            val lsAddrShift = lsAddrCompute(2, 0) // By 8 bits
-            lsAddr := lsAddrCompute
-            dc.addr := (lsAddrCompute >> 3) << 3 // Align
-            dc.write := true.B
+        is(Decoder.Op("STORE").ident) {
+          val lsAddrCompute = pipe.rs1val + pipe.instr.instr.imm.asUInt
+          val lsAddrShift = lsAddrCompute(2, 0) // By 8 bits
+          lsAddr := lsAddrCompute
+          writer.addr := (lsAddrCompute >> 3) << 3 // Align
 
-            val tailMask = Wire(UInt((XLEN/8).W))
-            tailMask := 0.U
+          val tailMask = Wire(UInt((XLEN/8).W))
+          tailMask := 0.U
 
-            /*
-            printf("Store emit: \n")
-            printf(p"  Addr: ${Hexadecimal(dc.addr)}\n")
-            printf(p"  Wdata: ${Hexadecimal(dc.wdata)}\n")
-            printf(p"  BE: ${Hexadecimal(dc.be)}\n")
-            */
-            dc.wdata := pipe.rs2val << (lsAddrShift * 8.U)
-            dc.be := tailMask << lsAddrShift
+          /*
+          printf("Store emit: \n")
+          printf(p"  Addr: ${Hexadecimal(dc.addr)}\n")
+          printf(p"  Wdata: ${Hexadecimal(dc.wdata)}\n")
+          printf(p"  BE: ${Hexadecimal(dc.be)}\n")
+          */
+          writer.data := pipe.rs2val << (lsAddrShift * 8.U)
+          writer.be := tailMask << lsAddrShift
 
-            switch(pipe.instr.instr.funct3) {
-              is(Decoder.STORE_FUNC("SB")) { tailMask := 0x01.U }
-              is(Decoder.STORE_FUNC("SH")) { tailMask := 0x03.U }
-              is(Decoder.STORE_FUNC("SW")) { tailMask := 0x0f.U }
-              is(Decoder.STORE_FUNC("SD")) { tailMask := 0xff.U }
-            }
-
-            // printf("Transfered by STORE\n")
-            lsNextState := lsWAIT
-            stall := true.B
+          switch(pipe.instr.instr.funct3) {
+            is(Decoder.STORE_FUNC("SB")) { tailMask := 0x01.U }
+            is(Decoder.STORE_FUNC("SH")) { tailMask := 0x03.U }
+            is(Decoder.STORE_FUNC("SW")) { tailMask := 0x0f.U }
+            is(Decoder.STORE_FUNC("SD")) { tailMask := 0xff.U }
           }
 
-          is(lsWAIT) {
-            stall := true.B
-            when(!dc.stall) {
-              stall := false.B
-              when(!io.pause) {
-                // printf("Transfered by STORE\n")
-                lsNextState := lsIDLE
+          // printf("Transfered by STORE\n")
+          lsNextState := State.waiting
+          stall := true.B
+
+          switch(lsState) {
+            is(State.idle) {
+              writer.write := true.B
+              stall := true.B
+
+              when(!reader.stall) {
+                when(io.pause) {
+                  lsNextState := State.hold
+                }.otherwise {
+                  stall := false.B
+                }
               }
+            }
+
+            is(State.hold) {
+              stall := false.B
             }
           }
         }

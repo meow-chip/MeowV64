@@ -1,6 +1,5 @@
 package core
-import cache.L2Opts
-import cache.L1Opts
+import cache._
 
 abstract class CoreDef {
   outer =>
@@ -43,7 +42,9 @@ abstract class CoreDef {
     val SIZE: Int = 4096 // 4K L1 D
     val TRANSFER_SIZE: Int = outer.XLEN
     val XLEN: Int = outer.XLEN
-  } with L1Opts
+
+    val WRITE_BUF_DEPTH: Int = 4
+  } with L1DOpts
 }
 
 object DefaultDef extends CoreDef

@@ -9,8 +9,7 @@ import exec.Exec
 
 class Core(val coredef: CoreDef = DefaultDef) extends Module {
   val io = IO(new Bundle {
-    val iaxi = new AXI(coredef.XLEN, coredef.ADDR_WIDTH)
-    val daxi = new AXI(coredef.XLEN, coredef.ADDR_WIDTH)
+    val axi = new AXI(coredef.XLEN, coredef.ADDR_WIDTH)
 
     // Debug
     val pc = Output(UInt(coredef.ADDR_WIDTH.W))
@@ -23,10 +22,11 @@ class Core(val coredef: CoreDef = DefaultDef) extends Module {
   // Caches
   val l2 = Module(new L2Cache(coredef.L2))
   val l1i = Module(new L1IC(coredef.L1I))
+  val l1d = Module(new L1DC(coredef.L1D))
 
-  l2.axi <> io.iaxi
-  l2.ic <> VecInit(Seq(l1i.toL2))
-  l2.dc(0) <> L1DCPort.empty(coredef.L1D)
+  l2.axi <> io.axi
+  l2.ic(0) <> l1i.toL2
+  l2.dc(0) <> l1d.toL2
   l2.directs(0) <> L1DCPort.empty(coredef.L1D)
 
   val fetch = Module(new InstrFetch(coredef))
@@ -45,8 +45,10 @@ class Core(val coredef: CoreDef = DefaultDef) extends Module {
   exec.io.regReaders <> reg.io.reads
   exec.io.regWriter <> reg.io.write
   exec.io.ctrl <> ctrl.io.exec
-  exec.io.axi <> io.daxi
   exec.io.csrWriter <> csrWriter
+
+  exec.toDC.r <> l1d.r
+  exec.toDC.w <> l1d.w
   
   ctrl.br.req <> exec.io.branch
   ctrl.br.src <> exec.io.brSrc
