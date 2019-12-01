@@ -16,11 +16,9 @@ class WrappedCore(coredef: CoreDef, ifile: String) extends Module {
 
   val core = Module(new Core(coredef))
 
-  val imem = Module(new AXIMem(Some(ifile), 65536, core.coredef.ADDR_WIDTH))
-  val dmem = Module(new AXIMem(None, 65536, core.coredef.ADDR_WIDTH, 64, Some(BigInt(0x100000))))
+  val mem = Module(new AXIMem(Some(ifile), 65536, core.coredef.ADDR_WIDTH))
 
-  core.io.iaxi <> imem.io.axi
-  core.io.daxi <> dmem.io.axi
+  core.io.axi <> mem.io.axi
 
   // Exit vector
   io.ended := core.io.pc === 0x100000.U // Stack base

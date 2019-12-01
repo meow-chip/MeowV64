@@ -29,15 +29,15 @@ object L2DirState extends ChiselEnum {
 }
 
 class L2DirEntry(val opts: L2Opts) extends Bundle {
-  val TAIL_LENGTH = log2Ceil(opts.SIZE)
-  val TAG_LENGTH = opts.ADDR_WIDTH - TAIL_LENGTH
+  val INDEX_OFFSET_LENGTH = log2Ceil(opts.SIZE / opts.ASSOC)
+  val TAG_LENGTH = opts.ADDR_WIDTH - INDEX_OFFSET_LENGTH
 
   val valid = Bool()
   val dirty = Bool()
   val tag = UInt(TAG_LENGTH.W)
   val states = Vec(opts.CORE_COUNT, L2DirState())
 
-  def hit(addr: UInt): Bool = valid && addr(opts.ADDR_WIDTH-1, TAIL_LENGTH) === tag
+  def hit(addr: UInt): Bool = valid && addr(opts.ADDR_WIDTH-1, INDEX_OFFSET_LENGTH) === tag
 
   def editState(core: UInt, state: L2DirState.Type): L2DirEntry = {
     val w = Wire(new L2DirEntry(opts))
@@ -168,8 +168,6 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
   val stalls = Wire(Vec(opts.CORE_COUNT * 3, Bool()))
   for((p, a) <- ports.zip(addrs.iterator)) {
     a := p.getAddr
-    // Asserts alignment
-    assert(a(OFFSET_LENGTH-1, 0) === 0.U)
   }
 
   for((p, o) <- ports.zip(ops.iterator)) {
@@ -232,6 +230,10 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
   val lookups = VecInit(assocs.map(_.directory.read(targetIndex)))
   val datas = VecInit(assocs.map(_.store.read(targetIndex)))
   val pipeLookups = RegNext(lookups)
+  val hit = lookups.foldLeft(false.B)((acc, l) => acc || l.hit(targetAddr))
+  val pipeHit = RegNext(hit)
+  val hitCount = lookups.foldLeft(0.U((ASSOC_IDX_WIDTH+1).W))((acc, l) => acc + Mux(l.hit(targetAddr), 1.U, 0.U))
+  assert(hitCount <= 1.U)
   val hitIdx = lookups.zipWithIndex.foldLeft(0.U(ASSOC_IDX_WIDTH.W))(
     (acc, l) => Mux(l._1.hit(targetAddr), l._2.U, acc)
   )
@@ -244,8 +246,6 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
   val fifoHitData = wbFifo.foldLeft(0.U)(
     (acc, ent) => acc | Mux(ent.lineaddr === targetAddr >> OFFSET_LENGTH, ent.data, 0.U)
   )
-
-  assert(!(fifoHit && sameAddrRefilling)) // FIFO inhabitance and AXI refilling are mutually exclusive
 
   // Randomly picks victim, even if it's not full yet, because I'm lazy
   // TODO: PLRU, and fill in blanks
@@ -298,8 +298,6 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
         }
 
         is(L1DCPort.L1Req.read, L1DCPort.L1Req.modify) {
-          val hit = lookups.foldLeft(false.B)((acc, l) => acc || l.hit(targetAddr))
-
           when(misses(target)) {
             when(refilled(target)) {
               victim := rand(log2Ceil(opts.ASSOC)-1, 0)
@@ -314,6 +312,8 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
             nstate := L2MainState.idle
             step(target)
           }.otherwise {
+            assert(!(fifoHit && sameAddrRefilling)) // FIFO inhabitance and AXI refilling are mutually exclusive
+
             // hit == false && missed == false
             // Init a refill
 
@@ -381,10 +381,10 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
       val isDC = target < opts.CORE_COUNT.U
 
       val hasDirty = lookups(pipeHitIdx).states.zipWithIndex.foldLeft(false.B)(
-        (acc, s) => acc || s._1 === L2DirState.modified && s._2.U != target
+        (acc, s) => acc || s._1 === L2DirState.modified && s._2.U =/= target
       )
       val hasShared = lookups(pipeHitIdx).states.zipWithIndex.foldLeft(false.B)(
-        (acc, s) => acc || s._1 =/= L2DirState.vacant && s._2.U != target
+        (acc, s) => acc || s._1 =/= L2DirState.vacant && s._2.U =/= target
       )
 
       when(!hasShared) {
@@ -765,7 +765,7 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
       axi.WSTRB := ((1 << (axi.DATA_WIDTH / 8))-1).U
       axi.WVALID := true.B
 
-      val isLast = wbPtr === axiGrpNum.U
+      val isLast = wbPtr === (axiGrpNum-1).U
       axi.WLAST := isLast
 
       when(axi.WREADY) {
@@ -789,5 +789,3 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
     }
   }
 }
-
-// FIXME: refill from write-back fifo

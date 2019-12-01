@@ -157,15 +157,14 @@ class LSU(ADDR_WIDTH: Int, XLEN: Int, dcopt: L1DOpts) extends ExecUnit(0, new LS
           }
 
           // printf("Transfered by STORE\n")
-          lsNextState := State.waiting
-          stall := true.B
+          lsNextState := State.idle
 
           switch(lsState) {
             is(State.idle) {
               writer.write := true.B
               stall := true.B
 
-              when(!reader.stall) {
+              when(!writer.stall) {
                 when(io.pause) {
                   lsNextState := State.hold
                 }.otherwise {

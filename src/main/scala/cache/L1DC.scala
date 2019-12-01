@@ -114,39 +114,78 @@ class L1DC(val opts: L1DOpts) extends MultiIOModule {
   // Write handler
 
   object MainState extends ChiselEnum {
-    val writing, reading, walloc, readingRefill, wallocRefill, readingSpin = Value
+    // FIXME: reset!
+
+    val writing, reading, walloc, readingRefill, wallocRefill, readingSpin, idle = Value
     // readingSpin is for making sure that reading has finished.
     // Maybe can be optimized (handshake w <-> r)
   }
 
-  val state = RegInit(MainState.writing)
+  val state = RegInit(MainState.idle)
+  val nstate = Wire(MainState())
+
+  nstate := state
+  state := nstate
 
   val l2data = RegInit(0.U(opts.LINE_WIDTH))
 
   val waddr = wbuf(wbufHead).addr
+  val nwaddr = wbuf(wbufHead +% 1.U).addr
   assert(waddr(IGNORED_WIDTH-1, 0) === 0.U)
 
-  val wlookups = VecInit(stores.map(_.read(getIndex(waddr), toL2.l2req === L2Req.idle)))
-  val whit = wlookups.foldLeft(false.B)((acc, line) => line.valid && line.tag === getTag(waddr))
+  val wlookupAddr = Wire(waddr.cloneType)
+  when(state === MainState.idle) {
+    wlookupAddr := MuxLookup(
+      nstate.asUInt,
+      waddr,
+      Seq(
+        (MainState.reading.asUInt(), pipeAddr),
+        (MainState.readingRefill.asUInt(), pipeAddr),
+        (MainState.readingSpin.asUInt(), pipeAddr)
+      )
+    )
+  }.otherwise {
+    wlookupAddr := MuxLookup(
+      state.asUInt(),
+      waddr,
+      Seq(
+        (MainState.reading.asUInt(), pipeAddr),
+        (MainState.readingRefill.asUInt(), pipeAddr),
+        (MainState.readingSpin.asUInt(), pipeAddr)
+      )
+    )
+  }
+
+  val wlookups = VecInit(stores.map(_.read(getIndex(wlookupAddr), toL2.l2req === L2Req.idle)))
+  val whit = wlookups.foldLeft(false.B)((acc, line) => acc || (line.valid && line.tag === getTag(waddr)))
 
   val rand = chisel3.util.random.LFSR(8)
   val victim = RegInit(0.U(ASSOC_IDX_WIDTH.W))
 
+  // writing / reading is never directly gone to
+  assert((nstate =/= MainState.writing && nstate =/= MainState.reading) || state === MainState.idle || nstate === state)
+
   switch(state) {
+    is(MainState.idle) {
+      // Wait one extra cycle after walloc
+      // for the allocated data to propagate to the read port
+      when(pendingRead) {
+        nstate := MainState.reading
+      }.elsewhen(wbufHead =/= wbufTail) {
+        nstate := MainState.writing
+      }
+    }
+
     is(MainState.writing) {
       toL2.l1addr := getTag(waddr) ## getIndex(waddr) ## 0.U(OFFSET_WIDTH.W)
-      when(wbufHead =/= wbufTail) {
+
+      assert(wbufHead =/= wbufTail)
+
+      when(whit) {
+        // Is an write hit, send modify directly
         toL2.l1req := L1DCPort.L1Req.modify
-      }
 
-      // Refill from L2 takes at least two cycles, so whit should be ready when l1stall falls
-      when(toL2.l1req =/= L1DCPort.L1Req.idle && !toL2.l1stall) {
-        assert(RegNext(wbufHead) === wbufHead)
-
-        when(!whit) {
-          state := MainState.walloc
-          victim := rand(ASSOC_IDX_WIDTH-1, 0)
-        }.otherwise {
+        when(!toL2.l1stall) {
           // Commit
           for((lookup, idx) <- wlookups.zipWithIndex) {
             when(lookup.valid && lookup.tag === getTag(waddr)) {
@@ -166,22 +205,22 @@ class L1DC(val opts: L1DOpts) extends MultiIOModule {
           wbuf(wbufHead).valid := false.B
           wbufHead := wbufHead +% 1.U
 
-          when(pendingRead) {
-            state := MainState.reading
-          }.otherwise {
-            state := MainState.writing
-          }
+          nstate := MainState.idle
         }
+      }.otherwise {
+        // Not hit, goto walloc
+        nstate := MainState.walloc
+        victim := rand(ASSOC_IDX_WIDTH-1, 0)
       }
     }
 
     is(MainState.reading) {
-      when(!lookups(victim).valid || !lookups(victim).dirty) {
-        state := MainState.readingRefill
+      when(!wlookups(victim).valid || !wlookups(victim).dirty) {
+        nstate := MainState.readingRefill
       }.otherwise {
-        toL2.l1addr := lookups(victim).tag ## getIndex(pipeAddr) ## 0.U(OFFSET_WIDTH.W)
+        toL2.l1addr := wlookups(victim).tag ## getIndex(pipeAddr) ## 0.U(OFFSET_WIDTH.W)
         toL2.l1req := L1DCPort.L1Req.writeback
-        toL2.wdata := lookups(victim).data.asUInt()
+        toL2.wdata := wlookups(victim).data.asUInt()
 
         val invalid = Wire(new DLine(opts))
         invalid := DontCare
@@ -195,17 +234,14 @@ class L1DC(val opts: L1DOpts) extends MultiIOModule {
             }
           }
 
-          state := MainState.readingRefill
+          nstate := MainState.readingRefill
         }
       }
     }
 
     is(MainState.walloc) {
-      when(toL2.l2req =/= L2Req.idle) {
-        // Wait for memory port
-        state := MainState.walloc
-      }.elsewhen(!wlookups(victim).valid || !wlookups(victim).dirty) {
-        state := MainState.wallocRefill
+      when(!wlookups(victim).valid || !wlookups(victim).dirty) {
+        nstate := MainState.wallocRefill
       }.otherwise {
         toL2.l1addr := wlookups(victim).tag ## getIndex(waddr) ## 0.U(OFFSET_WIDTH.W)
         toL2.l1req := L1DCPort.L1Req.writeback
@@ -223,7 +259,7 @@ class L1DC(val opts: L1DOpts) extends MultiIOModule {
             }
           }
 
-          state := MainState.wallocRefill
+          nstate := MainState.wallocRefill
         }
       }
     }
@@ -233,10 +269,12 @@ class L1DC(val opts: L1DOpts) extends MultiIOModule {
       val l1addr = Mux(state === MainState.readingRefill, pipeAddr, waddr)
       toL2.l1addr := getTag(l1addr) ## getIndex(l1addr) ## 0.U(OFFSET_WIDTH.W)
 
+      val writtenAddr = Mux(state === MainState.readingRefill, pipeAddr, waddr)
+
       val written = Wire(new DLine(opts))
       written.valid := true.B
       written.dirty := state === MainState.wallocRefill
-      written.tag := getTag(Mux(state === MainState.readingRefill, pipeAddr, waddr))
+      written.tag := getTag(writtenAddr)
       written.data := toL2.rdata.asTypeOf(written.data)
 
       when(state === MainState.wallocRefill) {
@@ -250,33 +288,31 @@ class L1DC(val opts: L1DOpts) extends MultiIOModule {
       when(!toL2.l1stall) {
         for((store, idx) <- stores.zipWithIndex) {
           when(idx.U === victim) {
-            store.write(getIndex(waddr), written)
+            store.write(getIndex(writtenAddr), written)
           }
         }
 
         when(state === MainState.readingRefill) {
-          state := MainState.readingSpin
+          nstate := MainState.readingSpin
         }.otherwise {
           wbuf(wbufHead).valid := false.B
           wbufHead := wbufHead +% 1.U
 
-          when(pendingRead) {
-            state := MainState.reading
-          }.otherwise {
-            state := MainState.writing
-          }
+          nstate := MainState.idle
         }
       }
     }
 
+    // TODO: drop spin stage
     is(MainState.readingSpin) {
       when(!pendingRead) {
-        state := MainState.writing
+        nstate := MainState.idle
       }
     }
   }
 
   // Handle write interface
+  // FIXME: write-merge
   when(!w.write) {
     w.stall := false.B
   }.elsewhen(wbufTail +% 1.U =/= wbufHead) {
@@ -284,6 +320,8 @@ class L1DC(val opts: L1DOpts) extends MultiIOModule {
     wbuf(wbufTail).be := w.be
     wbuf(wbufTail).wdata := w.data
     wbuf(wbufTail).valid := true.B
+
+    wbufTail := wbufTail +% 1.U
 
     w.stall := false.B
   }.otherwise {
@@ -295,7 +333,7 @@ class L1DC(val opts: L1DOpts) extends MultiIOModule {
   val hitCount = PopCount(lookups.map(line => line.valid && line.tag === getTag(pipeAddr)))
   assert(hitCount <= 1.U)
 
-  val hit = lookups.foldLeft(false.B)((acc, line) => line.valid && line.tag === getTag(pipeAddr))
+  val hit = lookups.foldLeft(false.B)((acc, line) => acc || (line.valid && line.tag === getTag(pipeAddr)))
   val lookupRdata = MuxCase(0.U, lookups.map(line => (
     line.valid && line.tag === getTag(pipeAddr),
     line.data(getSublineIdx(pipeAddr))
