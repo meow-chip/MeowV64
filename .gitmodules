@@ -1,0 +1,3 @@
+[submodule "testcases/riscv-tests"]
+	path = testcases/riscv-tests
+	url = git@git.tsinghua.edu.cn:meow/riscv-tests

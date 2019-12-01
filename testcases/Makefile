@@ -1,50 +1,24 @@
-SRCS:=$(wildcard src/*.S)
-BINS:=$(patsubst src/%.S,bin/%.bin,$(SRCS))
-TMPS:=$(patsubst src/%.S,bin/%.bin.tmp,$(SRCS))
-HEXS:=$(patsubst src/%.S,hex/%.hex,$(SRCS))
-
-CSRCS:=$(wildcard c/*.c)
-REFS:=$(patsubst c/%.c,ref/%.S,$(CSRCS))
+##
+# MeowV64 testcases
+#
+# @file
+# @version 0.1
 
 PREFIX ?= "riscv64-linux-gnu-"
 
-.PHONY: list all clean ref
+.PHONY: all clean meow riscv-tests
 
-all: $(BINS) $(HEXS)
-
-bin/%.bin: src/%.S Makefile
-	mkdir -p bin
-	$(PREFIX)as -march=rv64imc $< -o $@.tmp
-	$(PREFIX)ld $@.tmp -o $@
-	$(PREFIX)objcopy -O binary $@
-
-hex/%.hex: bin/%.bin Makefile
-	mkdir -p hex
-	hexdump -ve '1/1 "%02x" "\n"' $< > $@
-
-ref: $(REFS)
-
-ref/%.S : c/%.c Makefile
-	mkdir -p ref
-	$(PREFIX)gcc -S -nostdlib $< -o $@
-
-list:
-	@echo "Sources:"
-	@echo $(SRCS)
-	@echo
-	@echo "Will generate:"
-	@echo $(BINS)
-
-list-ref:
-	@echo "Sources:"
-	@echo $(CSRCS)
-	@echo
-	@echo "Will generate:"
-	@echo $(REFS)
+all: meow riscv-tests
 
 clean:
-	rm -f $(BINS) $(HEXS) $(TMPS)
+	make -C meow -f Makefile clean
+	[ ! -d riscv-tests/build ] || make -C riscv-tests/build -f riscv-tests/build/Makefile clean
 
-disasm:
-	@echo "Disassembly for $(FILE)"
-	$(PREFIX)objdump -D $(FILE) -b binary -m riscv
+meow:
+	make -C meow -f Makefile all PREFIX=$(PREFIX)
+
+riscv-tests:
+	bash -c "cd riscv-tests && autoconf && mkdir build && cd build && ../configure"
+	make -C riscv-tests/build -f Makefile isa RISCV_PREFIX=$(PREFIX)
+
+# end

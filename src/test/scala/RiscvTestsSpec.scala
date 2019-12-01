@@ -7,8 +7,8 @@ import org.scalatest.Matchers
 import java.io.File
 
 object RiscvTestsSpec {
-  val cases = new File("./testcases/riscv-tests/isa").listFiles
-    .filter(_.isFile).filter(_.getName.startsWith("rv64"))
+  val cases = new File("./testcases/riscv-tests/build/isa").listFiles
+    .filter(_.isFile).filter(_.getName.endsWith(".hex"))
     .map(_.getPath).toList
 }
 

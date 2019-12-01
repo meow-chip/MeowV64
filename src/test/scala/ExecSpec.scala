@@ -7,17 +7,17 @@ import org.scalatest.Matchers
 
 object ExecSpec {
   val cases = List(
-    ("OP-IMM instructions", "./testcases/hex/op-imm.hex"),
-    ("Load/Store", "./testcases/hex/load-store.hex"),
-    ("Unconditional jumps", "./testcases/hex/jump.hex"),
-    ("Branches", "./testcases/hex/branch.hex"),
-    ("Serial output", "./testcases/hex/serial.hex"),
-    ("Multiply", "./testcases/hex/mul.hex"),
-    ("Multiply neg", "./testcases/hex/mul-neg.hex"),
-    ("Division", "./testcases/hex/div.hex"),
-    ("Division neg", "./testcases/hex/div-neg.hex"),
-    ("Div by 0 & overflow", "./testcases/hex/div-special.hex"),
-    ("Fibonacci", "./testcases/hex/fib.hex")
+    ("OP-IMM instructions", "./testcases/meow/hex/op-imm.hex"),
+    ("Load/Store", "./testcases/meow/hex/load-store.hex"),
+    ("Unconditional jumps", "./testcases/moew/hex/jump.hex"),
+    ("Branches", "./testcases/moew/hex/branch.hex"),
+    ("Serial output", "./testcases/moew/hex/serial.hex"),
+    ("Multiply", "./testcases/moew/hex/mul.hex"),
+    ("Multiply neg", "./testcases/moew/hex/mul-neg.hex"),
+    ("Division", "./testcases/moew/hex/div.hex"),
+    ("Division neg", "./testcases/moew/hex/div-neg.hex"),
+    ("Div by 0 & overflow", "./testcases/moew/hex/div-special.hex"),
+    ("Fibonacci", "./testcases/moew/hex/fib.hex")
   )
 }
 
