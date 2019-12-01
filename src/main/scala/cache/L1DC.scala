@@ -35,6 +35,17 @@ class DLine(val opts: L1Opts) extends Bundle {
   val data = Vec(TRANSFER_COUNT, UInt(opts.TRANSFER_SIZE.W))
 }
 
+object DLine {
+  def empty(opts: L1DOpts): DLine = {
+    val ret = Wire(new DLine(opts))
+
+    ret := DontCare
+    ret.valid := false.B
+
+    ret
+  }
+}
+
 @chiselName
 class L1DC(val opts: L1DOpts) extends MultiIOModule {
   // Constants and helpers
@@ -114,14 +125,12 @@ class L1DC(val opts: L1DOpts) extends MultiIOModule {
   // Write handler
 
   object MainState extends ChiselEnum {
-    // FIXME: reset!
-
-    val writing, reading, walloc, readingRefill, wallocRefill, readingSpin, idle = Value
+    val writing, reading, walloc, readingRefill, wallocRefill, readingSpin, idle, rst = Value
     // readingSpin is for making sure that reading has finished.
     // Maybe can be optimized (handshake w <-> r)
   }
 
-  val state = RegInit(MainState.idle)
+  val state = RegInit(MainState.rst)
   val nstate = Wire(MainState())
 
   nstate := state
@@ -165,7 +174,22 @@ class L1DC(val opts: L1DOpts) extends MultiIOModule {
   // writing / reading is never directly gone to
   assert((nstate =/= MainState.writing && nstate =/= MainState.reading) || state === MainState.idle || nstate === state)
 
+  // Rst
+  val rstCnt = RegInit(0.U(log2Ceil(LINE_PER_ASSOC).W))
+
   switch(state) {
+    is(MainState.rst) {
+      for(store <- stores) {
+        store.write(rstCnt, DLine.empty(opts))
+      }
+
+      rstCnt := rstCnt +% 1.U
+
+      when(rstCnt === (LINE_PER_ASSOC-1).U) {
+        nstate := MainState.idle
+      }
+    }
+
     is(MainState.idle) {
       // Wait one extra cycle after walloc
       // for the allocated data to propagate to the read port
@@ -312,20 +336,43 @@ class L1DC(val opts: L1DOpts) extends MultiIOModule {
   }
 
   // Handle write interface
-  // FIXME: write-merge
+  val wmHit = wbuf.foldLeft(false.B)(
+    (acc, ev) => ev.valid && ev.addr === w.addr
+  )
+  val wmHitHead = wbuf(wbufHead).valid && wbuf(wbufHead).addr === w.addr
+
   when(!w.write) {
+    // No request
     w.stall := false.B
-  }.elsewhen(wbufTail +% 1.U =/= wbufHead) {
-    wbuf(wbufTail).addr := w.addr
-    wbuf(wbufTail).be := w.be
-    wbuf(wbufTail).wdata := w.data
-    wbuf(wbufTail).valid := true.B
-
-    wbufTail := wbufTail +% 1.U
-
-    w.stall := false.B
-  }.otherwise {
+  }.elsewhen(wmHitHead) {
+    // Head may be being processed right now, wait for it to finish and do a push
     w.stall := true.B
+  }.otherwise {
+    for(buf <- wbuf) {
+      when(buf.valid && buf.addr === w.addr) {
+        buf.wdata := muxBE(w.be, w.data, buf.wdata)
+        buf.be := buf.be | w.be
+      }
+    }
+
+    when(wmHit) {
+      // Write merge completing
+      w.stall := false.B
+    }.elsewhen(wbufTail +% 1.U =/= wbufHead) {
+      // Write merge miss, waiting to push
+      assert(waddr(IGNORED_WIDTH-1, 0) === 0.U)
+      wbuf(wbufTail).addr := w.addr
+      wbuf(wbufTail).be := w.be
+      wbuf(wbufTail).wdata := w.data
+      wbuf(wbufTail).valid := true.B
+
+      wbufTail := wbufTail +% 1.U
+
+      w.stall := false.B
+    }.otherwise {
+      // Wtire merge miss, fifo full, wait for fifo
+      w.stall := true.B
+    }
   }
 
   // Handle read interface
