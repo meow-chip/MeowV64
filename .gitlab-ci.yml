@@ -10,6 +10,7 @@ variables:
   SBT_VERSION: "0.13.9"
   SBT_OPTS: "-Dsbt.global.base=sbt-cache/.sbtboot -Dsbt.boot.directory=sbt-cache/.boot -Dsbt.ivy.home=sbt-cache/.ivy -Dsbt.repository.config=.gitlab-ci/repositories -Dsbt.override.build.repos=true"
   PREFIX: "riscv64-linux-gnu-"
+  GIT_SUBMODULE_STRATEGY: recursive
 
 stages:
   - test
@@ -22,7 +23,6 @@ exec_test:
   stage: test
   image: chisel
   script:
-    - git submodule update --init --recursive
     - cd testcases
     - make
     - cd ..
