@@ -22,6 +22,7 @@ exec_test:
   stage: test
   image: chisel
   script:
+    - git submodule update --init --recursive
     - cd testcases
     - make
     - cd ..
