@@ -10,15 +10,15 @@ object ExecSpec {
     ("OP-IMM instructions", "./testcases/meow/hex/op-imm.hex"),
     ("Load/Store", "./testcases/meow/hex/load-store.hex"),
     ("Write-merge", "./testcases/meow/hex/write-merge.hex"),
-    ("Unconditional jumps", "./testcases/moew/hex/jump.hex"),
-    ("Branches", "./testcases/moew/hex/branch.hex"),
-    ("Serial output", "./testcases/moew/hex/serial.hex"),
-    ("Multiply", "./testcases/moew/hex/mul.hex"),
-    ("Multiply neg", "./testcases/moew/hex/mul-neg.hex"),
-    ("Division", "./testcases/moew/hex/div.hex"),
-    ("Division neg", "./testcases/moew/hex/div-neg.hex"),
-    ("Div by 0 & overflow", "./testcases/moew/hex/div-special.hex"),
-    ("Fibonacci", "./testcases/moew/hex/fib.hex")
+    ("Unconditional jumps", "./testcases/meow/hex/jump.hex"),
+    ("Branches", "./testcases/meow/hex/branch.hex"),
+    ("Serial output", "./testcases/meow/hex/serial.hex"),
+    ("Multiply", "./testcases/meow/hex/mul.hex"),
+    ("Multiply neg", "./testcases/meow/hex/mul-neg.hex"),
+    ("Division", "./testcases/meow/hex/div.hex"),
+    ("Division neg", "./testcases/meow/hex/div-neg.hex"),
+    ("Div by 0 & overflow", "./testcases/meow/hex/div-special.hex"),
+    ("Fibonacci", "./testcases/meow/hex/fib.hex")
   )
 }
 
