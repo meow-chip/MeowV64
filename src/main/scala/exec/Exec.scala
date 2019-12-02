@@ -22,9 +22,6 @@ import cache.DCWriter
  */
 class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
   val io = IO(new Bundle {
-    val regReaders = Vec(2, new RegReader)
-    val regWriter = new RegWriter
-
     val ctrl = StageCtrl.stage()
 
     val branch = Output(new BranchResult)
@@ -33,10 +30,34 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
     val csrWriter = new CSRWriter(coredef.XLEN)
   })
 
+  val rr = IO(Vec(coredef.ISSUE_NUM*2, new RegReader))
+  val rw = IO(Vec(coredef.RETIRE_NUM, new RegWriter))
+
   val toIF = IO(new InstrFifoReader(coredef))
 
   val toDC = IO(new Bundle {
     val r = new DCReader(coredef.L1D)
     val w = new DCWriter(coredef.L1D)
   })
+
+  val inflight = RegInit(0.U(log2Ceil(coredef.INFLIGHT_INSTR_LIMIT).W))
+  val ntag = RegInit(0.U(log2Ceil(coredef.INFLIGHT_INSTR_LIMIT).W))
+  val issue = Wire(UInt(log2Ceil(coredef.ISSUE_NUM+1).W))
+  val retire = Wire(UInt(log2Ceil(coredef.RETIRE_NUM+1).W))
+  assert(inflight >= retire)
+
+  ntag := ntag +% issue
+  inflight := inflight +% issue -% retire
+
+  toIF.pop := issue
+
+  val renamer = Module(new Renamer)
+  renamer.rr <> rr
+  renamer.rw <> rw
+
+  renamer.toExec.commit := issue
+  renamer.toExec.input := toIF.view
+  renamer.toExec.ntag := ntag
+
+  // TODO: handles output
 }
