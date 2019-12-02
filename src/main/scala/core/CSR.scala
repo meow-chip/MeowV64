@@ -103,7 +103,8 @@ object CSR {
     0xF14 -> ("mhartid", false),
     0x300 -> ("mstatus", true),
     0x301 -> ("misa", false),
-    // m[e|i]deleg should not exist on M mode only machine
+    0x302 -> ("medeleg", true),
+    0x303 -> ("mideleg", true),
     0x304 -> ("mie", true),
     0x305 -> ("mtvec", true),
     0x306 -> ("mcounteren", false),
