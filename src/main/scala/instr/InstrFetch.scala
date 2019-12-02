@@ -65,22 +65,34 @@ class InstrFetch(coredef: CoreDef) extends MultiIOModule {
 
   val issueFifoNearlyFull = issueFifoSize > (coredef.ISSUE_FIFO_DEPTH - coredef.FETCH_NUM * 2 - 1).U
 
-  toIC.flush := toCtrl.ctrl.flush
+  val flushed = RegInit(false.B)
+  val flushedJmpTo = RegInit(0.U(coredef.ADDR_WIDTH.W))
+
   toIC.rst := toCtrl.irst
 
-  toIC.addr := toCtrl.pc
-  toIC.read := !issueFifoNearlyFull
+  toIC.addr := Mux(flushed, flushedJmpTo, toCtrl.pc)
+  toIC.read := (!issueFifoNearlyFull) || toCtrl.ctrl.flush
 
   val proceed = (!toIC.vacant) && (!toIC.stall)
-  toCtrl.ctrl.stall := toIC.stall || (issueFifoNearlyFull && !toCtrl.ctrl.flush)
+  toCtrl.ctrl.stall := !toCtrl.ctrl.flush && (toIC.stall || issueFifoNearlyFull || flushed)
+
+  when(toCtrl.ctrl.flush) {
+    when(toIC.stall) {
+      flushed := true.B
+      flushedJmpTo := toCtrl.pc
+    }
+  }.elsewhen(proceed) {
+    flushed := false.B
+  }
 
   val tailFailed = RegInit(false.B)
   val tail = RegInit(0.U(Const.INSTR_MIN_WIDTH.W))
 
   val pipePc = RegInit(0.U(coredef.ADDR_WIDTH.W))
   val pipeSkip = RegInit(0.U)
-  when(toCtrl.ctrl.flush || proceed) {
-    pipePc := toCtrl.pc
+
+  when(!toCtrl.ctrl.stall) {
+    pipePc := toIC.addr
     pipeSkip := toCtrl.skip
 
     /*
@@ -97,7 +109,7 @@ class InstrFetch(coredef: CoreDef) extends MultiIOModule {
 
   for(i <- (0 until coredef.FETCH_NUM)) {
     decoded(i).addr := pipePc + (i*Const.INSTR_MIN_WIDTH/8).U
-    decoded(i).vacant := toIC.vacant || i.U < pipeSkip
+    decoded(i).vacant := toIC.vacant || i.U < pipeSkip || flushed
 
     if(i == coredef.FETCH_NUM-1) {
       val (parsed, success) = vecView(i).tryAsInstr16
@@ -146,10 +158,6 @@ class InstrFetch(coredef: CoreDef) extends MultiIOModule {
     }
   }
 
-  when(toCtrl.ctrl.flush) {
-    tailFailed := false.B
-  }
-
   // FIFO interface
 
   val cnts = Wire(Vec(coredef.FETCH_NUM, UInt(log2Ceil(coredef.FETCH_NUM+1).W)))
@@ -193,8 +201,10 @@ class InstrFetch(coredef: CoreDef) extends MultiIOModule {
 
   issueFifoHead := issueFifoHead +% toExec.pop
 
-  // lastly, flush fifo
+  // Flush operations, we put them here to override everything
+
   when(toCtrl.ctrl.flush) {
+    tailFailed := false.B
     issueFifoHead := 0.U
     issueFifoTail := 0.U
   }

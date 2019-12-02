@@ -440,7 +440,8 @@ class L1DC(val opts: L1DOpts) extends MultiIOModule {
   )))
 
   when(toL2.l2req =/= L2Req.idle) {
-    assert(toL2.l1stall) // L2req can only happen when l2 is processing other ports' requests
+    // assert(toL2.l1stall) // L2req can only happen when l2 is processing other ports' requests
+    // Nope that may happen. Suppose we are to victimize a line held by this L1
 
     queryAddr := toL2.l2addr
     toL2.l2stall := true.B

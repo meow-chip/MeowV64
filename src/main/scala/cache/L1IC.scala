@@ -12,7 +12,6 @@ class ICPort(val opts: L1Opts) extends Bundle {
   val read = Input(Bool())
 
   val stall = Output(Bool())
-  val flush = Input(Bool()) // Branch missperdict, flushing all running requests
   val rst = Input(Bool())
 
   val data = Output(UInt(opts.TRANSFER_SIZE.W)) // Data delay is 1 cycle
@@ -20,7 +19,7 @@ class ICPort(val opts: L1Opts) extends Bundle {
 }
 
 object S2State extends ChiselEnum {
-  val rst, idle, refill, refillWait = Value
+  val rst, idle, refill = Value
 }
 
 class ILine(val opts: L1Opts) extends Bundle {
@@ -53,7 +52,7 @@ class L1IC(opts: L1Opts) extends MultiIOModule {
   val INDEX_WIDTH = INDEX_OFFSET_WIDTH - OFFSET_WIDTH
   val IGNORED_WIDTH = log2Ceil(opts.TRANSFER_SIZE / 8)
 
-  val stores = Seq.fill(opts.ASSOC)({ SyncReadMem(LINE_PER_ASSOC, new ILine(opts)) })
+  val stores = SyncReadMem(LINE_PER_ASSOC, Vec(opts.ASSOC, new ILine(opts)))
 
   def getTransferOffset(addr: UInt) = addr(OFFSET_WIDTH-1, IGNORED_WIDTH)
   def getIndex(addr: UInt) = addr(INDEX_OFFSET_WIDTH-1, OFFSET_WIDTH)
@@ -63,6 +62,8 @@ class L1IC(opts: L1Opts) extends MultiIOModule {
   // Stage 1, tag fetch, data fetch
   val pipeRead = RegInit(false.B)
   val pipeAddr = RegInit(0.U(opts.ADDR_WIDTH.W))
+  val exitedRead = RegInit(false.B)
+  val exitedAddr = RegInit(0.U(opts.ADDR_WIDTH.W))
 
   val readingAddr = Wire(UInt(opts.ADDR_WIDTH.W))
   when(toCPU.stall) {
@@ -70,19 +71,20 @@ class L1IC(opts: L1Opts) extends MultiIOModule {
   }.otherwise {
     readingAddr := toCPU.addr
   }
-  val rawReadouts = stores.map(s => s.read(getIndex(readingAddr)))
-  val savedReadouts = Seq.fill(opts.ASSOC)(Reg(new ILine(opts)))
-
-  val readouts = Seq.fill(opts.ASSOC)(Wire(new ILine(opts)))
+  val rawReadouts = stores.read(getIndex(readingAddr))
+  val savedReadouts = Reg(Vec(opts.ASSOC, new ILine(opts)))
 
   // Stage 2, data mux, refilling, reset
   val state = RegInit(S2State.rst)
   val nstate = Wire(S2State())
 
   // To prevents RAW
-  for((r, (raw, saved)) <- readouts.iterator.zip(rawReadouts.iterator.zip(savedReadouts.iterator))) {
-    r := Mux(RegNext(state) === S2State.refill && state === S2State.idle, raw, raw)
-  }
+  val sameLineRAW = (
+    exitedRead &&
+    exitedAddr(opts.ADDR_WIDTH-1, OFFSET_WIDTH) === pipeAddr(opts.ADDR_WIDTH-1, OFFSET_WIDTH) &&
+    RegNext(state) === S2State.refill
+  )
+  val readouts = Mux(sameLineRAW && state === S2State.idle, savedReadouts, rawReadouts)
 
   val rand = chisel3.util.random.LFSR(8)
   val victim = RegInit(0.U(log2Ceil(opts.ASSOC)))
@@ -103,50 +105,20 @@ class L1IC(opts: L1Opts) extends MultiIOModule {
   when(!toCPU.stall) {
     pipeRead := toCPU.read
     pipeAddr := toCPU.addr
+    exitedAddr := pipeAddr
+    exitedRead := pipeRead
   }
 
   val waitBufAddr = RegInit(0.U(opts.ADDR_WIDTH.W))
   val waitBufFull = RegInit(false.B)
 
   when(state === S2State.rst) {
-    for(assoc <- stores) {
-      assoc.write(rstCnt, rstLine)
-    }
-
     rstCnt := rstCnt +% 1.U
 
     when(rstCnt.andR()) {
       // Omit current request
       toCPU.vacant := true.B
       nstate := S2State.idle
-    }
-  }.elsewhen(toCPU.flush) {
-    when(toCPU.rst) {
-      nstate := S2State.rst
-    }.otherwise {
-      toCPU.vacant := true.B
-      toCPU.stall := false.B
-      // Omit current request
-      // FIXME: may break refiller
-
-      nstate := S2State.idle
-
-      when(state === S2State.refillWait) {
-        when(toL2.stall) {
-          waitBufFull := false.B
-        }.otherwise {
-          nstate := S2State.idle
-        }
-      }
-
-      when(state === S2State.refill) {
-        when(toL2.stall) {
-          nstate := S2State.refillWait
-          waitBufFull := false.B
-        }.otherwise {
-          nstate := S2State.idle
-        }
-      }
     }
   }.otherwise {
     switch(state) {
@@ -177,38 +149,17 @@ class L1IC(opts: L1Opts) extends MultiIOModule {
           written.data := toL2.data.asTypeOf(written.data)
           written.valid := true.B
 
-          for((store, idx) <- stores.zipWithIndex) {
-            savedReadouts(idx) := rawReadouts(idx)
-            when(rand(ASSOC_IDX_WIDTH-1, 0) === idx.U(ASSOC_IDX_WIDTH.W)) {
-              store.write(getIndex(pipeAddr), written)
-              savedReadouts(idx) := written
-            }
-          }
+          val victim = rand(ASSOC_IDX_WIDTH-1, 0)
+          val mask = (0 until opts.ASSOC).map(_.U === victim)
+
+          stores.write(getIndex(pipeAddr), VecInit(Seq.fill(opts.ASSOC)(written)), mask)
+          savedReadouts := rawReadouts
+          savedReadouts(victim) := written
 
           toCPU.data := written.data(getTransferOffset(pipeAddr))
           toCPU.vacant := false.B
 
           nstate := S2State.idle
-        }
-      }
-
-      is(S2State.refillWait) {
-        toL2.addr := toAligned(pipeAddr)
-        toL2.read := true.B
-
-        // Override stall signal, so that IF doesn't proceed
-        toCPU.vacant := true.B
-        toCPU.stall := waitBufFull
-
-        when(!toL2.stall) {
-          nstate := S2State.idle
-          // Ignore returned value
-          when(waitBufFull) {
-            pipeAddr := waitBufAddr
-          }
-        }.elsewhen(toCPU.read) {
-          waitBufAddr := toCPU.addr
-          waitBufFull := true.B
         }
       }
     }
