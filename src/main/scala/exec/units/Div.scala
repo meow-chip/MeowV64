@@ -1,20 +1,20 @@
-package exec
+package exec.units
 
 import chisel3._
 import chisel3.util._
 import instr.Decoder
+import exec._
+import _root_.core.CoreDef
 
-class DivExt(val XLEN: Int) extends Bundle {
-  val r = UInt((XLEN*2).W) // Dividend
-  val d = UInt(XLEN.W) // Shifted divider
-  val q = UInt(XLEN.W)
+class DivExt(implicit val coredef: CoreDef) extends Bundle {
+  val r = UInt((coredef.XLEN*2).W) // Dividend
+  val d = UInt(coredef.XLEN.W) // Shifted divider
+  val q = UInt(coredef.XLEN.W)
 }
 
-class Div(ADDR_WIDTH: Int, XLEN: Int, ROUND_PER_STAGE: Int) extends ExecUnit(
-  XLEN / ROUND_PER_STAGE,
-  new DivExt(XLEN),
-  ADDR_WIDTH,
-  XLEN
+class Div(val ROUND_PER_STAGE: Int)(override implicit val coredef: CoreDef) extends ExecUnit(
+  coredef.XLEN / ROUND_PER_STAGE,
+  new DivExt
 ) {
   val round = RegInit(0.U(log2Ceil(ROUND_PER_STAGE).W))
 
@@ -32,9 +32,9 @@ class Div(ADDR_WIDTH: Int, XLEN: Int, ROUND_PER_STAGE: Int) extends ExecUnit(
 
   def map(stage: Int, pipe: PipeInstr, _ext: Option[DivExt]): (DivExt, Bool) = {
     if(stage == 0) {
-      val init = Wire(new DivExt(XLEN))
-      val op1s = Wire(SInt(XLEN.W))
-      val op2s = Wire(SInt(XLEN.W))
+      val init = Wire(new DivExt)
+      val op1s = Wire(SInt(coredef.XLEN.W))
+      val op2s = Wire(SInt(coredef.XLEN.W))
 
       val isDWord = (
         pipe.instr.instr.op === Decoder.Op("OP-IMM").ident
@@ -64,13 +64,13 @@ class Div(ADDR_WIDTH: Int, XLEN: Int, ROUND_PER_STAGE: Int) extends ExecUnit(
         val sop2 = op2.asSInt
 
         init.q := 0.U
-        when(sop1(XLEN-1)) {
+        when(sop1(coredef.XLEN-1)) {
           init.r := (-sop1).asUInt
         }.otherwise {
           init.r := op1
         }
 
-        when(sop2(XLEN-1)) {
+        when(sop2(coredef.XLEN-1)) {
           init.d := (-sop2).asUInt
         }.otherwise {
           init.d := op2.asUInt
@@ -81,19 +81,19 @@ class Div(ADDR_WIDTH: Int, XLEN: Int, ROUND_PER_STAGE: Int) extends ExecUnit(
     }
 
     val ext = _ext.get
-    val nExt = Wire(new DivExt(XLEN))
+    val nExt = Wire(new DivExt)
     nExt.d := ext.d
 
     val shift = ((this.DEPTH - stage + 1) * ROUND_PER_STAGE - 1).U - round
     val shifted = ext.d << shift
 
-    when(ext.r(XLEN*2-1) && ((stage != 1).B || round =/= 0.U)) { // Prev is negative
+    when(ext.r(coredef.XLEN*2-1) && ((stage != 1).B || round =/= 0.U)) { // Prev is negative
       nExt.r := ext.r + shifted
     }.otherwise {
       nExt.r := ext.r - shifted
     }
 
-    nExt.q := ext.q ## (!nExt.r(XLEN*2-1))
+    nExt.q := ext.q ## (!nExt.r(coredef.XLEN*2-1))
 
     /*
     printf(p"[DIV   ]: After stage ${stage} @ ${round}\n")
@@ -105,8 +105,8 @@ class Div(ADDR_WIDTH: Int, XLEN: Int, ROUND_PER_STAGE: Int) extends ExecUnit(
   }
 
   def finalize(pipe: PipeInstr, ext: DivExt): RetireInfo = {
-    val op1s = Wire(SInt(XLEN.W))
-    val op2s = Wire(SInt(XLEN.W))
+    val op1s = Wire(SInt(coredef.XLEN.W))
+    val op2s = Wire(SInt(coredef.XLEN.W))
 
     val isDWord = (
       pipe.instr.instr.op === Decoder.Op("OP-IMM").ident
@@ -121,8 +121,8 @@ class Div(ADDR_WIDTH: Int, XLEN: Int, ROUND_PER_STAGE: Int) extends ExecUnit(
       op2s := pipe.rs2val(31, 0).asSInt
     }
 
-    val fq = Wire(SInt(XLEN.W))
-    val fr = Wire(SInt(XLEN.W))
+    val fq = Wire(SInt(coredef.XLEN.W))
+    val fr = Wire(SInt(coredef.XLEN.W))
 
     val qneg = Wire(Bool())
     val rneg = Wire(Bool())
@@ -133,8 +133,8 @@ class Div(ADDR_WIDTH: Int, XLEN: Int, ROUND_PER_STAGE: Int) extends ExecUnit(
       qneg := false.B
       rneg := false.B
     }.otherwise {
-      qneg := (op1s(XLEN-1) ^ op2s(XLEN-1)) && op2s.asUInt().orR()
-      rneg := op1s(XLEN-1)
+      qneg := (op1s(coredef.XLEN-1) ^ op2s(coredef.XLEN-1)) && op2s.asUInt().orR()
+      rneg := op1s(coredef.XLEN-1)
     }
 
     val q = ext.q
@@ -146,8 +146,8 @@ class Div(ADDR_WIDTH: Int, XLEN: Int, ROUND_PER_STAGE: Int) extends ExecUnit(
       r := ext.r + ext.d
     }
 
-    val hq = Wire(SInt(XLEN.W))
-    val hr = Wire(SInt(XLEN.W))
+    val hq = Wire(SInt(coredef.XLEN.W))
+    val hr = Wire(SInt(coredef.XLEN.W))
 
     when(isDWord) {
       hq := q.asSInt
@@ -175,11 +175,11 @@ class Div(ADDR_WIDTH: Int, XLEN: Int, ROUND_PER_STAGE: Int) extends ExecUnit(
     }
     */
 
-    val info = Wire(new RetireInfo(ADDR_WIDTH, XLEN))
+    val info = Wire(new RetireInfo)
     info.branch.nofire()
-    info.regWaddr := pipe.instr.instr.rd
-    val extended = Wire(SInt(XLEN.W))
-    info.regWdata := extended.asUInt()
+    // info.regWaddr := pipe.instr.instr.rd
+    val extended = Wire(SInt(coredef.XLEN.W))
+    info.wb := extended.asUInt()
 
     when(
       pipe.instr.instr.funct3 === Decoder.MULDIV_FUNC("DIV")

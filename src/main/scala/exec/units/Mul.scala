@@ -1,27 +1,29 @@
-package exec
+package exec.units
 
 import chisel3._
 import chisel3.util._
 import instr.Decoder
+import exec._
+import _root_.core.CoreDef
 
-class MulExt(val XLEN: Int) extends Bundle {
-  val acc = UInt((XLEN).W)
+class MulExt(implicit val coredef: CoreDef) extends Bundle {
+  val acc = UInt((coredef.XLEN).W)
 }
 
-class Mul(ADDR_WIDTH: Int, XLEN: Int) extends ExecUnit(1, new MulExt(XLEN), ADDR_WIDTH, XLEN) {
-  assert(XLEN == 64)
+class Mul(override implicit val coredef: CoreDef) extends ExecUnit(1, new MulExt) {
+  assert(coredef.XLEN == 64)
 
   override def map(stage: Int, pipe: PipeInstr, _ext: Option[MulExt]): (MulExt, Bool) = {
     if(stage == 0) {
       // printf(p"[MUL  0]: COMP ${Hexadecimal(pipe.rs1val)} * ${Hexadecimal(pipe.rs2val)}\n")
-      val ext = Wire(new MulExt(XLEN))
+      val ext = Wire(new MulExt)
 
       val isDWord = (
         pipe.instr.instr.op === Decoder.Op("OP-IMM").ident
         || pipe.instr.instr.op === Decoder.Op("OP").ident
       )
 
-      val (op1, op2) = (Wire(SInt(XLEN.W)), Wire(SInt(XLEN.W)))
+      val (op1, op2) = (Wire(SInt(coredef.XLEN.W)), Wire(SInt(coredef.XLEN.W)))
 
       when(isDWord) {
         op1 := pipe.rs1val.asSInt
@@ -67,11 +69,11 @@ class Mul(ADDR_WIDTH: Int, XLEN: Int) extends ExecUnit(1, new MulExt(XLEN), ADDR
   }
 
   override def finalize(pipe: PipeInstr, ext: MulExt): RetireInfo = {
-    val info = Wire(new RetireInfo(ADDR_WIDTH, XLEN))
+    val info = Wire(new RetireInfo)
     info.branch.nofire()
 
-    info.regWaddr := pipe.instr.instr.rd
-    info.regWdata := ext.acc
+    // info.regWaddr := pipe.instr.instr.rd
+    info.wb := ext.acc
 
     info
   }

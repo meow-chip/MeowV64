@@ -1,19 +1,21 @@
-package exec
+package exec.units
 
 import chisel3._
 import chisel3.util._
 import instr.Decoder
+import exec._
+import _root_.core.CoreDef
 
-class ALUExt(val XLEN: Int) extends Bundle {
-  val acc = SInt(XLEN.W)
+class ALUExt(implicit val coredef: CoreDef) extends Bundle {
+  val acc = SInt(coredef.XLEN.W)
 }
 
-class ALU(ADDR_WIDTH: Int, XLEN: Int)
-  extends ExecUnit(0, new ALUExt(XLEN), ADDR_WIDTH, XLEN)
+class ALU(override implicit val coredef: CoreDef)
+  extends ExecUnit(0, new ALUExt)
 {
   def map(stage: Int, pipe: PipeInstr, ext: Option[ALUExt]): (ALUExt, Bool) = {
-    val ext = Wire(new ALUExt(XLEN))
-    val acc = Wire(SInt(XLEN.W))
+    val ext = Wire(new ALUExt)
+    val acc = Wire(SInt(coredef.XLEN.W))
     acc := DontCare
 
     val isDWord = (
@@ -22,7 +24,7 @@ class ALU(ADDR_WIDTH: Int, XLEN: Int)
     )
 
     val op1f = pipe.rs1val.asSInt()
-    val op2f = Wire(SInt(XLEN.W))
+    val op2f = Wire(SInt(coredef.XLEN.W))
 
     val useSub = Wire(Bool())
     when(pipe.instr.instr.op === Decoder.Op("OP-IMM").ident
@@ -34,8 +36,8 @@ class ALU(ADDR_WIDTH: Int, XLEN: Int)
         useSub := pipe.instr.instr.funct7(5)
       }
 
-    val op1 = Wire(SInt(XLEN.W))
-    val op2 = Wire(SInt(XLEN.W))
+    val op1 = Wire(SInt(coredef.XLEN.W))
+    val op2 = Wire(SInt(coredef.XLEN.W))
     
     when(isDWord) {
       // Is 64-bit instr
@@ -117,13 +119,12 @@ class ALU(ADDR_WIDTH: Int, XLEN: Int)
 
   def finalize(pipe: PipeInstr, ext: ALUExt): RetireInfo = {
     // Sign extend if needed
-    val info = Wire(new RetireInfo(ADDR_WIDTH, XLEN))
+    val info = Wire(new RetireInfo)
     info.branch.nofire()
-    info.regWaddr := pipe.instr.instr.rd
 
-    val extended = Wire(SInt(XLEN.W))
+    val extended = Wire(SInt(coredef.XLEN.W))
     extended := ext.acc
-    info.regWdata := extended.asUInt
+    info.wb := extended.asUInt
 
     info
   }

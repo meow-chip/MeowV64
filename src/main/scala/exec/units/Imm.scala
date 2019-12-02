@@ -1,16 +1,18 @@
-package exec
+package exec.units
 
 import chisel3._
 import chisel3.util._
 import instr.Decoder
+import exec._
+import _root_.core.CoreDef
 
-class ImmExt(val XLEN: Int) extends Bundle {
-  val acc = UInt(XLEN.W)
+class ImmExt(implicit val coredef: CoreDef) extends Bundle {
+  val acc = UInt(coredef.XLEN.W)
 }
 
-class Imm(ADDR_WIDTH: Int, XLEN: Int) extends ExecUnit(0, new ImmExt(XLEN), ADDR_WIDTH, XLEN) {
+class Imm(override implicit val coredef: CoreDef) extends ExecUnit(0, new ImmExt) {
   def map(stage: Int, pipe: PipeInstr, ext: Option[ImmExt]): (ImmExt, chisel3.Bool) = {
-    val ext = Wire(new ImmExt(XLEN))
+    val ext = Wire(new ImmExt)
     ext.acc := DontCare
 
     switch(pipe.instr.instr.op) {
@@ -31,10 +33,10 @@ class Imm(ADDR_WIDTH: Int, XLEN: Int) extends ExecUnit(0, new ImmExt(XLEN), ADDR
     (ext, false.B)
   }
   def finalize(pipe: PipeInstr, ext: ImmExt): RetireInfo = {
-    val info = Wire(new RetireInfo(ADDR_WIDTH, XLEN))
+    val info = Wire(new RetireInfo)
     info.branch.nofire()
-    info.regWaddr := pipe.instr.instr.rd
-    info.regWdata := ext.acc
+    // info.regWaddr := pipe.instr.instr.rd
+    info.wb := ext.acc
 
     info
   }

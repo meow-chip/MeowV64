@@ -1,40 +1,98 @@
 package exec
 
+import core.CoreDef
 import chisel3._
 import chisel3.MultiIOModule
 import instr.InstrExt
 import org.scalatest.tools.RerunningState
+import exec._
+import chisel3.util.log2Ceil
+import _root_.core.ExReq
+import _root_.core.ExType
 
-class RetireInfo(val ADDR_WIDTH: Int, val XLEN: Int) extends Bundle {
-  val regWaddr = UInt(ADDR_WIDTH.W)
-  val regWdata = UInt(XLEN.W)
+class BranchResult(implicit val coredef: CoreDef) extends Bundle {
+  val branch = Bool()
+  val target = UInt(coredef.ADDR_WIDTH.W)
 
-  val branch = new BranchResult(ADDR_WIDTH)
+  val ex = ExReq()
+  val extype = ExType()
+
+  def nofire() = {
+    branch := false.B
+    target := DontCare
+
+    ex := ExReq.none
+    extype := DontCare
+  }
+
+  def fire(addr: UInt) = {
+    branch := true.B
+    target := addr
+
+    ex := ExReq.none
+    extype := DontCare
+  }
+
+  def ex(et: ExType.Type) {
+    branch := false.B
+    target := DontCare
+
+    ex := ExReq.ex
+    extype := et
+  }
+
+  def eret() {
+    branch := false.B
+    target := DontCare
+
+    ex := ExReq.ret
+    extype := DontCare
+  }
+}
+
+class RetireInfo(implicit val coredef: CoreDef) extends Bundle {
+  val wb = UInt(coredef.XLEN.W)
+  val branch = new BranchResult
 }
 
 object RetireInfo {
-  def vacant(ADDR_WIDTH: Int, XLEN: Int): RetireInfo = {
-    val info = Wire(new RetireInfo(ADDR_WIDTH, XLEN))
+  def vacant(implicit coredef: CoreDef): RetireInfo = {
+    val info = Wire(new RetireInfo)
 
     info.branch.nofire()
-    info.regWaddr := 0.U
-    info.regWdata := DontCare
+    info.wb := DontCare
 
     info
   }
 }
 
-class PipeInstr(val ADDR_WIDTH: Int, val XLEN: Int) extends Bundle {
-  val instr = new InstrExt
+class RenamedInstr(implicit val coredef: CoreDef) extends Bundle {
+  val name = UInt(log2Ceil(coredef.INFLIGHT_INSTR_LIMIT).W)
+  val data = UInt(coredef.XLEN.W)
+  val ready = Bool()
+}
 
-  val rs1val = UInt(XLEN.W)
-  val rs2val = UInt(XLEN.W)
+class PipeInstr(implicit val coredef: CoreDef) extends Bundle {
+  val instr = new InstrExt(coredef.ADDR_WIDTH)
+
+  val rs1val = UInt(coredef.XLEN.W)
+  val rs2val = UInt(coredef.XLEN.W)
+
+  val rdname = UInt(log2Ceil(coredef.INFLIGHT_INSTR_LIMIT).W)
+  val tag = UInt(log2Ceil(coredef.INFLIGHT_INSTR_LIMIT).W)
+}
+
+class ReservedInstr(override implicit val coredef: CoreDef) extends PipeInstr {
+  val rs1name = UInt(log2Ceil(coredef.INFLIGHT_INSTR_LIMIT).W)
+  val rs2name = UInt(log2Ceil(coredef.INFLIGHT_INSTR_LIMIT).W)
+  val rs1ready = Bool()
+  val rs2ready = Bool()
 }
 
 object PipeInstr {
-  def empty(ADDR_WIDTH: Int, XLEN: Int): PipeInstr = {
-    val ret = Wire(new PipeInstr(ADDR_WIDTH, XLEN))
-    ret.instr := InstrExt.empty(ADDR_WIDTH)
+  def empty(implicit coredef: CoreDef): PipeInstr = {
+    val ret = Wire(new PipeInstr)
+    ret.instr := InstrExt.empty(coredef.ADDR_WIDTH)
     ret.rs1val := DontCare
     ret.rs2val := DontCare
 
@@ -42,28 +100,28 @@ object PipeInstr {
   }
 }
 
-class ExecUnitPort(val ADDR_WIDTH: Int = 48, val XLEN: Int = 64) extends Bundle {
-  val next = Input(new PipeInstr(ADDR_WIDTH, XLEN))
+class ExecUnitPort(implicit coredef: CoreDef) extends Bundle {
+  val next = Input(new PipeInstr)
 
   val stall = Output(Bool())
   val pause = Input(Bool())
   val flush = Input(Bool())
 
-  val retirement = Output(new RetireInfo(ADDR_WIDTH, XLEN))
-  val retired = Output(new PipeInstr(ADDR_WIDTH, XLEN))
+  val retirement = Output(new RetireInfo)
+  val retired = Output(new PipeInstr)
 }
 
 abstract class ExecUnit[T <: Data](
   val DEPTH: Int,
-  ExtData: T,
-  ADDR_WIDTH: Int = 48,
-  XLEN: Int = 64
+  val ExtData: T
+)(
+  implicit val coredef: CoreDef
 ) extends MultiIOModule {
-  val io = IO(new ExecUnitPort(ADDR_WIDTH, XLEN))
+  val io = IO(new ExecUnitPort)
 
   var current = if(DEPTH != 0) {
     val storeInit = Wire(Vec(DEPTH, new Bundle {
-      val pipe = new PipeInstr(ADDR_WIDTH, XLEN)
+      val pipe = new PipeInstr
       val ext = ExtData.cloneType
     }))
 
@@ -111,14 +169,14 @@ abstract class ExecUnit[T <: Data](
 
       when(io.flush) { // Override current
         for(c <- current) {
-          c.pipe := PipeInstr.empty(ADDR_WIDTH, XLEN)
+          c.pipe := PipeInstr.empty
           c.ext := DontCare
         }
       }
 
       io.retired := current(DEPTH-1).pipe
       when(io.retired.instr.vacant) {
-        io.retirement := RetireInfo.vacant(ADDR_WIDTH, XLEN)
+        io.retirement := RetireInfo.vacant
       }.otherwise {
         io.retirement := finalize(current(DEPTH-1).pipe, nExt)
       }
@@ -128,17 +186,11 @@ abstract class ExecUnit[T <: Data](
       // Use chisel's unconnected wire check to enforce that no ext is exported from this exec unit
       io.retired := io.next
       when(io.retired.instr.vacant) {
-        io.retirement := RetireInfo.vacant(ADDR_WIDTH, XLEN)
+        io.retirement := RetireInfo.vacant
       }.otherwise {
         io.retirement := finalize(io.next, nExt)
       }
       io.stall := sStall
-    }
-
-    // Override reg write during stall
-    // TODO: remove after switching to tumasulo
-    when(io.stall) {
-      io.retirement.regWaddr := 0.U
     }
   }
 
@@ -161,4 +213,18 @@ abstract class ExecUnit[T <: Data](
 
     (nExt, sStall)
   }
+}
+
+class CDBEntry(implicit val coredef: CoreDef) extends Bundle {
+  val valid = Bool()
+  val name = UInt(log2Ceil(coredef.INFLIGHT_INSTR_LIMIT).W)
+  val data = UInt(coredef.XLEN.W)
+}
+
+class CDB(implicit val coredef: CoreDef) extends Bundle {
+  val entries = Vec(coredef.RETIRE_NUM, new CDBEntry)
+}
+
+class ResStation(implicit val coredef: CoreDef) extends MultiIOModule {
+  val cdb = IO(Input(new CDB))
 }

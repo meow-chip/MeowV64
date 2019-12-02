@@ -46,7 +46,7 @@ class Ctrl(coredef: CoreDef) extends MultiIOModule {
   })
 
   val br = IO(new Bundle {
-    val req = Input(new BranchResult(coredef.ADDR_WIDTH))
+    val req = Input(new BranchResult()(coredef))
     val src = Input(UInt(coredef.ADDR_WIDTH.W))
   })
 

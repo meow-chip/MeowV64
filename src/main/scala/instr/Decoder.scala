@@ -539,4 +539,59 @@ class Instr extends Bundle {
     p"  F7:   0b${Binary(funct7)}\n" +
     p"  F3:   0b${Binary(funct3)}"
   }
+
+  def getRd: UInt = {
+    // B-types and S-types don't have rd
+    val ret = Wire(rs1.cloneType)
+    ret := rs1
+
+    switch(this.op) {
+      is(Decoder.Op("BRANCH").ident, Decoder.Op("STORE").ident) {
+        ret := 0.U
+      }
+    }
+
+    ret
+  }
+
+  def getRs1: UInt = {
+    // The only instructions that don't have RS1 is AUIPC/LUI and JAL (U and J type)
+    val ret = Wire(rs1.cloneType)
+    ret := rs1
+    // TODO: investigate if SYSTEM instrs can have a rs1 field containing non-zero values?
+
+    switch(this.op) {
+      is(Decoder.Op("LUI").ident, Decoder.Op("AUIPC").ident, Decoder.Op("JAL").ident) {
+        ret := 0.U
+      }
+    }
+
+    ret
+  }
+
+  def getRs2: UInt = {
+    val ret = Wire(rs1.cloneType)
+    ret := rs2
+
+    switch(this.op) {
+      // U-type and J-type
+      is(Decoder.Op("LUI").ident, Decoder.Op("AUIPC").ident, Decoder.Op("JAL").ident) {
+        ret := 0.U
+      }
+
+      // I-type
+      is(
+        Decoder.Op("LOAD").ident,
+        Decoder.Op("MEM-MISC").ident,
+        Decoder.Op("OP-IMM").ident,
+        Decoder.Op("OP-IMM-32").ident,
+        Decoder.Op("JALR").ident,
+        Decoder.Op("SYSTEM").ident
+      ) {
+        ret := 0.U
+      }
+    }
+
+    ret
+  }
 }

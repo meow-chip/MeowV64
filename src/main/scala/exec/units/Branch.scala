@@ -1,4 +1,4 @@
-package exec 
+package exec.units
 
 import chisel3._
 import chisel3.util._
@@ -6,6 +6,8 @@ import instr.Decoder
 import instr.Decoder.InstrType
 import _root_.core.ExType
 import _root_.core.ExReq
+import exec._
+import _root_.core.CoreDef
 
 class BranchExt extends Bundle {
   val branched = Bool()
@@ -14,7 +16,7 @@ class BranchExt extends Bundle {
   val extype = ExType()
 }
 
-class Branch(ADDR_WIDTH: Int, XLEN: Int) extends ExecUnit(0, new BranchExt, ADDR_WIDTH, XLEN) {
+class Branch(override implicit val coredef: CoreDef) extends ExecUnit(0, new BranchExt) {
   def map(stage: Int, pipe: PipeInstr, ext: Option[BranchExt]): (BranchExt, Bool) = {
     val ext = Wire(new BranchExt)
     ext.branched := false.B
@@ -72,19 +74,19 @@ class Branch(ADDR_WIDTH: Int, XLEN: Int) extends ExecUnit(0, new BranchExt, ADDR
   }
 
   def finalize(pipe: PipeInstr, ext: BranchExt): RetireInfo = {
-    val info = Wire(new RetireInfo(ADDR_WIDTH, XLEN))
+    val info = Wire(new RetireInfo)
 
     when(ext.ex === ExReq.ret) {
-      info.regWaddr := 0.U
-      info.regWdata := DontCare
+      // info.regWaddr := 0.U
+      info.wb := DontCare
       info.branch.eret()
     }.elsewhen(ext.ex === ExReq.ex) {
-      info.regWaddr := 0.U
-      info.regWdata := DontCare
+      // info.regWaddr := 0.U
+      info.wb := DontCare
       info.branch.ex(ext.extype)
     }.elsewhen(pipe.instr.instr.op === Decoder.Op("BRANCH").ident) {
-      info.regWaddr := 0.U
-      info.regWdata := DontCare
+      // info.regWaddr := 0.U
+      info.wb := DontCare
       when(ext.branched) {
         val target = pipe.instr.instr.imm + pipe.instr.addr.asSInt
         info.branch.fire(target.asUInt)
@@ -92,16 +94,16 @@ class Branch(ADDR_WIDTH: Int, XLEN: Int) extends ExecUnit(0, new BranchExt, ADDR
         info.branch.nofire()
       }
     }.otherwise { // JAL/JALR
-      val linked = Wire(UInt(ADDR_WIDTH.W))
+      val linked = Wire(UInt(coredef.ADDR_WIDTH.W))
       linked := pipe.instr.addr + 4.U
       when(pipe.instr.instr.base === InstrType.toInt(InstrType.C)) {
         linked := pipe.instr.addr + 2.U // This is an compressed instr instead
       }
 
-      info.regWaddr := pipe.instr.instr.rd
-      info.regWdata := linked.asUInt
+      // info.regWaddr := pipe.instr.instr.rd
+      info.wb := linked.asUInt
 
-      val dest = Wire(SInt(ADDR_WIDTH.W))
+      val dest = Wire(SInt(coredef.ADDR_WIDTH.W))
       when(pipe.instr.instr.op === Decoder.Op("JAL").ident) {
         dest := pipe.instr.instr.imm + pipe.instr.addr.asSInt
       }.otherwise { // JALR

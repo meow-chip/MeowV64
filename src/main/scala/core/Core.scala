@@ -30,7 +30,7 @@ class Core(val coredef: CoreDef = DefaultDef) extends Module {
   l2.directs(0) <> L1DCPort.empty(coredef.L1D)
 
   val fetch = Module(new InstrFetch(coredef))
-  val exec = Module(new Exec(coredef))
+  val exec = Module(new Exec()(coredef))
   val reg = Module(new RegFile(coredef.XLEN))
 
   val (csrWriter, csr) = CSR.gen(coredef.XLEN, coredef.HART_ID)
@@ -42,8 +42,11 @@ class Core(val coredef: CoreDef = DefaultDef) extends Module {
   fetch.toCtrl.ctrl <> ctrl.io.fetch
 
   exec.toIF <> fetch.toExec
+  /*
+  FIXME
   exec.io.regReaders <> reg.io.reads
   exec.io.regWriter <> reg.io.write
+  */
   exec.io.ctrl <> ctrl.io.exec
   exec.io.csrWriter <> csrWriter
 

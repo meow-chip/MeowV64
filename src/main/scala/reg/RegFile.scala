@@ -15,24 +15,26 @@ class RegWriter(val XLEN: Int = 64, val COUNT: Int = 32) extends Bundle {
 
 // Standard Registers
 // TODO: support multi port
-class RegFile(XLEN: Int = 64, COUNT: Int = 32, READ_COUNT: Int = 2) extends Module {
+class RegFile(XLEN: Int = 64, COUNT: Int = 32, READ_COUNT: Int = 2, WRITE_COUNT: Int = 1) extends Module {
   val io = IO(new Bundle {
     val reads = Vec(READ_COUNT, Flipped(new RegReader(XLEN, COUNT)))
-    val write = Flipped(new RegWriter(XLEN, COUNT))
+    val writes = Flipped(Vec(WRITE_COUNT, new RegWriter(XLEN, COUNT)))
   })
 
   val regs = RegInit(VecInit(List.fill(COUNT)(0).map(_.U(XLEN.W))))
 
-  for(i <- (0 until READ_COUNT)) {
-    when(io.reads(i).addr === 0.U) {
-      io.reads(i).data := 0.U
+  for(read <- io.reads) {
+    when(read.addr === 0.U) {
+      read.data := 0.U
     }.otherwise {
-      io.reads(i).data := regs(io.reads(i).addr)
+      read.data := regs(read.addr)
     }
   }
 
-  when(io.write.addr =/= 0.U) {
-    regs(io.write.addr) := io.write.data
+  for(write <- io.writes) {
+    when(write.addr =/= 0.U) {
+      regs(write.addr) := write.data
+    }
   }
 
   /*

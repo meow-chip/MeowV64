@@ -1,18 +1,19 @@
-package exec
+package exec.units
 
 import chisel3._
 import chisel3.util._
 import instr.Decoder
 import _root_.core._
+import exec._
 
-class CSRExt(val XLEN: Int) extends Bundle {
-  val rdata = UInt(XLEN.W)
+class CSRExt(implicit val coredef: CoreDef) extends Bundle {
+  val rdata = UInt(coredef.XLEN.W)
 }
 
-class CSR(ADDR_WIDTH: Int, XLEN: Int)
-  extends ExecUnit(0, new CSRExt(XLEN), ADDR_WIDTH, XLEN)
+class CSR(override implicit val coredef: CoreDef)
+  extends ExecUnit(0, new CSRExt)
 {
-  val writer = IO(new CSRWriter(XLEN))
+  val writer = IO(new CSRWriter(coredef.XLEN))
   writer.op := CSROp.rs
   writer.addr := 0.U
   writer.wdata := 0.U
@@ -20,7 +21,7 @@ class CSR(ADDR_WIDTH: Int, XLEN: Int)
   override def map(stage: Int, pipe: PipeInstr, ext: Option[CSRExt]): (CSRExt, Bool) = {
     // Asserts pipe.op === SYSTEM
 
-    val ext = Wire(new CSRExt(XLEN))
+    val ext = Wire(new CSRExt)
     writer.addr := pipe.instr.instr.funct7 ## pipe.instr.instr.rs2
 
     switch(pipe.instr.instr.funct3) {
@@ -61,11 +62,11 @@ class CSR(ADDR_WIDTH: Int, XLEN: Int)
   }
 
   override def finalize(pipe: PipeInstr, ext: CSRExt): RetireInfo = {
-    val info = Wire(new RetireInfo(ADDR_WIDTH, XLEN))
+    val info = Wire(new RetireInfo)
     info.branch.nofire()
-    info.regWaddr := pipe.instr.instr.rd
+    // info.regWaddr := pipe.instr.instr.rd
 
-    info.regWdata := ext.rdata
+    info.wb := ext.rdata
 
     info
   }
