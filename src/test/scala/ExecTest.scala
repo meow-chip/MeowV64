@@ -62,6 +62,7 @@ object ExecSpec {
   val cases = List(
     ("OP-IMM instructions", "./testcases/hex/op-imm.hex"),
     ("Load/Store", "./testcases/hex/load-store.hex"),
+    ("Write-merge", "./testcases/hex/write-merge.hex"),
     ("Unconditional jumps", "./testcases/hex/jump.hex"),
     ("Branches", "./testcases/hex/branch.hex"),
     ("Serial output", "./testcases/hex/serial.hex"),

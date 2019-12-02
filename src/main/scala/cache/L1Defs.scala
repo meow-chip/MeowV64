@@ -64,6 +64,16 @@ class L1ICPort(val opts: L1Opts) extends Bundle with L1Port {
   }
 }
 
+object L1ICPort {
+  def empty(opts: L1Opts): L1ICPort = {
+    val port = Wire(Flipped(new L1ICPort(opts)))
+    port := DontCare
+    port.read := false.B
+
+    port
+  }
+}
+
 /**
  * D$ -> L2
  * 
@@ -95,8 +105,8 @@ class L1DCPort(val opts: L1Opts) extends Bundle with L1Port {
   // TODO: add a debug signal to show if L1 really has the entry
 
   // Data bus
-  val wdata = Output(UInt(opts.TRANSFER_SIZE.W))
-  val rdata = Input(UInt(opts.TRANSFER_SIZE.W))
+  val wdata = Output(UInt((opts.LINE_WIDTH * 8).W))
+  val rdata = Input(UInt((opts.LINE_WIDTH * 8).W))
 
   override def getAddr: UInt = l1addr
   override def getReq = l1req

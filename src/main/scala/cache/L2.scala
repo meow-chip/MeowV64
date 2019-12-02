@@ -45,6 +45,13 @@ class L2DirEntry(val opts: L2Opts) extends Bundle {
     w.states(core) := state
     w
   }
+
+  def withDirty(): L2DirEntry = {
+    val w = Wire(new L2DirEntry(opts))
+    w := this
+    w.dirty := true.B
+    w
+  }
 }
 
 object L2DirEntry {
@@ -67,13 +74,6 @@ object L2DirEntry {
     w.states := VecInit(Seq.fill(opts.CORE_COUNT)(L2DirState.vacant))
     w
   }
-}
-
-class L2Assoc(val opts: L2Opts) {
-  val lineCount = opts.SIZE / opts.LINE_WIDTH / opts.ASSOC
-
-  val directory = Mem(lineCount, new L2DirEntry(opts))
-  val store = SyncReadMem(lineCount, UInt((opts.LINE_WIDTH * 8).W))
 }
 
 object L2MainState extends ChiselEnum {
@@ -115,8 +115,10 @@ object WBEntry {
 class L2Cache(val opts: L2Opts) extends MultiIOModule {
   val OFFSET_LENGTH = log2Ceil(opts.LINE_WIDTH)
   val INDEX_OFFSET_LENGTH = log2Ceil(opts.SIZE / opts.ASSOC)
+  val INDEX_LENGTH = INDEX_OFFSET_LENGTH - OFFSET_LENGTH
   val TAG_LENGTH = opts.ADDR_WIDTH - INDEX_OFFSET_LENGTH
   val ASSOC_IDX_WIDTH = log2Ceil(opts.ASSOC)
+  val LINE_COUNT = opts.SIZE / opts.LINE_WIDTH / opts.ASSOC
 
   val ic = IO(Vec(opts.CORE_COUNT, Flipped(new L1ICPort(opts))))
   val dc = IO(Vec(opts.CORE_COUNT, Flipped(new L1DCPort(opts))))
@@ -135,30 +137,62 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
   axi <> 0.U.asTypeOf(axi)
 
   // Assoc and writers
-  val assocs = Seq.fill(opts.ASSOC)(new L2Assoc(opts))
+  val directories = Mem(LINE_COUNT, Vec(opts.ASSOC, new L2DirEntry(opts)))
+  val stores = SyncReadMem(LINE_COUNT, Vec(opts.ASSOC, UInt((opts.LINE_WIDTH * 8).W)))
+
+  val dataWriter = Wire(new Bundle {
+    val mask = Vec(opts.ASSOC, Bool())
+    val addr = UInt(INDEX_LENGTH.W)
+    val data = UInt((opts.LINE_WIDTH * 8).W)
+  })
+
+  val dirWriter = Wire(new Bundle {
+    val mask = Vec(opts.ASSOC, Bool())
+    val addr = UInt(INDEX_LENGTH.W)
+    val dir = new L2DirEntry(opts)
+  })
+
+  dataWriter := DontCare
+  dataWriter.mask := VecInit(Seq.fill(4)(false.B))
+  dirWriter := DontCare
+  dirWriter.mask := VecInit(Seq.fill(4)(false.B))
+
+  stores.write(dataWriter.addr, VecInit(Seq.fill(opts.ASSOC)(dataWriter.data)), dataWriter.mask)
+  directories.write(dirWriter.addr, VecInit(Seq.fill(opts.ASSOC)(dirWriter.dir)), dirWriter.mask)
 
   def writeData(idx: UInt, addr: UInt, data: UInt) {
-    for((assoc, aidx) <- assocs.zipWithIndex) {
-      when(idx === aidx.U(ASSOC_IDX_WIDTH.W)) {
-        assoc.store.write(addr(INDEX_OFFSET_LENGTH-1, OFFSET_LENGTH), data)
-      }
+    assume(data.getWidth == opts.LINE_WIDTH * 8)
+
+    val mask = Wire(Vec(opts.ASSOC, Bool()))
+    for((m, i) <- mask.zipWithIndex) {
+      m := i.U === idx
     }
+
+    dataWriter.addr := addr(INDEX_OFFSET_LENGTH-1, OFFSET_LENGTH)
+    dataWriter.data := data
+    dataWriter.mask := mask
   }
 
-  def writeData(idx: Int, addr: UInt, data: UInt) {
-    assocs(idx).store.write(addr(INDEX_OFFSET_LENGTH-1, OFFSET_LENGTH), data)
-  }
- 
   def writeDir(idx: UInt, addr: UInt, dir: L2DirEntry) {
-    for((assoc, aidx) <- assocs.zipWithIndex) {
-      when(idx === aidx.U(ASSOC_IDX_WIDTH.W)) {
-        assoc.directory.write(addr(INDEX_OFFSET_LENGTH-1, OFFSET_LENGTH), dir)
-      }
+    val mask = Wire(Vec(opts.ASSOC, Bool()))
+    for((m, i) <- mask.zipWithIndex) {
+      m := i.U === idx
     }
+
+    dirWriter.addr := addr(INDEX_OFFSET_LENGTH-1, OFFSET_LENGTH)
+    dirWriter.dir := dir
+    dirWriter.mask := mask
   }
 
-  def writeDir(idx: Int, addr: UInt, dir: L2DirEntry) {
-    assocs(idx).directory.write(addr(INDEX_OFFSET_LENGTH-1, OFFSET_LENGTH), dir)
+  def writeDirAll(addr: UInt, dir: L2DirEntry) {
+    val mask = Wire(Vec(opts.ASSOC, Bool()))
+    for((m, i) <- mask.zipWithIndex) {
+      m := true.B
+    }
+
+    dirWriter.addr := addr(INDEX_OFFSET_LENGTH-1, OFFSET_LENGTH)
+    dirWriter.dir := dir
+    dirWriter.mask := mask
   }
 
   // Joint ports
@@ -227,8 +261,8 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
   )
 
   // Compute directory lookups & delayed data fetch
-  val lookups = VecInit(assocs.map(_.directory.read(targetIndex)))
-  val datas = VecInit(assocs.map(_.store.read(targetIndex)))
+  val lookups = directories.read(targetIndex)
+  val datas = stores.read(targetIndex)
   val pipeLookups = RegNext(lookups)
   val hit = lookups.foldLeft(false.B)((acc, l) => acc || l.hit(targetAddr))
   val pipeHit = RegNext(hit)
@@ -276,9 +310,7 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
 
   switch(state) {
     is(L2MainState.reset) {
-      for(i <- (0 until opts.ASSOC)) {
-        writeDir(i, 0.U(TAG_LENGTH.W) ## rstCnt ## 0.U(OFFSET_LENGTH.W), rstDir)
-      }
+      writeDirAll(0.U(TAG_LENGTH.W) ## rstCnt ## 0.U(OFFSET_LENGTH.W), rstDir)
 
       rstCnt := rstCnt + 1.U
 
@@ -336,34 +368,29 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
         }
 
         is(L1DCPort.L1Req.writeback) {
-          // We can do one cycle write?
-          val writtenTowards = MuxCase(
-            0.U(ASSOC_IDX_WIDTH.W),
-            lookups.zipWithIndex.map(_ match {
-              case (lookup, idx) => (lookup.hit(targetAddr), idx.U(ASSOC_IDX_WIDTH.W))
-            })
-          )
-
-          assert(lookups(writtenTowards).hit(targetAddr))
+          assert(lookups(hitIdx).hit(targetAddr))
           for(core <- (0 until opts.CORE_COUNT)) {
             when(core.U === target) {
-              assert(lookups(writtenTowards).states(core) === L2DirState.modified)
+              assert(lookups(hitIdx).states(core) === L2DirState.modified)
             }.otherwise {
-              assert(lookups(writtenTowards).states(core) === L2DirState.vacant)
+              assert(lookups(hitIdx).states(core) === L2DirState.vacant)
             }
           }
 
-          val writtenDir = L2DirEntry.withAddr(opts, targetAddr).editState(target, L2DirState.vacant)
+          val writtenDir = L2DirEntry
+            .withAddr(opts, targetAddr)
+            .editState(target, L2DirState.vacant)
+            .withDirty()
           val writtenData = dc(target).wdata
 
           writeDir(
-            writtenTowards,
+            hitIdx,
             targetAddr,
             writtenDir
           )
 
           writeData(
-            writtenTowards,
+            hitIdx,
             targetAddr,
             writtenData
           )
@@ -551,7 +578,7 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
       }
 
       val writtenAddr = ent.tag ## targetAddr(INDEX_OFFSET_LENGTH-1, 0)
-      val writtenData = Wire(UInt(opts.LINE_WIDTH.W))
+      val writtenData = Wire(UInt((opts.LINE_WIDTH * 8).W))
       val commit = Wire(Bool())
       writtenData := DontCare
       commit := false.B
@@ -582,9 +609,7 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
           misses(target) := false.B
           refilled(target) := false.B
 
-          when(target < opts.CORE_COUNT.U) {
-            writeDir(pipeHitIdx, targetAddr, lookups(target).editState(target, L2DirState.shared))
-          }
+          writeDir(pipeHitIdx, targetAddr, lookups(target).editState(target, L2DirState.shared).withDirty())
 
           nstate := L2MainState.idle
           step(target)
@@ -614,7 +639,7 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
           val isDC = target < opts.CORE_COUNT.U
 
           def commit() = {
-            val rdata = bufs(target).asTypeOf(UInt(opts.LINE_WIDTH.W))
+            val rdata = bufs(target).asTypeOf(UInt((opts.LINE_WIDTH * 8).W))
             // TODO: check if CORE_COUNT = 2^n
             val coreWidth = if(opts.CORE_COUNT != 1) { log2Ceil(opts.CORE_COUNT) } else { 1 }
 
@@ -647,7 +672,7 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
             nstate := L2MainState.idle
           }
 
-          when(hasDirty) {
+          when(pipeLookups(victim).dirty || hasDirty) {
             when(!wbFifoFull) {
               wbFifo(wbFifoTail).lineaddr := lookups(victim).tag ## targetAddr(INDEX_OFFSET_LENGTH-1, OFFSET_LENGTH)
               wbFifo(wbFifoTail).data := datas(victim)
@@ -743,7 +768,7 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
     is(L2WBState.idle) {
       when(!wbFifoEmpty) {
         // axi.AWID omitted
-        axi.AWADDR := wbFifo(wbFifoHead).lineaddr ## 0.U(OFFSET_LENGTH)
+        axi.AWADDR := wbFifo(wbFifoHead).lineaddr ## 0.U(OFFSET_LENGTH.W)
         axi.AWBURST := AXI.Constants.Burst.INCR.U
         // axi.AWCACHE := omitted
         axi.AWLEN := (axiGrpNum - 1).U

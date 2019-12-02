@@ -25,7 +25,7 @@ class DCWriter(val opts: L1DOpts) extends Bundle {
 }
 
 class DLine(val opts: L1Opts) extends Bundle {
-  val INDEX_OFFSET_WIDTH = log2Ceil(opts.SIZE)
+  val INDEX_OFFSET_WIDTH = log2Ceil(opts.SIZE / opts.ASSOC)
   val TAG_WIDTH = opts.ADDR_WIDTH - INDEX_OFFSET_WIDTH
   val TRANSFER_COUNT = opts.LINE_WIDTH * 8 / opts.TRANSFER_SIZE
 
@@ -55,7 +55,7 @@ class L1DC(val opts: L1DOpts) extends MultiIOModule {
   val INDEX_WIDTH = log2Ceil(LINE_PER_ASSOC)
   val ASSOC_IDX_WIDTH = log2Ceil(opts.ASSOC)
 
-  def getLineAddr(addr: UInt) = addr(opts.ADDR_WIDTH-1, OFFSET_WIDTH) ## 0.U(OFFSET_WIDTH.W)
+  def getLineAddr(addr: UInt) = addr(opts.ADDR_WIDTH-1, IGNORED_WIDTH) ## 0.U(IGNORED_WIDTH.W)
   def getTag(addr: UInt) = addr >> (INDEX_WIDTH + OFFSET_WIDTH)
   def getIndex(addr: UInt) = addr(INDEX_WIDTH + OFFSET_WIDTH-1, OFFSET_WIDTH)
   def getSublineIdx(addr: UInt) = addr(OFFSET_WIDTH-1, IGNORED_WIDTH)
@@ -177,6 +177,13 @@ class L1DC(val opts: L1DOpts) extends MultiIOModule {
   // Rst
   val rstCnt = RegInit(0.U(log2Ceil(LINE_PER_ASSOC).W))
 
+  val pipeAddrIdx = Wire(UInt())
+  val waddrIdx = Wire(UInt())
+  val wlookupIdx = Wire(UInt())
+  pipeAddrIdx := getIndex(pipeAddr)
+  waddrIdx := getIndex(waddr)
+  wlookupIdx := getIndex(wlookupAddr)
+
   switch(state) {
     is(MainState.rst) {
       for(store <- stores) {
@@ -221,6 +228,8 @@ class L1DC(val opts: L1DOpts) extends MultiIOModule {
                 wbuf(wbufHead).wdata,
                 lookup.data(getSublineIdx(waddr))
               )
+
+              written.dirty := true.B
 
               stores(idx).write(getIndex(waddr), written)
             }
@@ -408,7 +417,8 @@ class L1DC(val opts: L1DOpts) extends MultiIOModule {
 
   pendingRead := false.B
 
-  when(toL2.l2req =/= L2Req.idle) {
+  // FIXME: change this one back?
+  when(RegNext(toL2.l2req) =/= L2Req.idle) {
     // read port occupied
     r.stall := true.B
   }.elsewhen((!pipeRead) || hit) {
