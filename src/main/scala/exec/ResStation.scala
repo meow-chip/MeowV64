@@ -5,6 +5,12 @@ import chisel3.util.MuxLookup
 import chisel3.util.log2Ceil
 import chisel3.util.MuxCase
 
+class ResStationExgress(implicit val coredef: CoreDef) extends Bundle {
+  val instr = Output(new ReservedInstr)
+  val valid = Output(Bool())
+  val pop = Input(Bool())
+}
+
 /**
  * Reservation station
  * 
@@ -27,11 +33,7 @@ class ResStation(implicit val coredef: CoreDef) extends MultiIOModule {
     val push = Input(Bool())
   })
 
-  val exgress = IO(new Bundle {
-    val instr = new ReservedInstr
-    val valid = Output(Bool())
-    val pop = Input(Bool())
-  })
+  val exgress = IO(new ResStationExgress)
 
   val cdb = IO(Input(new CDB))
 

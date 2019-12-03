@@ -17,7 +17,9 @@ class Renamer(implicit coredef: CoreDef) extends MultiIOModule {
     val input = Vec(coredef.ISSUE_NUM, new InstrExt(coredef.ADDR_WIDTH))
     val commit = Input(UInt(log2Ceil(coredef.ISSUE_NUM+1).W))
     val ntag = Input(UInt(log2Ceil(coredef.INFLIGHT_INSTR_LIMIT).W))
-    val output = Vec(coredef.ISSUE_NUM, new ReservedInstr)
+    val output = Output(Vec(coredef.ISSUE_NUM, new ReservedInstr))
+
+    val flush = Input(Bool())
   })
 
   val NAME_LENGTH = log2Ceil(coredef.INFLIGHT_INSTR_LIMIT)
@@ -27,9 +29,7 @@ class Renamer(implicit coredef: CoreDef) extends MultiIOModule {
   // Reg -> Name map
   val reg2name = RegInit(VecInit(Seq.fill(REG_NUM)(0.U(NAME_LENGTH.W))))
   val name2reg = RegInit(VecInit(Seq.fill(coredef.INFLIGHT_INSTR_LIMIT)(0.U(NAME_LENGTH.W))))
-  val regReady = RegInit(VecInit(
-    Seq.fill(REG_NUM)(true.B)
-  ))
+  val regReady = RegInit(VecInit(Seq.fill(REG_NUM)(true.B)))
   val renamedSetUpcoming = Wire(UInt(coredef.INFLIGHT_INSTR_LIMIT.W))
   renamedSetUpcoming := 0.U
 
@@ -65,7 +65,7 @@ class Renamer(implicit coredef: CoreDef) extends MultiIOModule {
       name2regMod(state._5) := rd
       regReadyMod(rd) := false.B
       renamedSet(rd) := true.B
-      nextUpMod := state._5 +% 1.U
+      nextUpMod := Mux(state._5 === (coredef.INFLIGHT_INSTR_LIMIT-1).U, 1.U, state._5 +% 1.U)
 
       out.rdname := state._5
     }
@@ -153,5 +153,13 @@ class Renamer(implicit coredef: CoreDef) extends MultiIOModule {
         out.rs1ready := true.B
       }
     }
+  }
+
+  // Lastly, handles flush
+  when(toExec.flush) {
+    reg2name := VecInit(Seq.fill(REG_NUM)(0.U(NAME_LENGTH.W)))
+    name2reg := VecInit(Seq.fill(coredef.INFLIGHT_INSTR_LIMIT)(0.U(NAME_LENGTH.W)))
+    regReady := RegInit(VecInit(Seq.fill(REG_NUM)(true.B)))
+    nextUp := 1.U
   }
 }
