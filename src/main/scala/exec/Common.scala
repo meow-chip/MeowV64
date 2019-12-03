@@ -87,6 +87,12 @@ class ReservedInstr(override implicit val coredef: CoreDef) extends PipeInstr {
   val rs2name = UInt(log2Ceil(coredef.INFLIGHT_INSTR_LIMIT).W)
   val rs1ready = Bool()
   val rs2ready = Bool()
+
+  // Asserts that name === 0 -> ready
+  assert(rs1name =/= 0.U || rs1ready)
+  assert(rs2name =/= 0.U || rs2ready)
+
+  def ready = rs1ready && rs2ready
 }
 
 object PipeInstr {
@@ -95,6 +101,16 @@ object PipeInstr {
     ret.instr := InstrExt.empty(coredef.ADDR_WIDTH)
     ret.rs1val := DontCare
     ret.rs2val := DontCare
+
+    ret
+  }
+}
+
+object ReservedInstr {
+  def empty(implicit coredef: CoreDef): ReservedInstr = {
+    val ret = Wire(new ReservedInstr)
+    ret := DontCare
+    ret := PipeInstr.empty
 
     ret
   }
@@ -223,8 +239,4 @@ class CDBEntry(implicit val coredef: CoreDef) extends Bundle {
 
 class CDB(implicit val coredef: CoreDef) extends Bundle {
   val entries = Vec(coredef.RETIRE_NUM, new CDBEntry)
-}
-
-class ResStation(implicit val coredef: CoreDef) extends MultiIOModule {
-  val cdb = IO(Input(new CDB))
 }
