@@ -127,12 +127,17 @@ class ExecUnitPort(implicit coredef: CoreDef) extends Bundle {
   val retired = Output(new PipeInstr)
 }
 
+trait ExecUnitInt {
+  val DEPTH: Int
+  val io: ExecUnitPort
+}
+
 abstract class ExecUnit[T <: Data](
   val DEPTH: Int,
   val ExtData: T
 )(
   implicit val coredef: CoreDef
-) extends MultiIOModule {
+) extends MultiIOModule with ExecUnitInt {
   val io = IO(new ExecUnitPort)
 
   var current = if(DEPTH != 0) {

@@ -10,6 +10,10 @@ import _root_.core.CSRWriter
 import _root_.core.CoreDef
 import cache.DCReader
 import cache.DCWriter
+import exec.units._
+import exec.UnitSel.Retirement
+import _root_.core.Core
+import exec.Exec.ROBEntry
 
 /**
  * Out-of-order exection (Tomasulo's algorithm)
@@ -59,5 +63,45 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
   renamer.toExec.input := toIF.view
   renamer.toExec.ntag := ntag
 
-  // TODO: handles output
+  val cdb = Wire(new CDB)
+
+  // Units
+  // TODO: add more units
+  val units = Seq(
+    new UnitSel(
+      Seq(new ALU),
+      instr => Seq(true.B) // Everything goes into ALU
+    )
+  )
+
+  val stations = units.map(u => {
+    val rs = Module(new ResStation)
+    rs.cdb := cdb
+    rs.exgress <> u.rs
+  })
+
+  // ROB & friends
+  val rob = RegInit(VecInit(Seq.fill(coredef.INFLIGHT_INSTR_LIMIT)(ROBEntry.empty)))
+  val retirePtr = RegInit(0.U(log2Ceil(coredef.INFLIGHT_INSTR_LIMIT).W))
+
+  // Issue
+
+  // Commit
+}
+
+object Exec {
+  class ROBEntry(implicit val coredef: CoreDef) extends Bundle {
+    val retirement = new Retirement
+    val valid = Bool()
+  }
+
+  object ROBEntry {
+    def empty(implicit coredef: CoreDef) = {
+      val ret = Wire(new ROBEntry)
+      ret.retirement := DontCare
+      ret.valid := false.B
+
+      ret
+    }
+  }
 }

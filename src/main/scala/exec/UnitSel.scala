@@ -5,6 +5,7 @@ import _root_.core.CoreDef
 import Chisel.experimental.chiselName
 import chisel3.util.MuxCase
 import instr.Instr
+import exec.UnitSel.Retirement
 
 /**
  * Read instructions from reservation stations, and send them into (probably one of multiple) exec unit
@@ -14,15 +15,10 @@ import instr.Instr
  */
 @chiselName
 class UnitSel(
-  gen : => Seq[ExecUnit[Data]],
+  gen : => Seq[ExecUnitInt],
   arbitration: Instr => Seq[Bool]
 )(implicit val coredef: CoreDef) extends MultiIOModule {
   val units = gen
-
-  class Retirement extends Bundle {
-    val instr = new PipeInstr
-    val info = new RetireInfo
-  }
 
   def buffer(input: Retirement, length: Int, pause: Bool, flush: Bool): Retirement = {
     val init = new Retirement
@@ -100,4 +96,11 @@ class UnitSel(
   assert(stall || retireNoDup) // !stall -> retireSingle
 
   retire := MuxCase(DontCare.asTypeOf(retire), buffered.map(r => (!r.instr.instr.vacant, r)))
+}
+
+object UnitSel {
+  class Retirement(implicit val coredef: CoreDef)  extends Bundle {
+    val instr = new PipeInstr
+    val info = new RetireInfo
+  }
 }
