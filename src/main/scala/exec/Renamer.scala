@@ -6,12 +6,14 @@ import reg.RegWriter
 import chisel3.util.log2Ceil
 import instr.InstrExt
 import Chisel.experimental.chiselName
+import reg.RegReader
 
 @chiselName
 class Renamer(implicit coredef: CoreDef) extends MultiIOModule {
+  val REG_NUM = 32 // TODO: do we need to make this configurable?
+
   val cdb = IO(Input(new CDB))
-  val rw = IO(Vec(coredef.RETIRE_NUM, new RegWriter(coredef.XLEN)))
-  val rr = IO(Vec(coredef.ISSUE_NUM, new RegWriter(coredef.XLEN)))
+  val rr = IO(Vec(coredef.ISSUE_NUM * 2, new RegReader(coredef.XLEN)))
 
   val toExec = IO(new Bundle {
     val input = Vec(coredef.ISSUE_NUM, new InstrExt(coredef.ADDR_WIDTH))
@@ -19,30 +21,81 @@ class Renamer(implicit coredef: CoreDef) extends MultiIOModule {
     val ntag = Input(UInt(log2Ceil(coredef.INFLIGHT_INSTR_LIMIT).W))
     val output = Output(Vec(coredef.ISSUE_NUM, new ReservedInstr))
 
+    val invalMap = Input(Vec(coredef.ISSUE_NUM, Bool()))
+
     val flush = Input(Bool())
   })
 
   val NAME_LENGTH = log2Ceil(coredef.INFLIGHT_INSTR_LIMIT)
-  val REG_NUM = 32 // TODO: do we need to make this configurable?
   val REG_ADDR_LENGTH = log2Ceil(REG_NUM)
 
   // Reg -> Name map
-  val reg2name = RegInit(VecInit(Seq.fill(REG_NUM)(0.U(NAME_LENGTH.W))))
-  val name2reg = RegInit(VecInit(Seq.fill(coredef.INFLIGHT_INSTR_LIMIT)(0.U(NAME_LENGTH.W))))
-  val regReady = RegInit(VecInit(Seq.fill(REG_NUM)(true.B)))
-  val renamedSetUpcoming = Wire(UInt(coredef.INFLIGHT_INSTR_LIMIT.W))
-  renamedSetUpcoming := 0.U
+  class State extends Bundle {
+    // Register <-> name mapping
+    // If a register is mapped to name 0, it implies that at least INFLIGHT_INSTR_LIMIT instruction
+    // has been retired after the instruction which wrote to the register.
+    // So it's value must have been stored into the regfile
+    val reg2name = Vec(REG_NUM, UInt(NAME_LENGTH.W))
+    val name2reg = Vec(coredef.INFLIGHT_INSTR_LIMIT, UInt(log2Ceil(REG_NUM).W))
 
-  val nextUp = RegInit(1.U)
-  // Reg 0 is always mapped to name 0
+    // Reg 0 is always mapped to name 0
+    assert(reg2name(0) == 0.U)
+    assert(name2reg(0) == 0.U)
 
-  var state = (reg2name, name2reg, regReady, 0.U(coredef.INFLIGHT_INSTR_LIMIT.W), nextUp)
+    // TODO: assert: bidirectional mapping perserved
+
+    // Is the value for a specific name already broadcasted on the CDB?
+    val nameReady = Vec(coredef.INFLIGHT_INSTR_LIMIT, Bool())
+
+    // Name 0 always have a ready value
+    assert(nameReady(0))
+
+    // Next name
+    val nextUp = UInt(NAME_LENGTH.W)
+  }
+
+  object State {
+    def default(): State = {
+      val state = Wire(new State)
+
+      state.reg2name := VecInit(Seq.fill(REG_NUM)(0.U(NAME_LENGTH.W)))
+      state.name2reg:= VecInit(Seq.fill(coredef.INFLIGHT_INSTR_LIMIT)(0.U(log2Ceil(REG_NUM).W)))
+      state.nameReady := VecInit(Seq.fill(coredef.INFLIGHT_INSTR_LIMIT)(true.B))
+      state.nextUp := 0.U
+
+      state
+    }
+  }
+
+  // Storage for name -> value
+  // By default, all reg is ready and mapped to name 0, which always has a value of 0
+  val store = RegInit(VecInit(Seq.fill(coredef.INFLIGHT_INSTR_LIMIT)(0.U(coredef.XLEN.W))))
+  val state = RegInit(State.default())
+  assert(store(0) === 0.U)
+
+  // Mask with current CDB request
+  var modState = Wire(new State())
+  var modStore = Wire(Vec(coredef.INFLIGHT_INSTR_LIMIT, UInt(coredef.XLEN.W)))
+  modState := state
+  modStore := store
+
+  for(ent <- cdb.entries) {
+    when(ent.valid && ent.name =/= 0.U) {
+      modState.nameReady(ent.name) := true.B
+      modStore(ent.name) := ent.data
+    }
+  }
+
+  // By default, update state by modState
+  state := modState
+  store := modStore
+
+  // If there are issues, additional modification are applied
+  var prev = modState
   for(((row, out), idx) <- toExec.input.zip(toExec.output).zipWithIndex) {
-    val reg2nameMod = Wire(reg2name.cloneType)
-    val name2regMod = Wire(name2reg.cloneType)
-    val regReadyMod = Wire(regReady.cloneType)
-    val renamedSet = Wire(state._4.cloneType)
-    val nextUpMod = Wire(state._5.cloneType)
+    val next = Wire(new State)
+
+    next := prev
 
     // Assign instr and tag
     out.instr := row.instr
@@ -52,22 +105,23 @@ class Renamer(implicit coredef: CoreDef) extends MultiIOModule {
 
     // Rename rd
     val rd = row.instr.getRd
-    when(row.vacant || rd === 0.U) {
-      reg2nameMod := state._1
-      name2regMod := state._2
-      regReadyMod := state._3
-      renamedSet := state._4
-      nextUpMod := state._5
-  
+    when(row.vacant || rd === 0.U || toExec.invalMap(idx)) {
+      // Next kept unchanged
       out.rdname := 0.U
     }.otherwise {
-      reg2nameMod(rd) := state._5
-      name2regMod(state._5) := rd
-      regReadyMod(rd) := false.B
-      renamedSet(rd) := true.B
-      nextUpMod := Mux(state._5 === (coredef.INFLIGHT_INSTR_LIMIT-1).U, 1.U, state._5 +% 1.U)
+      val prevName = prev.reg2name(rd)
+      val prevReg = prev.name2reg(prev.nextUp)
+      // Unbinds first
+      next.reg2name(prevReg) := 0.U
+      next.name2reg(prevName) := 0.U
+      // Bind new
+      next.reg2name(rd) := prev.nextUp
+      next.name2reg(prev.nextUp) := rd
 
-      out.rdname := state._5
+      next.nextUp := Mux(prev.nextUp === (coredef.INFLIGHT_INSTR_LIMIT-1).U, 1.U, prev.nextUp +% 1.U)
+      next.nameReady(prev.nextUp) := false.B
+
+      out.rdname := prev.nextUp
     }
 
     // Read rs
@@ -77,89 +131,37 @@ class Renamer(implicit coredef: CoreDef) extends MultiIOModule {
     rr(idx*2).addr := rs1
     rr(idx*2+1).addr := rs2
 
-    when(rs1 === 0.U) {
-      out.rs1name := DontCare
-      out.rs1ready := true.B
-      out.rs1val := 0.U
+    // Name, ready, val
+    def readReg(s: State, store: Vec[UInt], addr: UInt, rr: RegReader): (UInt, Bool, UInt) = {
+      rr.addr := addr
 
-      rr(idx*2).data := DontCare
-    }.elsewhen(state._3(rs1)) {
-      // Ready, reading from regfile
-      out.rs1name := DontCare
-      out.rs1ready := true.B
-      out.rs1val := rr(idx*2).data
-    }.otherwise {
-      // Not ready yet
-      out.rs1name := state._1(rs1)
-      out.rs1ready := false.B
-      out.rs1val := DontCare
+      val name = s.reg2name(addr)
+      val ready = s.nameReady(name) // For name = 0, nameReady(0) is always asserted
+      val data = Mux(name === 0.U, rr.data, store(name))
+
+      (name, ready, data)
     }
 
-    when(rs2 === 0.U) {
-      out.rs2name := DontCare
-      out.rs2ready := true.B
-      out.rs2val := 0.U
+    val (rs1name, rs1ready, rs1val) = readReg(prev, modStore, rs1, rr(idx * 2))
+    val (rs2name, rs2ready, rs2val) = readReg(prev, modStore, rs2, rr(idx * 2 + 1))
 
-      rr(idx*2+1).data := DontCare
-    }.elsewhen(state._3(rs2)) {
-      // Ready, reading from regfile
-      out.rs2name := DontCare
-      out.rs2ready := true.B
-      out.rs2val := rr(idx*2+1).data
-    }.otherwise {
-      // Not ready yet
-      out.rs2name := state._1(rs2)
-      out.rs2ready := false.B
-      out.rs2val := DontCare
+    out.rs1name := rs1name
+    out.rs1ready := rs1ready || toExec.invalMap(idx)
+    out.rs1val := rs1val
 
-      rr(idx*2+1).data := DontCare
-    }
-
-    state = (reg2nameMod, name2regMod, regReadyMod, renamedSet, nextUpMod)
+    out.rs2name := rs2name
+    out.rs2ready := rs2ready || toExec.invalMap(idx)
+    out.rs2val := rs2val
 
     when(toExec.commit === (idx+1).U) {
-      reg2name := reg2nameMod
-      name2reg := name2regMod
-      regReady := regReadyMod
-      renamedSetUpcoming := renamedSet
-      nextUp := nextUpMod
+      state := next
     }
-  }
 
-  // Write-backs
-  for(w <- rw) {
-    w.addr := 0.U
-    w.data := DontCare
-  }
-
-  for((ent, w) <- cdb.entries.zip(rw)) {
-    // Later ones has higher priority
-    when(ent.name =/= 0.U) {
-      val reg = name2reg(ent.name)
-
-      when(reg2name(reg) === ent.name && !renamedSetUpcoming(reg)) {
-        regReady(ent.name) := true.B
-      }
-
-      w.addr := reg
-      w.data := ent.data
-    }
-  }
-
-  for(ent <- cdb.entries) {
-    for(out <- toExec.output) {
-      when(ent.name =/= 0.U && ent.name === out.rs1name) {
-        out.rs1val := ent.data
-        out.rs1ready := true.B
-      }
-    }
+    prev = next
   }
 
   // Lastly, handles flush
   when(toExec.flush) {
-    reg2name := VecInit(Seq.fill(REG_NUM)(0.U(NAME_LENGTH.W)))
-    name2reg := VecInit(Seq.fill(coredef.INFLIGHT_INSTR_LIMIT)(0.U(NAME_LENGTH.W)))
-    regReady := RegInit(VecInit(Seq.fill(REG_NUM)(true.B)))
-    nextUp := 1.U
+    state := State.default()
   }
 }

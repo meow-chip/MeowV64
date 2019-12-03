@@ -48,6 +48,16 @@ class BranchResult(implicit val coredef: CoreDef) extends Bundle {
     ex := ExReq.ret
     extype := DontCare
   }
+
+  def branched(): Bool = branch || ex =/= ExReq.none
+}
+
+object BranchResult {
+  def empty(implicit coredef: CoreDef): BranchResult = {
+    val ret = Wire(new BranchResult)
+    ret.nofire()
+    ret
+  }
 }
 
 class RetireInfo(implicit val coredef: CoreDef) extends Bundle {
@@ -243,5 +253,5 @@ class CDBEntry(implicit val coredef: CoreDef) extends Bundle {
 }
 
 class CDB(implicit val coredef: CoreDef) extends Bundle {
-  val entries = Vec(coredef.RETIRE_NUM, new CDBEntry)
+  val entries = Vec(coredef.UNIT_COUNT, new CDBEntry)
 }

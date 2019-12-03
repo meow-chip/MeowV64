@@ -18,7 +18,7 @@ abstract class CoreDef {
  * because we are reserving name 0 for reg 0
  */
   val INFLIGHT_INSTR_LIMIT = 8 
-
+  val UNIT_COUNT: Int = 3
   val RESERVATION_STATION_DEPTH = 4
 
   val CYCLE_PER_TIMEUNIT: Int = 50 // We're running on 50M

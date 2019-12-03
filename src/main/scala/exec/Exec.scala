@@ -44,49 +44,171 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
     val w = new DCWriter(coredef.L1D)
   })
 
-  val inflight = RegInit(0.U(log2Ceil(coredef.INFLIGHT_INSTR_LIMIT).W))
-  val ntag = RegInit(0.U(log2Ceil(coredef.INFLIGHT_INSTR_LIMIT).W))
-  val issue = Wire(UInt(log2Ceil(coredef.ISSUE_NUM+1).W))
-  val retire = Wire(UInt(log2Ceil(coredef.RETIRE_NUM+1).W))
-  assert(inflight >= retire)
-
-  ntag := ntag +% issue
-  inflight := inflight +% issue -% retire
-
-  toIF.pop := issue
 
   val renamer = Module(new Renamer)
   renamer.rr <> rr
-  renamer.rw <> rw
-
-  renamer.toExec.commit := issue
-  renamer.toExec.input := toIF.view
-  renamer.toExec.ntag := ntag
 
   val cdb = Wire(new CDB)
 
   // Units
   // TODO: add more units
   val units = Seq(
-    new UnitSel(
+    Module(new UnitSel(
       Seq(new ALU),
       instr => Seq(true.B) // Everything goes into ALU
-    )
+    ))
   )
 
-  val stations = units.map(u => {
-    val rs = Module(new ResStation)
+  assume(units.length == coredef.UNIT_COUNT)
+
+  val stations = units.zipWithIndex.map({ case (u, idx)=> {
+    val rs = Module(new ResStation).suggestName(s"ResStation_${idx}")
     rs.cdb := cdb
     rs.exgress <> u.rs
-  })
 
-  // ROB & friends
+    rs
+  }})
+
+  for(s <- stations) {
+    s.cdb := cdb
+  }
+
+  // ROB & ptrs
   val rob = RegInit(VecInit(Seq.fill(coredef.INFLIGHT_INSTR_LIMIT)(ROBEntry.empty)))
   val retirePtr = RegInit(0.U(log2Ceil(coredef.INFLIGHT_INSTR_LIMIT).W))
+  val issuePtr = RegInit(0.U(log2Ceil(coredef.INFLIGHT_INSTR_LIMIT).W))
+
+  val retireNum = Wire(0.U(log2Ceil(coredef.RETIRE_NUM + 1).W))
+  val issueNum = Wire(0.U(log2Ceil(coredef.ISSUE_NUM + 1).W))
+
+  toIF.pop := issueNum
+  renamer.toExec.commit := issueNum
+  renamer.toExec.input := toIF.view
+  renamer.toExec.ntag := issuePtr
+
+  issuePtr := issuePtr + issueNum
+  retirePtr := retirePtr + retireNum
 
   // Issue
+  val overflowIssueNum = retirePtr -% issuePtr // issuePtr cannot reach retirePtr
+  assert(issueNum < overflowIssueNum)
+
+  val canIssue = Wire(Vec(coredef.ISSUE_NUM, Bool()))
+  var taken = 0.U(coredef.UNIT_COUNT.W)
+  issueNum := 0.U
+
+  for(idx <- (0 until coredef.ISSUE_NUM)) {
+    val selfCanIssue = Wire(Bool())
+    val sending = UInt(coredef.UNIT_COUNT.W)
+    val instr = Wire(new ReservedInstr)
+
+    renamer.toExec.invalMap(idx) := false.B
+    instr := renamer.toExec.output(idx)
+
+    when(idx.U >= toIF.cnt || idx.U >= overflowIssueNum) {
+      selfCanIssue := false.B
+      sending := 0.U
+    }.otherwise {
+      // Route to applicable stations
+      val applicables = Exec.route(toIF.view(idx).instr)
+      val avails = VecInit(stations.map(_.ingress.free)).asUInt()
+
+      val sending = Wire(UInt(coredef.UNIT_COUNT.W))
+      sending := VecInit(Seq.fill(coredef.UNIT_COUNT)(false.B))
+
+      // At most only one sending
+      assert(!(sending & (sending -% 1.U)).orR)
+      assert(!selfCanIssue || sending.orR)
+
+      when(!applicables.orR()) {
+        // Is an invalid instruction
+        selfCanIssue := stations(0).ingress.free
+        sending := 1.U
+        renamer.toExec.invalMap(idx) := true.B
+      }.otherwise {
+        val mask = applicables | avails
+
+        // Find lowest set
+        sending := MuxCase(0.U, (0 until coredef.UNIT_COUNT).map(idx => (
+          mask(idx), (1<<idx).U
+        )))
+
+        selfCanIssue := mask.orR()
+      }
+    }
+
+    if(idx == 0) canIssue(idx) := selfCanIssue
+    else canIssue(idx) := selfCanIssue | canIssue(idx-1)
+
+    when(canIssue(idx)) {
+      issueNum := (idx+1).U
+
+      for((s, en) <- stations.zip(sending.asBools)) {
+        when(en) {
+          s.ingress.push := true.B
+          s.ingress.instr := instr
+        }
+      }
+    }
+
+    taken = taken | sending
+  }
+
+  // Filling ROB & CDB broadcast
+  for((u, ent) <- units.zip(cdb.entries)) {
+    ent.valid := false.B
+    ent.name := 0.U // Helps to debug, because we are asserting store(0) === 0
+    ent.data := u.retire.info.wb
+
+    when(!u.stall) {
+      ent.name := u.retire.instr.rdname
+      ent.valid := ent.name =/= 0.U
+
+      rob(u.retire.instr.tag).retirement := u.retire
+      rob(u.retire.instr.tag).valid := true.B
+    }
+  }
 
   // Commit
+  // FIXME: memory access
+  // FIXME: Uncached
+
+  val canRetire = Wire(Vec(coredef.RETIRE_NUM, Bool()))
+  val isBranch = Wire(Vec(coredef.RETIRE_NUM, Bool()))
+
+  // Compute if we can retire a certain instruction
+  for(idx <- (0 until coredef.RETIRE_NUM)) {
+    val info = rob(retirePtr +% idx.U)
+    isBranch(idx) := info.retirement.info.branch.branched()
+
+    if(idx == 0) {
+      canRetire(idx) := info.valid
+    } else {
+      canRetire(idx) := info.valid && canRetire(idx - 1) && !isBranch(idx)
+    }
+
+    when(canRetire(idx)) {
+      rw(idx).addr := info.retirement.instr.instr.instr.getRd
+      rw(idx).data := info.retirement.info.wb
+      // Branching. canRetire(idx) -> \forall i < idx, !isBranch(i)
+      // So we can safely sets io.branch to the last valid branch info
+      io.branch := info.retirement.info.branch
+
+      info.valid := false.B
+
+      retireNum := (1+idx).U
+    }.otherwise {
+      rw(idx).addr := 0.U
+      rw(idx).data := DontCare
+    }
+  }
+
+  // Asserts that at most one can branch
+  val branchMask = isBranch.asUInt() & canRetire.asUInt()
+  assert(!(branchMask & (branchMask-%1.U)).orR)
+
+  // Asserts that canRetire forms a tailing 1 sequence, e.g.: 00011111
+  assert(!(canRetire.asUInt & (canRetire.asUInt+%1.U)).orR)
 }
 
 object Exec {
@@ -103,5 +225,34 @@ object Exec {
 
       ret
     }
+  }
+
+  def route(instr: Instr)(implicit coredef: CoreDef): UInt = {
+    val ret = Wire(UInt(coredef.UNIT_COUNT.W))
+    ret := 0.U
+
+    switch(instr.op) {
+      is(Decoder.Op("LUI").ident, Decoder.Op("AUIPC").ident) {
+        // ret := "b001".U(coredef.UNIT_COUNT.W)
+        ret := "b1".U(coredef.UNIT_COUNT.W)
+      }
+
+      is(
+        Decoder.Op("OP-IMM").ident,
+        Decoder.Op("OP-IMM-32").ident,
+        Decoder.Op("OP").ident,
+        Decoder.Op("OP-32").ident
+      ) {
+        when(instr.funct7 === Decoder.MULDIV_FUNCT7) {
+          // ret := "b010".U(coredef.UNIT_COUNT.W)
+          ret := 0.U
+        }.otherwise {
+          // ret := "b011".U(coredef.UNIT_COUNT.W)
+          ret := 1.U
+        }
+      }
+    }
+
+    ret
   }
 }

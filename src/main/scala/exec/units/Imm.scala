@@ -5,38 +5,65 @@ import chisel3.util._
 import instr.Decoder
 import exec._
 import _root_.core.CoreDef
+import _root_.core.ExType
+import instr.Decoder.InstrType
 
-class ImmExt(implicit val coredef: CoreDef) extends Bundle {
+class BypassExt(implicit val coredef: CoreDef) extends Bundle {
   val acc = UInt(coredef.XLEN.W)
+  val inval = Bool()
 }
 
-class Imm(override implicit val coredef: CoreDef) extends ExecUnit(0, new ImmExt) {
-  def map(stage: Int, pipe: PipeInstr, ext: Option[ImmExt]): (ImmExt, chisel3.Bool) = {
-    val ext = Wire(new ImmExt)
+class Bypass(override implicit val coredef: CoreDef) extends ExecUnit(0, new BypassExt) {
+  def map(stage: Int, pipe: PipeInstr, ext: Option[BypassExt]): (BypassExt, chisel3.Bool) = {
+    val ext = Wire(new BypassExt)
     ext.acc := DontCare
+    ext.inval := true.B
 
     switch(pipe.instr.instr.op) {
       is(Decoder.Op("LUI").ident) {
         val extended = Wire(SInt(64.W))
         extended := pipe.instr.instr.imm
         ext.acc := extended.asUInt
+        ext.inval := false.B
       }
 
       is(Decoder.Op("AUIPC").ident) {
         val result = Wire(SInt(64.W))
         result := pipe.instr.instr.imm + pipe.instr.addr.asSInt
         ext.acc := result.asUInt
+        ext.inval := false.B
+        // printf(p"AUIPC Written: ${Hexadecimal(result)}\n")
+      }
+
+      is(Decoder.Op("JAL").ident) {
+        ext.inval := false.B
         // printf(p"AUIPC Written: ${Hexadecimal(result)}\n")
       }
     }
 
     (ext, false.B)
   }
-  def finalize(pipe: PipeInstr, ext: ImmExt): RetireInfo = {
+  def finalize(pipe: PipeInstr, ext: BypassExt): RetireInfo = {
     val info = Wire(new RetireInfo)
-    info.branch.nofire()
-    // info.regWaddr := pipe.instr.instr.rd
-    info.wb := ext.acc
+
+    when(ext.inval) {
+      // Is an invalid instr
+      info.branch.ex(ExType.ILLEGAL_INSTR)
+      info.wb := DontCare
+    }.elsewhen(pipe.instr.instr.op === Decoder.Op("JAL").ident) {
+      val linked = Wire(UInt(coredef.ADDR_WIDTH.W))
+      linked := pipe.instr.addr + 4.U
+      when(pipe.instr.instr.base === InstrType.toInt(InstrType.C)) {
+        linked := pipe.instr.addr + 2.U // This is an compressed instr
+      }
+
+      info.wb := linked
+
+      info.branch.fire((pipe.instr.addr.asSInt + pipe.instr.instr.imm).asUInt)
+    }.otherwise {
+      info.branch.nofire()
+      info.wb := ext.acc
+    }
 
     info
   }

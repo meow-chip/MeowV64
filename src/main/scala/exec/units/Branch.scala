@@ -93,7 +93,7 @@ class Branch(override implicit val coredef: CoreDef) extends ExecUnit(0, new Bra
       }.otherwise {
         info.branch.nofire()
       }
-    }.otherwise { // JAL/JALR
+    }.otherwise { // JAL/JALR, JAL is now in Bypass, so this must be JALR
       val linked = Wire(UInt(coredef.ADDR_WIDTH.W))
       linked := pipe.instr.addr + 4.U
       when(pipe.instr.instr.base === InstrType.toInt(InstrType.C)) {
@@ -103,12 +103,7 @@ class Branch(override implicit val coredef: CoreDef) extends ExecUnit(0, new Bra
       // info.regWaddr := pipe.instr.instr.rd
       info.wb := linked.asUInt
 
-      val dest = Wire(SInt(coredef.ADDR_WIDTH.W))
-      when(pipe.instr.instr.op === Decoder.Op("JAL").ident) {
-        dest := pipe.instr.instr.imm + pipe.instr.addr.asSInt
-      }.otherwise { // JALR
-        dest := ((pipe.rs1val.asSInt + pipe.instr.instr.imm) >> 1) << 1
-      }
+      val dest = ((pipe.rs1val.asSInt + pipe.instr.instr.imm) >> 1) << 1
 
       info.branch.fire(dest.asUInt)
     }
