@@ -14,6 +14,7 @@ import exec.units._
 import exec.UnitSel.Retirement
 import _root_.core.Core
 import exec.Exec.ROBEntry
+import _root_.core.CSROp
 
 /**
  * Out-of-order exection (Tomasulo's algorithm)
@@ -34,6 +35,9 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
     val csrWriter = new CSRWriter(coredef.XLEN)
   })
 
+  // We don't stall now
+  io.ctrl.stall := false.B
+
   val rr = IO(Vec(coredef.ISSUE_NUM*2, new RegReader))
   val rw = IO(Vec(coredef.RETIRE_NUM, new RegWriter))
 
@@ -44,18 +48,31 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
     val w = new DCWriter(coredef.L1D)
   })
 
+  val cdb = Wire(new CDB)
 
   val renamer = Module(new Renamer)
   renamer.rr <> rr
-
-  val cdb = Wire(new CDB)
+  renamer.cdb := cdb
+  renamer.toExec.flush := io.ctrl.flush
 
   // Units
   // TODO: add more units
   val units = Seq(
     Module(new UnitSel(
-      Seq(new ALU),
-      instr => Seq(true.B) // Everything goes into ALU
+      Seq(
+        Module(new ALU),
+        Module(new Bypass)
+      ),
+      instr => {
+        val gotoALU = (
+          instr.op === Decoder.Op("OP").ident ||
+          instr.op === Decoder.Op("OP-IMM").ident ||
+          instr.op === Decoder.Op("OP-32").ident ||
+          instr.op === Decoder.Op("OP-IMM-32").ident
+        )
+
+        Seq(gotoALU, !gotoALU)
+      }
     ))
   )
 
@@ -71,6 +88,15 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
 
   for(s <- stations) {
     s.cdb := cdb
+    s.ctrl.flush := io.ctrl.flush
+
+    // By default: nothing pushes
+    s.ingress := DontCare
+    s.ingress.push := false.B
+  }
+
+  for(u <- units) {
+    u.ctrl.flush := io.ctrl.flush
   }
 
   // ROB & ptrs
@@ -78,8 +104,8 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
   val retirePtr = RegInit(0.U(log2Ceil(coredef.INFLIGHT_INSTR_LIMIT).W))
   val issuePtr = RegInit(0.U(log2Ceil(coredef.INFLIGHT_INSTR_LIMIT).W))
 
-  val retireNum = Wire(0.U(log2Ceil(coredef.RETIRE_NUM + 1).W))
-  val issueNum = Wire(0.U(log2Ceil(coredef.ISSUE_NUM + 1).W))
+  val retireNum = Wire(UInt(log2Ceil(coredef.RETIRE_NUM + 1).W))
+  val issueNum = Wire(UInt(log2Ceil(coredef.ISSUE_NUM + 1).W))
 
   toIF.pop := issueNum
   renamer.toExec.commit := issueNum
@@ -99,8 +125,12 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
 
   for(idx <- (0 until coredef.ISSUE_NUM)) {
     val selfCanIssue = Wire(Bool())
-    val sending = UInt(coredef.UNIT_COUNT.W)
+    val sending = Wire(UInt(coredef.UNIT_COUNT.W))
     val instr = Wire(new ReservedInstr)
+
+    // At most only one sending
+    assert(!(sending & (sending -% 1.U)).orR)
+    assert(!selfCanIssue || sending.orR)
 
     renamer.toExec.invalMap(idx) := false.B
     instr := renamer.toExec.output(idx)
@@ -113,12 +143,7 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
       val applicables = Exec.route(toIF.view(idx).instr)
       val avails = VecInit(stations.map(_.ingress.free)).asUInt()
 
-      val sending = Wire(UInt(coredef.UNIT_COUNT.W))
-      sending := VecInit(Seq.fill(coredef.UNIT_COUNT)(false.B))
-
-      // At most only one sending
-      assert(!(sending & (sending -% 1.U)).orR)
-      assert(!selfCanIssue || sending.orR)
+      sending := 0.U
 
       when(!applicables.orR()) {
         // Is an invalid instruction
@@ -160,7 +185,7 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
     ent.name := 0.U // Helps to debug, because we are asserting store(0) === 0
     ent.data := u.retire.info.wb
 
-    when(!u.stall) {
+    when(!u.ctrl.stall) {
       ent.name := u.retire.instr.rdname
       ent.valid := ent.name =/= 0.U
 
@@ -172,9 +197,25 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
   // Commit
   // FIXME: memory access
   // FIXME: Uncached
+  // FIXME: CSR
+
+  retireNum := 0.U
+
+  io.csrWriter.op := CSROp.rs
+  io.csrWriter.addr := 0.U
+  io.csrWriter.wdata := 0.U
+
+  toDC.r := DontCare
+  toDC.r.read := false.B
+  toDC.w := DontCare
+  toDC.w.write := false.B
 
   val canRetire = Wire(Vec(coredef.RETIRE_NUM, Bool()))
   val isBranch = Wire(Vec(coredef.RETIRE_NUM, Bool()))
+
+  // Default: no branch if nothing is retired
+  io.branch.nofire()
+  io.brSrc := DontCare
 
   // Compute if we can retire a certain instruction
   for(idx <- (0 until coredef.RETIRE_NUM)) {
@@ -193,6 +234,7 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
       // Branching. canRetire(idx) -> \forall i < idx, !isBranch(i)
       // So we can safely sets io.branch to the last valid branch info
       io.branch := info.retirement.info.branch
+      io.brSrc := info.retirement.instr.instr.addr
 
       info.valid := false.B
 

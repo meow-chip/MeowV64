@@ -16,7 +16,7 @@ class Renamer(implicit coredef: CoreDef) extends MultiIOModule {
   val rr = IO(Vec(coredef.ISSUE_NUM * 2, new RegReader(coredef.XLEN)))
 
   val toExec = IO(new Bundle {
-    val input = Vec(coredef.ISSUE_NUM, new InstrExt(coredef.ADDR_WIDTH))
+    val input = Input(Vec(coredef.ISSUE_NUM, new InstrExt(coredef.ADDR_WIDTH)))
     val commit = Input(UInt(log2Ceil(coredef.ISSUE_NUM+1).W))
     val ntag = Input(UInt(log2Ceil(coredef.INFLIGHT_INSTR_LIMIT).W))
     val output = Output(Vec(coredef.ISSUE_NUM, new ReservedInstr))
@@ -25,6 +25,11 @@ class Renamer(implicit coredef: CoreDef) extends MultiIOModule {
 
     val flush = Input(Bool())
   })
+
+  for(o <- toExec.output) {
+    // Apply assertions
+    o.validate()
+  }
 
   val NAME_LENGTH = log2Ceil(coredef.INFLIGHT_INSTR_LIMIT)
   val REG_ADDR_LENGTH = log2Ceil(REG_NUM)
@@ -38,20 +43,22 @@ class Renamer(implicit coredef: CoreDef) extends MultiIOModule {
     val reg2name = Vec(REG_NUM, UInt(NAME_LENGTH.W))
     val name2reg = Vec(coredef.INFLIGHT_INSTR_LIMIT, UInt(log2Ceil(REG_NUM).W))
 
-    // Reg 0 is always mapped to name 0
-    assert(reg2name(0) == 0.U)
-    assert(name2reg(0) == 0.U)
-
     // TODO: assert: bidirectional mapping perserved
 
     // Is the value for a specific name already broadcasted on the CDB?
     val nameReady = Vec(coredef.INFLIGHT_INSTR_LIMIT, Bool())
 
-    // Name 0 always have a ready value
-    assert(nameReady(0))
-
     // Next name
     val nextUp = UInt(NAME_LENGTH.W)
+
+    def validate() {
+      // Reg 0 is always mapped to name 0
+      assert(reg2name(0) === 0.U)
+      assert(name2reg(0) === 0.U)
+
+      // Name 0 always have a ready value
+      assert(nameReady(0))
+    }
   }
 
   object State {
@@ -71,6 +78,7 @@ class Renamer(implicit coredef: CoreDef) extends MultiIOModule {
   // By default, all reg is ready and mapped to name 0, which always has a value of 0
   val store = RegInit(VecInit(Seq.fill(coredef.INFLIGHT_INSTR_LIMIT)(0.U(coredef.XLEN.W))))
   val state = RegInit(State.default())
+  state.validate()
   assert(store(0) === 0.U)
 
   // Mask with current CDB request
@@ -78,6 +86,8 @@ class Renamer(implicit coredef: CoreDef) extends MultiIOModule {
   var modStore = Wire(Vec(coredef.INFLIGHT_INSTR_LIMIT, UInt(coredef.XLEN.W)))
   modState := state
   modStore := store
+
+  modState.validate()
 
   for(ent <- cdb.entries) {
     when(ent.valid && ent.name =/= 0.U) {
@@ -94,11 +104,13 @@ class Renamer(implicit coredef: CoreDef) extends MultiIOModule {
   var prev = modState
   for(((row, out), idx) <- toExec.input.zip(toExec.output).zipWithIndex) {
     val next = Wire(new State)
+    next.validate()
 
     next := prev
 
     // Assign instr and tag
-    out.instr := row.instr
+    out.instr := row
+
     for((orow, idx) <- toExec.output.zipWithIndex) {
       out.tag := toExec.ntag +% idx.U
     }

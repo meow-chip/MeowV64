@@ -98,11 +98,13 @@ class ReservedInstr(override implicit val coredef: CoreDef) extends PipeInstr {
   val rs1ready = Bool()
   val rs2ready = Bool()
 
-  // Asserts that name === 0 -> ready
-  assert(rs1name =/= 0.U || rs1ready)
-  assert(rs2name =/= 0.U || rs2ready)
-
   def ready = rs1ready && rs2ready
+
+  def validate() {
+    // Asserts that name === 0 -> ready
+    assert(rs1name =/= 0.U || rs1ready)
+    assert(rs2name =/= 0.U || rs2ready)
+  }
 }
 
 object PipeInstr {
@@ -111,6 +113,8 @@ object PipeInstr {
     ret.instr := InstrExt.empty(coredef.ADDR_WIDTH)
     ret.rs1val := DontCare
     ret.rs2val := DontCare
+    ret.rdname := DontCare
+    ret.tag := DontCare
 
     ret
   }
@@ -120,13 +124,13 @@ object ReservedInstr {
   def empty(implicit coredef: CoreDef): ReservedInstr = {
     val ret = Wire(new ReservedInstr)
     ret := DontCare
-    ret := PipeInstr.empty
+    ret.instr := InstrExt.empty(coredef.ADDR_WIDTH)
 
     ret
   }
 }
 
-class ExecUnitPort(implicit coredef: CoreDef) extends Bundle {
+class ExecUnitPort(implicit val coredef: CoreDef) extends Bundle {
   val next = Input(new PipeInstr)
 
   val stall = Output(Bool())

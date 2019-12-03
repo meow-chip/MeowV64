@@ -21,9 +21,9 @@ class UnitSel(
   val units = gen
 
   def buffer(input: Retirement, length: Int, pause: Bool, flush: Bool): Retirement = {
-    val init = new Retirement
+    val init = Wire(new Retirement)
     init.info := DontCare
-    init.instr := ReservedInstr.empty
+    init.instr := PipeInstr.empty
 
     (0 until length).foldLeft(input)((cur, idx) => {
       val next = RegInit(init)
@@ -60,8 +60,6 @@ class UnitSel(
     r.info := u.io.retirement
     r.instr := u.io.retired
 
-    assume(r.instr.isInstanceOf[ReservedInstr])
-
     buffer(r, maxDepth - u.DEPTH, stall, ctrl.flush)
   })
 
@@ -79,7 +77,8 @@ class UnitSel(
 
   val fire = !stall && rs.valid
   rs.pop := fire
-  when(fire) {
+
+  when(rs.valid) {
     for((u, e) <- units.zip(execMap)) {
       when(e) {
         u.io.next := rs.instr
@@ -95,12 +94,22 @@ class UnitSel(
   val retireNoDup = !((retireMask -% 1.U) & retireMask).orR() // At most one retirement
   assert(stall || retireNoDup) // !stall -> retireSingle
 
-  retire := MuxCase(DontCare.asTypeOf(retire), buffered.map(r => (!r.instr.instr.vacant, r)))
+  retire := MuxCase(Retirement.empty, buffered.map(r => (!r.instr.instr.vacant, r)))
 }
 
 object UnitSel {
   class Retirement(implicit val coredef: CoreDef)  extends Bundle {
     val instr = new PipeInstr
     val info = new RetireInfo
+  }
+
+  object Retirement {
+    def empty(implicit coredef: CoreDef): Retirement = {
+      val ret = Wire(new Retirement)
+      ret.instr := PipeInstr.empty
+      ret.info := RetireInfo.vacant
+
+      ret
+    }
   }
 }

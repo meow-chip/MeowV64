@@ -36,14 +36,24 @@ class ResStation(implicit val coredef: CoreDef) extends MultiIOModule {
   val exgress = IO(new ResStationExgress)
 
   val cdb = IO(Input(new CDB))
+  val ctrl = IO(new Bundle {
+    val flush = Input(Bool())
+  })
 
   val store = RegInit(VecInit(Seq.fill(coredef.RESERVATION_STATION_DEPTH)(ReservedInstr.empty)))
   val occupied = RegInit(VecInit(Seq.fill(coredef.RESERVATION_STATION_DEPTH)(false.B)))
 
+  when(ctrl.flush) {
+    store := VecInit(Seq.fill(coredef.RESERVATION_STATION_DEPTH)(ReservedInstr.empty))
+    occupied := VecInit(Seq.fill(coredef.RESERVATION_STATION_DEPTH)(false.B))
+  }
+
   // Ingress part
   ingress.free := occupied.foldLeft(false.B)((acc, valid) => acc || !valid)
+  val defIdx = Wire(UInt(log2Ceil(coredef.RESERVATION_STATION_DEPTH).W))
+  defIdx := DontCare
   val ingIdx = MuxCase(
-    DontCare.asTypeOf(UInt(log2Ceil(coredef.RESERVATION_STATION_DEPTH).W)),
+    defIdx,
     occupied.zipWithIndex.map({
       case (valid, idx) => (!valid, idx.U(log2Ceil(coredef.RESERVATION_STATION_DEPTH).W))
     })
@@ -59,7 +69,7 @@ class ResStation(implicit val coredef: CoreDef) extends MultiIOModule {
   })
   // MuxCase can handle multiple enabled cases
   val exgIdx = MuxCase(
-    DontCare.asTypeOf(UInt(log2Ceil(coredef.RESERVATION_STATION_DEPTH).W)),
+    defIdx,
     store.zip(occupied).zipWithIndex.map({
       case ((instr, valid), idx) => (valid && instr.ready, idx.U(log2Ceil(coredef.RESERVATION_STATION_DEPTH).W))
     })
