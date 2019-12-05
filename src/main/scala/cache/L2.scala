@@ -90,7 +90,9 @@ object L2MainState extends ChiselEnum {
 object L2WBState extends ChiselEnum {
   val idle,
     writing,
-    resp = Value
+    resp,
+    ucWalk
+    = Value
 }
 
 class WBEntry(val opts: L2Opts) extends Bundle {
@@ -122,16 +124,11 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
 
   val ic = IO(Vec(opts.CORE_COUNT, Flipped(new L1ICPort(opts))))
   val dc = IO(Vec(opts.CORE_COUNT, Flipped(new L1DCPort(opts))))
-  val directs = IO(Vec(opts.CORE_COUNT, Flipped(new L1DCPort(opts))))
-
-  for(direct <- directs) {
-    direct.l2addr := DontCare
-    direct.l2req := L2Req.idle
-  }
+  val directs = IO(Vec(opts.CORE_COUNT, Flipped(new L1UCPort(opts))))
 
   // Iterator for all ports
   // dc comes first to match MSI directory
-  def ports = dc.iterator ++ ic.iterator ++ directs.iterator
+  def ports = dc.iterator ++ ic.iterator
 
   val axi = IO(new AXI(opts.XLEN, opts.ADDR_WIDTH))
   axi <> 0.U.asTypeOf(axi)
@@ -196,10 +193,10 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
   }
 
   // Joint ports
-  val addrs = Wire(Vec(opts.CORE_COUNT * 3, UInt(opts.ADDR_WIDTH.W)))
-  val ops = Wire(Vec(opts.CORE_COUNT * 3, L1DCPort.L1Req()))
-  val rdatas = Wire(Vec(opts.CORE_COUNT * 3, UInt((opts.LINE_WIDTH * 8).W)))
-  val stalls = Wire(Vec(opts.CORE_COUNT * 3, Bool()))
+  val addrs = Wire(Vec(opts.CORE_COUNT * 2, UInt(opts.ADDR_WIDTH.W)))
+  val ops = Wire(Vec(opts.CORE_COUNT * 2, L1DCPort.L1Req()))
+  val rdatas = Wire(Vec(opts.CORE_COUNT * 2, UInt((opts.LINE_WIDTH * 8).W)))
+  val stalls = Wire(Vec(opts.CORE_COUNT * 2, Bool()))
   for((p, a) <- ports.zip(addrs.iterator)) {
     a := p.getAddr
   }
@@ -218,12 +215,16 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
 
   for(r <- rdatas) r := DontCare
   stalls := VecInit(ops.map(op => op =/= L1Req.idle))
+  for(uc <- directs) {
+    uc.stall := uc.read || uc.write
+    uc.rdata := DontCare
+  }
 
   // Refillers
-  val misses = RegInit(VecInit(Seq.fill(opts.CORE_COUNT * 3)(false.B)))
+  val misses = RegInit(VecInit(Seq.fill(opts.CORE_COUNT * 2)(false.B)))
   val collided = RegInit(VecInit(Seq.fill(opts.CORE_COUNT * 2)(false.B)))
-  val refilled = RegInit(VecInit(Seq.fill(opts.CORE_COUNT * 3)(false.B)))
-  val bufs = RegInit(VecInit(Seq.fill(opts.CORE_COUNT * 3)(
+  val refilled = RegInit(VecInit(Seq.fill(opts.CORE_COUNT * 2)(false.B)))
+  val bufs = RegInit(VecInit(Seq.fill(opts.CORE_COUNT * 2)(
     VecInit(Seq.fill(opts.LINE_WIDTH * 8 / axi.DATA_WIDTH)(0.U(axi.DATA_WIDTH.W)))
   )))
 
@@ -251,7 +252,7 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
   nstate := state
   state := nstate
 
-  val target = RegInit(0.U(log2Ceil(opts.CORE_COUNT * 3).W))
+  val target = RegInit(0.U(log2Ceil(opts.CORE_COUNT * 2).W))
   val targetAddr = addrs(target)
   val targetOps = ops(target)
   val targetIndex = targetAddr(INDEX_OFFSET_LENGTH-1, OFFSET_LENGTH)
@@ -300,8 +301,10 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
     }
   }
 
-  def step(ptr: UInt) {
-    when(ptr === (opts.CORE_COUNT * 3 - 1).U) {
+  def step(ptr: UInt, includeDirects: Boolean = false) {
+    val grpCnt = if(includeDirects) { 3 } else { 2 }
+
+    when(ptr === (opts.CORE_COUNT * grpCnt - 1).U) {
       ptr := 0.U
     }.otherwise {
       ptr := ptr + 1.U
@@ -398,7 +401,9 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
           stalls(target) := false.B
 
           nstate := L2MainState.idle
-          step(target)
+
+          // We're probably going to receive a read after a write-back, so don't step target
+          // step(target)
         }
       }
     }
@@ -711,41 +716,62 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
   val reqAddr = rawReqAddr(opts.ADDR_WIDTH-1, OFFSET_LENGTH) ## 0.U(OFFSET_LENGTH.W)
   assume(reqAddr.getWidth == opts.ADDR_WIDTH)
   
-  val sent = RegInit(VecInit(Seq.fill(opts.CORE_COUNT * 3)(false.B)))
+  val sent = RegInit(VecInit(Seq.fill(opts.CORE_COUNT * 2)(false.B)))
+  val ucSent = RegInit(VecInit(Seq.fill(opts.CORE_COUNT)(false.B)))
 
-  when(sent(reqTarget) =/= misses(reqTarget)) {
-    when(misses(reqTarget)) {
-      axi.ARADDR := reqAddr
+  when(reqTarget < (opts.CORE_COUNT * 2).U) {
+    when(sent(reqTarget) =/= misses(reqTarget)) {
+      when(misses(reqTarget)) {
+        axi.ARADDR := reqAddr
+        axi.ARBURST := AXI.Constants.Burst.INCR.U
+        // axi.ARCACHE ignored
+        // Yeah.. we are finally using id
+        axi.ARID := reqTarget
+        assume(
+          opts.LINE_WIDTH * 8 % axi.DATA_WIDTH == 0,
+          "Line cannot be filled with a integer number of AXI transfers"
+        )
+        axi.ARLEN := (axiGrpNum - 1).U
+        // axi.ARPROT ignored
+        // axi.ARQOS ignored
+        // axi.ARREGION ignored
+        axi.ARSIZE := AXI.Constants.Size.from(axi.DATA_WIDTH).U
+
+        axi.ARVALID := true.B
+        when(axi.ARREADY) {
+          sent(reqTarget) := true.B
+          step(reqTarget, true)
+        }
+      } .otherwise {
+        sent(reqTarget) := false.B
+        step(reqTarget, true)
+      }
+    }.otherwise {
+      // Step
+      step(reqTarget, true)
+    }
+  }.otherwise {
+    val id = reqTarget - (opts.CORE_COUNT * 2).U
+    when(ops(id) === L1Req.ucRead && !ucSent(reqTarget)) {
+      axi.ARADDR := directs(id).addr
       axi.ARBURST := AXI.Constants.Burst.INCR.U
-      // axi.ARCACHE ignored
-      // Yeah.. we are finally using id
       axi.ARID := reqTarget
-      assume(
-        opts.LINE_WIDTH * 8 % axi.DATA_WIDTH == 0,
-        "Line cannot be filled with a integer number of AXI transfers"
-      )
-      axi.ARLEN := (axiGrpNum - 1).U
-      // axi.ARPROT ignored
-      // axi.ARQOS ignored
-      // axi.ARREGION ignored
-      axi.ARSIZE := AXI.Constants.Size.from(axi.DATA_WIDTH).U
+      axi.ARLEN := 0.U
+
+      assume(axi.DATA_WIDTH == opts.XLEN)
 
       axi.ARVALID := true.B
       when(axi.ARREADY) {
-        sent(reqTarget) := true.B
-        step(reqTarget)
+        ucSent(reqTarget) := true.B
+        step(reqTarget, true)
       }
-    } .otherwise {
-      sent(reqTarget) := false.B
-      step(reqTarget)
+    }.otherwise {
+      step(reqTarget, true)
     }
-  }.otherwise {
-    // Step
-    step(reqTarget)
   }
 
   // Receiver, deals with R channel, and victimize
-  val bufptrs = RegInit(VecInit(Seq.fill(opts.CORE_COUNT * 3)(
+  val bufptrs = RegInit(VecInit(Seq.fill(opts.CORE_COUNT * 2)(
     0.U(log2Ceil(opts.LINE_WIDTH * 8 / axi.DATA_WIDTH).W)
   )))
 
@@ -753,17 +779,28 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
     // TODO: handle RRESP
     axi.RREADY := true.B
 
-    bufs(axi.RID)(bufptrs(axi.RID)) := axi.RDATA
-    bufptrs(axi.RID) := bufptrs(axi.RID) + 1.U
+    when(axi.RID <= (opts.CORE_COUNT * 2).U) {
+      bufs(axi.RID)(bufptrs(axi.RID)) := axi.RDATA
+      bufptrs(axi.RID) := bufptrs(axi.RID) + 1.U
 
-    when(axi.RLAST) {
-      refilled(axi.RID) := true.B
+      when(axi.RLAST) {
+        refilled(axi.RID) := true.B
+      }
+    }.otherwise {
+      assert(axi.RLAST)
+      val id = axi.RID - (opts.CORE_COUNT * 2).U
+      directs(id).rdata := axi.RDATA
+      directs(id).stall := false.B
+      sent(axi.RID) := false.B
     }
   }
 
   // Write-back...er? Handles AXI AW/W/B
   val wbPtr = RegInit(0.U(log2Ceil(axiGrpNum).W))
   val wbDataView = wbFifo(wbFifoHead).data.asTypeOf(Vec(axiGrpNum, UInt(axi.DATA_WIDTH.W)))
+
+  val ucWalkPtr = RegInit(0.U((if(opts.CORE_COUNT == 1) { 1 } else { log2Ceil(opts.CORE_COUNT) }).W))
+  val ucSendStage = RegInit(0.U(2.W)) // Req, Data, Resp
   switch(wbState) {
     is(L2WBState.idle) {
       when(!wbFifoEmpty) {
@@ -782,6 +819,10 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
           wbPtr := 0.U
           wbState := L2WBState.writing
         }
+      }.elsewhen(VecInit(directs.map(_.write)).asUInt.orR()) {
+        ucWalkPtr := 0.U
+        ucSendStage := 0.U
+        wbState := L2WBState.ucWalk
       }
     }
 
@@ -810,6 +851,45 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
         wbFifoHead := wbFifoHead +% 1.U
         wbFifo(wbFifoHead).valid := false.B
         wbState := L2WBState.idle
+      }
+    }
+
+    is(L2WBState.ucWalk) {
+      when(directs(ucWalkPtr).write) {
+        axi.AWADDR := directs(ucWalkPtr).addr
+        assert(axi.AWADDR(log2Ceil(opts.XLEN / 8)-1, 0) === 0.U)
+        axi.AWBURST := AXI.Constants.Burst.INCR.U
+        axi.AWLEN := 0.U
+        axi.AWSIZE := AXI.Constants.Size.from(axi.DATA_WIDTH).U
+        axi.AWVALID := ucSendStage === 0.U
+        when(axi.AWVALID && axi.AWREADY) {
+          ucSendStage := 1.U
+        }
+
+        axi.WDATA := directs(ucWalkPtr).wdata
+        axi.WSTRB := directs(ucWalkPtr).wstrb
+        axi.WLAST := true.B
+        axi.WVALID := ucSendStage === 1.U
+        when(axi.WVALID && axi.WREADY) {
+          ucSendStage := 2.U
+        }
+
+        axi.BREADY := ucSendStage === 2.U
+        when(axi.BVALID) {
+          ucSendStage := 0.U
+          when(ucWalkPtr === (opts.CORE_COUNT-1).U) {
+            wbState := L2WBState.idle
+          }.otherwise {
+            ucWalkPtr := ucWalkPtr +% 1.U
+          }
+        }
+      }.otherwise {
+        ucSendStage := 0.U
+        when(ucWalkPtr === (opts.CORE_COUNT-1).U) {
+          wbState := L2WBState.idle
+        }.otherwise {
+          ucWalkPtr := ucWalkPtr +% 1.U
+        }
       }
     }
   }

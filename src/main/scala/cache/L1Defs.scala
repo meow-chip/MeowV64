@@ -2,6 +2,7 @@ package cache
 
 import chisel3._
 import chisel3.experimental.ChiselEnum
+import chisel3.util.log2Ceil
 
 trait L1Port extends Bundle {
   def getAddr: UInt
@@ -69,6 +70,32 @@ object L1ICPort {
     val port = Wire(Flipped(new L1ICPort(opts)))
     port := DontCare
     port.read := false.B
+
+    port
+  }
+}
+
+/**
+ * Uncached access
+ */
+class L1UCPort(val opts: L1Opts) extends Bundle {
+  val read = Output(Bool())
+  val write = Output(Bool())
+  val addr = Output(UInt(opts.ADDR_WIDTH.W))
+  val wstrb = Output(UInt((opts.XLEN/8).W))
+
+  val stall = Input(Bool())
+
+  val wdata = Output(UInt(opts.XLEN.W))
+  val rdata = Input(UInt(opts.XLEN.W))
+}
+
+object L1UCPort {
+  def empty(opts: L1Opts): L1UCPort = {
+    val port = Wire(Flipped(new L1UCPort(opts)))
+    port := DontCare
+    port.read := false.B
+    port.write := false.B
 
     port
   }

@@ -27,7 +27,7 @@ class Core(val coredef: CoreDef = DefaultDef) extends Module {
   l2.axi <> io.axi
   l2.ic(0) <> l1i.toL2
   l2.dc(0) <> l1d.toL2
-  l2.directs(0) <> L1DCPort.empty(coredef.L1D)
+  l2.directs(0) <> L1UCPort.empty(coredef.L1D)
 
   val fetch = Module(new InstrFetch(coredef))
   val exec = Module(new Exec()(coredef))
