@@ -68,7 +68,7 @@ class Renamer(implicit coredef: CoreDef) extends MultiIOModule {
       state.reg2name := VecInit(Seq.fill(REG_NUM)(0.U(NAME_LENGTH.W)))
       state.name2reg:= VecInit(Seq.fill(coredef.INFLIGHT_INSTR_LIMIT)(0.U(log2Ceil(REG_NUM).W)))
       state.nameReady := VecInit(Seq.fill(coredef.INFLIGHT_INSTR_LIMIT)(true.B))
-      state.nextUp := 0.U
+      state.nextUp := 1.U
 
       state
     }
@@ -110,10 +110,7 @@ class Renamer(implicit coredef: CoreDef) extends MultiIOModule {
 
     // Assign instr and tag
     out.instr := row
-
-    for((orow, idx) <- toExec.output.zipWithIndex) {
-      out.tag := toExec.ntag +% idx.U
-    }
+    out.tag := toExec.ntag +% idx.U
 
     // Rename rd
     val rd = row.instr.getRd

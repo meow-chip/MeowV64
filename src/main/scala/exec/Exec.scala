@@ -116,16 +116,16 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
   retirePtr := retirePtr + retireNum
 
   // Issue
-  val overflowIssueNum = retirePtr -% issuePtr // issuePtr cannot reach retirePtr
-  assert(issueNum < overflowIssueNum)
+  val maxIssueNum = retirePtr -% issuePtr -% 1.U // issuePtr cannot reach retirePtr
+  assert(issueNum <= maxIssueNum)
 
   val canIssue = Wire(Vec(coredef.ISSUE_NUM, Bool()))
   var taken = 0.U(coredef.UNIT_COUNT.W)
   issueNum := 0.U
 
   for(idx <- (0 until coredef.ISSUE_NUM)) {
-    val selfCanIssue = Wire(Bool())
-    val sending = Wire(UInt(coredef.UNIT_COUNT.W))
+    val selfCanIssue = Wire(Bool()).suggestName(s"selfCanIssue_$idx")
+    val sending = Wire(UInt(coredef.UNIT_COUNT.W)).suggestName(s"sending_$idx")
     val instr = Wire(new ReservedInstr)
 
     // At most only one sending
@@ -135,7 +135,7 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
     renamer.toExec.invalMap(idx) := false.B
     instr := renamer.toExec.output(idx)
 
-    when(idx.U >= toIF.cnt || idx.U >= overflowIssueNum) {
+    when(idx.U >= toIF.cnt || idx.U >= maxIssueNum) {
       selfCanIssue := false.B
       sending := 0.U
     }.otherwise {
@@ -147,11 +147,12 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
 
       when(!applicables.orR()) {
         // Is an invalid instruction
-        selfCanIssue := stations(0).ingress.free
+        selfCanIssue := stations(0).ingress.free && !taken(0)
         sending := 1.U
         renamer.toExec.invalMap(idx) := true.B
       }.otherwise {
-        val mask = applicables | avails
+        val mask = applicables & avails & ~taken
+        mask.suggestName(s"mask_$idx")
 
         // Find lowest set
         sending := MuxCase(0.U, (0 until coredef.UNIT_COUNT).map(idx => (
@@ -163,7 +164,7 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
     }
 
     if(idx == 0) canIssue(idx) := selfCanIssue
-    else canIssue(idx) := selfCanIssue | canIssue(idx-1)
+    else canIssue(idx) := selfCanIssue && canIssue(idx-1)
 
     when(canIssue(idx)) {
       issueNum := (idx+1).U
@@ -185,7 +186,7 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
     ent.name := 0.U // Helps to debug, because we are asserting store(0) === 0
     ent.data := u.retire.info.wb
 
-    when(!u.ctrl.stall) {
+    when(!u.ctrl.stall && !u.retire.instr.instr.vacant) {
       ent.name := u.retire.instr.rdname
       ent.valid := ent.name =/= 0.U
 
@@ -251,6 +252,16 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
 
   // Asserts that canRetire forms a tailing 1 sequence, e.g.: 00011111
   assert(!(canRetire.asUInt & (canRetire.asUInt+%1.U)).orR)
+
+  // Flushing control
+  when(io.ctrl.flush) {
+    issuePtr := 0.U
+    retirePtr := 0.U
+
+    for(row <- rob) {
+      row.valid := false.B
+    }
+  }
 }
 
 object Exec {
