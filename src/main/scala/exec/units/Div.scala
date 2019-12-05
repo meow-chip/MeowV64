@@ -28,6 +28,10 @@ class Div(val ROUND_PER_STAGE: Int)(override implicit val coredef: CoreDef) exte
     round := round + 1.U
   }
 
+  when(io.flush) {
+    round := 0.U
+  }
+
   val stall = !idle && !round.andR()
 
   def map(stage: Int, pipe: PipeInstr, _ext: Option[DivExt]): (DivExt, Bool) = {

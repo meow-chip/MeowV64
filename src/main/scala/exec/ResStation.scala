@@ -43,11 +43,6 @@ class ResStation(implicit val coredef: CoreDef) extends MultiIOModule {
   val store = RegInit(VecInit(Seq.fill(coredef.RESERVATION_STATION_DEPTH)(ReservedInstr.empty)))
   val occupied = RegInit(VecInit(Seq.fill(coredef.RESERVATION_STATION_DEPTH)(false.B)))
 
-  when(ctrl.flush) {
-    store := VecInit(Seq.fill(coredef.RESERVATION_STATION_DEPTH)(ReservedInstr.empty))
-    occupied := VecInit(Seq.fill(coredef.RESERVATION_STATION_DEPTH)(false.B))
-  }
-
   // Ingress part
   ingress.free := occupied.foldLeft(false.B)((acc, valid) => acc || !valid)
   val defIdx = Wire(UInt(log2Ceil(coredef.RESERVATION_STATION_DEPTH).W))
@@ -91,21 +86,33 @@ class ResStation(implicit val coredef: CoreDef) extends MultiIOModule {
     for(ent <- cdb.entries) {
       when(valid) {
         when(ent.name =/= 0.U && ent.name === instr.rs1name) {
-          // This cannot happen because we limit the inflight instr count,
-          // so that reg names should not wrap around for in-flight instrs
+          // > This cannot happen because we limit the inflight instr count,
+          // > so that reg names should not wrap around for in-flight instrs
 
-          assert(!instr.rs1ready)
-          instr.rs1ready := true.B
-          instr.rs1val := ent.data
+          // This is not true anomore, because we can refer to previous tags used by a reg, that haven't been
+          // re-assigned to another instruction
+
+          // assert(!instr.rs1ready)
+          when(!instr.rs1ready) {
+            instr.rs1ready := true.B
+            instr.rs1val := ent.data
+          }
         }
 
         when(ent.name =/= 0.U && ent.name === instr.rs2name) {
-          assert(!instr.rs2ready)
-          instr.rs2ready := true.B
-          instr.rs2val := ent.data
+          // assert(!instr.rs2ready)
+          when(!instr.rs2ready) {
+            instr.rs2ready := true.B
+            instr.rs2val := ent.data
+          }
         }
       }
     }
+  }
+
+  when(ctrl.flush) {
+    store := VecInit(Seq.fill(coredef.RESERVATION_STATION_DEPTH)(ReservedInstr.empty))
+    occupied := VecInit(Seq.fill(coredef.RESERVATION_STATION_DEPTH)(false.B))
   }
 
   // TODO: optimize: exgress.pop && ingress.push at the same cycle
