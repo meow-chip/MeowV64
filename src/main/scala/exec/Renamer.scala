@@ -63,14 +63,14 @@ class Renamer(implicit coredef: CoreDef) extends MultiIOModule {
 
   object State {
     def default(): State = {
-      val state = Wire(new State)
+      val ret = Wire(new State)
 
-      state.reg2name := VecInit(Seq.fill(REG_NUM)(0.U(NAME_LENGTH.W)))
-      state.name2reg:= VecInit(Seq.fill(coredef.INFLIGHT_INSTR_LIMIT)(0.U(log2Ceil(REG_NUM).W)))
-      state.nameReady := VecInit(Seq.fill(coredef.INFLIGHT_INSTR_LIMIT)(true.B))
-      state.nextUp := 1.U
+      ret.reg2name := VecInit(Seq.fill(REG_NUM)(0.U(NAME_LENGTH.W)))
+      ret.name2reg:= VecInit(Seq.fill(coredef.INFLIGHT_INSTR_LIMIT)(0.U(log2Ceil(REG_NUM).W)))
+      ret.nameReady := VecInit(Seq.fill(coredef.INFLIGHT_INSTR_LIMIT)(true.B))
+      ret.nextUp := 1.U
 
-      state
+      ret
     }
   }
 
@@ -121,8 +121,12 @@ class Renamer(implicit coredef: CoreDef) extends MultiIOModule {
       val prevName = prev.reg2name(rd)
       val prevReg = prev.name2reg(prev.nextUp)
       // Unbinds first
-      next.reg2name(prevReg) := 0.U
-      next.name2reg(prevName) := 0.U
+      when(prevReg =/= rd) {
+        next.reg2name(prevReg) := 0.U
+      }
+      when(prevName =/= prev.nextUp) {
+        next.name2reg(prevName) := 0.U
+      }
       // Bind new
       next.reg2name(rd) := prev.nextUp
       next.name2reg(prev.nextUp) := rd

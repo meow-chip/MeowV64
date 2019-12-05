@@ -61,6 +61,7 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
     Module(new UnitSel(
       Seq(
         Module(new ALU),
+        Module(new Branch),
         Module(new Bypass)
       ),
       instr => {
@@ -71,7 +72,21 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
           instr.op === Decoder.Op("OP-IMM-32").ident
         )
 
-        Seq(gotoALU, !gotoALU)
+        val gotoBr = (
+          instr.op === Decoder.Op("JALR").ident ||
+          instr.op === Decoder.Op("BRANCH").ident ||
+          instr.op === Decoder.Op("SYSTEM").ident && (
+            instr.rs2 === Decoder.PRIV_RS2("ECALL") ||
+            instr.rs2 === Decoder.PRIV_RS2("EBREAK") ||
+            instr.rs2 === Decoder.PRIV_RS2("RET")
+          )
+        )
+
+        Seq(
+          gotoALU,
+          gotoBr,
+          !gotoALU && !gotoBr
+        )
       }
     ))
   )

@@ -543,7 +543,7 @@ class Instr extends Bundle {
   def getRd: UInt = {
     // B-types and S-types don't have rd
     val ret = Wire(rs1.cloneType)
-    ret := rs1
+    ret := rd
 
     switch(this.op) {
       is(Decoder.Op("BRANCH").ident, Decoder.Op("STORE").ident) {
