@@ -19,7 +19,10 @@ abstract class CoreDef {
  */
   val INFLIGHT_INSTR_LIMIT = 8 
   val UNIT_COUNT: Int = 2
-  val RESERVATION_STATION_DEPTH = 4
+  val RESERVATION_STATION_DEPTHS = Seq(
+    4,
+    4
+  )
 
   val CYCLE_PER_TIMEUNIT: Int = 50 // We're running on 50M
 

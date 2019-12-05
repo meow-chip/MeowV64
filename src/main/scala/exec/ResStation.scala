@@ -17,7 +17,9 @@ class ResStationExgress(implicit val coredef: CoreDef) extends Bundle {
  * For every cycle, only one instr maybe issued into this station,
  * and only one ready instr may start executing
  */
-class ResStation(implicit val coredef: CoreDef) extends MultiIOModule {
+class ResStation(val idx: Int)(implicit val coredef: CoreDef) extends MultiIOModule {
+
+  val DEPTH = coredef.RESERVATION_STATION_DEPTHS(idx)
 
   // Sorry, I was unable to come up with a good naming for the ports
   val ingress = IO(new Bundle {
@@ -40,17 +42,17 @@ class ResStation(implicit val coredef: CoreDef) extends MultiIOModule {
     val flush = Input(Bool())
   })
 
-  val store = RegInit(VecInit(Seq.fill(coredef.RESERVATION_STATION_DEPTH)(ReservedInstr.empty)))
-  val occupied = RegInit(VecInit(Seq.fill(coredef.RESERVATION_STATION_DEPTH)(false.B)))
+  val store = RegInit(VecInit(Seq.fill(DEPTH)(ReservedInstr.empty)))
+  val occupied = RegInit(VecInit(Seq.fill(DEPTH)(false.B)))
 
   // Ingress part
   ingress.free := occupied.foldLeft(false.B)((acc, valid) => acc || !valid)
-  val defIdx = Wire(UInt(log2Ceil(coredef.RESERVATION_STATION_DEPTH).W))
+  val defIdx = Wire(UInt(log2Ceil(DEPTH).W))
   defIdx := DontCare
   val ingIdx = MuxCase(
     defIdx,
     occupied.zipWithIndex.map({
-      case (valid, idx) => (!valid, idx.U(log2Ceil(coredef.RESERVATION_STATION_DEPTH).W))
+      case (valid, idx) => (!valid, idx.U(log2Ceil(DEPTH).W))
     })
   )
   when(ingress.push) {
@@ -66,7 +68,7 @@ class ResStation(implicit val coredef: CoreDef) extends MultiIOModule {
   val exgIdx = MuxCase(
     defIdx,
     store.zip(occupied).zipWithIndex.map({
-      case ((instr, valid), idx) => (valid && instr.ready, idx.U(log2Ceil(coredef.RESERVATION_STATION_DEPTH).W))
+      case ((instr, valid), idx) => (valid && instr.ready, idx.U(log2Ceil(DEPTH).W))
     })
   )
   exgress.instr := store(exgIdx)
@@ -111,8 +113,8 @@ class ResStation(implicit val coredef: CoreDef) extends MultiIOModule {
   }
 
   when(ctrl.flush) {
-    store := VecInit(Seq.fill(coredef.RESERVATION_STATION_DEPTH)(ReservedInstr.empty))
-    occupied := VecInit(Seq.fill(coredef.RESERVATION_STATION_DEPTH)(false.B))
+    store := VecInit(Seq.fill(DEPTH)(ReservedInstr.empty))
+    occupied := VecInit(Seq.fill(DEPTH)(false.B))
   }
 
   // TODO: optimize: exgress.pop && ingress.push at the same cycle

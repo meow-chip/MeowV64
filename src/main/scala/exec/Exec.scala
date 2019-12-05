@@ -115,7 +115,7 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
   // TODO: asserts Bypass is in unit 0
 
   val stations = units.zipWithIndex.map({ case (u, idx)=> {
-    val rs = Module(new ResStation).suggestName(s"ResStation_${idx}")
+    val rs = Module(new ResStation(idx)).suggestName(s"ResStation_${idx}")
     rs.cdb := cdb
     rs.exgress <> u.rs
 
