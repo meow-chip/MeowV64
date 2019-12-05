@@ -103,7 +103,12 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
         Module(new Div(4)).suggestName("Div")
       ),
       instr => {
+        val regALU = (
+          instr.op === Decoder.Op("OP").ident ||
+          instr.op === Decoder.Op("OP-32").ident
+        )
         val isMul = (
+          regALU &&
           instr.funct7 === Decoder.MULDIV_FUNCT7 && (
             instr.funct3 === Decoder.MULDIV_FUNC("MUL") ||
             instr.funct3 === Decoder.MULDIV_FUNC("MULH") ||
@@ -112,7 +117,7 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
           )
         )
 
-        val isDiv = instr.funct7 === Decoder.MULDIV_FUNCT7 && !isMul
+        val isDiv = regALU && instr.funct7 === Decoder.MULDIV_FUNCT7 && !isMul
 
         Seq(!isMul && !isDiv, isMul, isDiv)
       }

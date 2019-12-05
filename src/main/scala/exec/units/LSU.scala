@@ -28,7 +28,7 @@ class LSU(override implicit val coredef: CoreDef) extends ExecUnit(1, new LSUExt
     val addr = (pipe.rs1val.asSInt + pipe.instr.instr.imm).asUInt
     val aligned = addr(coredef.ADDR_WIDTH-1, 3) ## 0.U(3.W)
     val offset = addr(2, 0)
-    val isUncached = false.B
+    val isUncached = addr(47)
     val isCachedRead = pipe.instr.instr.op === Decoder.Op("LOAD").ident && !isUncached
     val isCachedWrite = pipe.instr.instr.op === Decoder.Op("STORE").ident && !isUncached
     val isUncachedRead = pipe.instr.instr.op === Decoder.Op("LOAD").ident && isUncached
