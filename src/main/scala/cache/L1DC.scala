@@ -174,6 +174,20 @@ class L1DC(val opts: L1DOpts) extends MultiIOModule {
   // writing / reading is never directly gone to
   assert((nstate =/= MainState.writing && nstate =/= MainState.reading) || state === MainState.idle || nstate === state)
 
+  // Write port
+  val writing = Wire(Vec(opts.ASSOC, Bool()))
+  val writingData = Wire(new DLine(opts))
+  val writingAddr = Wire(UInt(INDEX_WIDTH.W))
+  writing := VecInit(Seq.fill(opts.ASSOC)(false.B))
+  writingData := DontCare
+  writingAddr := DontCare
+
+  for((assoc, idx) <- stores.zipWithIndex) {
+    when(writing(idx)) {
+      assoc.write(writingAddr, writingData)
+    }
+  }
+
   // Rst
   val rstCnt = RegInit(0.U(log2Ceil(LINE_PER_ASSOC).W))
 
@@ -186,9 +200,9 @@ class L1DC(val opts: L1DOpts) extends MultiIOModule {
 
   switch(state) {
     is(MainState.rst) {
-      for(store <- stores) {
-        store.write(rstCnt, DLine.empty(opts))
-      }
+      writing := VecInit(Seq.fill(opts.ASSOC)(true.B))
+      writingAddr := rstCnt
+      writingData := DLine.empty(opts)
 
       rstCnt := rstCnt +% 1.U
 
@@ -218,22 +232,25 @@ class L1DC(val opts: L1DOpts) extends MultiIOModule {
 
         when(!toL2.l1stall) {
           // Commit
-          for((lookup, idx) <- wlookups.zipWithIndex) {
-            when(lookup.valid && lookup.tag === getTag(waddr)) {
-              val written = Wire(lookup.cloneType)
-              written := lookup
+          val hitMask = VecInit(wlookups.map(lookup => lookup.valid && lookup.tag === getTag(waddr)))
+          val lookup = MuxCase(DLine.empty(opts), wlookups.zipWithIndex.map({ case (lookup, idx) => (
+            hitMask(idx),
+            lookup
+          )}))
 
-              written.data(getSublineIdx(waddr)) := muxBE(
-                wbuf(wbufHead).be,
-                wbuf(wbufHead).wdata,
-                lookup.data(getSublineIdx(waddr))
-              )
+          val written = Wire(lookup.cloneType)
+          written := lookup
+          written.data(getSublineIdx(waddr)) := muxBE(
+            wbuf(wbufHead).be,
+            wbuf(wbufHead).wdata,
+            lookup.data(getSublineIdx(waddr))
+          )
 
-              written.dirty := true.B
+          written.dirty := true.B
 
-              stores(idx).write(getIndex(waddr), written)
-            }
-          }
+          writing := hitMask
+          writingAddr := getIndex(waddr)
+          writingData := written
 
           wbuf(wbufHead).valid := false.B
           wbufHead := wbufHead +% 1.U
@@ -261,11 +278,9 @@ class L1DC(val opts: L1DOpts) extends MultiIOModule {
 
         when(!toL2.l1stall) {
           // Must be an read-miss
-          for((store, idx) <- stores.zipWithIndex) {
-            when(idx.U === victim) {
-              store.write(getIndex(pipeAddr), invalid)
-            }
-          }
+          writing(victim) := true.B
+          writingAddr := getIndex(pipeAddr)
+          writingData := invalid
 
           nstate := MainState.readingRefill
         }
@@ -286,11 +301,9 @@ class L1DC(val opts: L1DOpts) extends MultiIOModule {
 
         when(!toL2.l1stall) {
           // Must be an read-miss
-          for((store, idx) <- stores.zipWithIndex) {
-            when(idx.U === victim) {
-              store.write(getIndex(waddr), invalid)
-            }
-          }
+          writing(victim) := true.B
+          writingAddr := getIndex(pipeAddr)
+          writingData := invalid
 
           nstate := MainState.wallocRefill
         }
@@ -319,11 +332,9 @@ class L1DC(val opts: L1DOpts) extends MultiIOModule {
       }
 
       when(!toL2.l1stall) {
-        for((store, idx) <- stores.zipWithIndex) {
-          when(idx.U === victim) {
-            store.write(getIndex(writtenAddr), written)
-          }
-        }
+        writing(victim) := true.B
+        writingAddr := getIndex(writtenAddr)
+        writingData := written
 
         when(state === MainState.readingRefill) {
           nstate := MainState.readingSpin
