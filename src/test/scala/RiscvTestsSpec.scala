@@ -7,7 +7,7 @@ import org.scalatest.Matchers
 import java.io.File
 
 object RiscvTestsSpec {
-  val cases = new File("./testcases/riscv-tests/build/isa").listFiles
+  val cases = new File("./testcases/riscv-tests/isa").listFiles
     .filter(_.isFile).filter(_.getName.endsWith(".hex"))
     .map(_.getPath).toList
 }
@@ -18,4 +18,8 @@ class RiscvTestsSpec extends FlatSpec with Matchers {
   for (file <- RiscvTestsSpec.cases) {
     it should s"run $file successfully" in { ExecTest.runFile(file) should be(true) }
   }
+}
+
+object RiscvTestsMain extends App {
+  (new RiscvTestsSpec).execute()
 }

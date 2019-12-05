@@ -459,7 +459,6 @@ class L1DC(val opts: L1DOpts) extends MultiIOModule {
       // For invals, wdata is ignored
       // So we should be safe to just use l2Rdata here without checking
       toL2.wdata := l2Rdata
-      toL2.l2stall := false.B
 
       val written = Wire(new DLine(opts))
       written.data := l2Rdata.asTypeOf(written.data)
@@ -477,8 +476,13 @@ class L1DC(val opts: L1DOpts) extends MultiIOModule {
        * on the same core are still compatible with the program order. Only load/stores from another core
        * is affected, and writes from this core cannot propagate into other cores within one cycle.
        */
-      val hitmask = VecInit(lookups.map(lookup => lookup.valid && lookup.tag === getTag(toL2.l2addr)))
-      stores.write(getIndex(toL2.l2addr), VecInit(Seq.fill(opts.ASSOC)(written)), hitmask)
+      when(toL2.l1stall || state === MainState.idle) {
+        toL2.l2stall := false.B
+        val hitmask = VecInit(lookups.map(lookup => lookup.valid && lookup.tag === getTag(toL2.l2addr)))
+        writing := hitmask
+        writingData := written
+        writingAddr := getIndex(toL2.l2addr)
+      }
     }
   }
 }
