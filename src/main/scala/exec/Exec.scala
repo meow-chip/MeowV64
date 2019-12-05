@@ -15,6 +15,7 @@ import exec.UnitSel.Retirement
 import _root_.core.Core
 import exec.Exec.ROBEntry
 import _root_.core.CSROp
+import cache.L1UCPort
 
 /**
  * Out-of-order exection (Tomasulo's algorithm)
@@ -46,6 +47,7 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
   val toDC = IO(new Bundle {
     val r = new DCReader(coredef.L1D)
     val w = new DCWriter(coredef.L1D)
+    val u = new L1UCPort(coredef.L1D)
   })
 
   val cdb = Wire(new CDB)
@@ -56,6 +58,8 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
   renamer.toExec.flush := io.ctrl.flush
 
   val memAccSucc = Wire(Bool())
+  val memAccWB = Wire(Bool())
+  val memAccData = Wire(UInt(coredef.XLEN.W))
 
   // Units
   val units = Seq(
@@ -254,7 +258,6 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
   }
 
   // Commit
-  // FIXME: Uncached
   // FIXME: make CSR act as FENCE
 
   retireNum := 0.U
@@ -267,6 +270,9 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
   io.brSrc := DontCare
 
   memAccSucc := false.B
+
+  cdb.entries(coredef.UNIT_COUNT) := DontCare
+  cdb.entries(coredef.UNIT_COUNT).valid := false.B
 
   // Compute if we can retire a certain instruction
   for(idx <- (0 until coredef.RETIRE_NUM)) {
@@ -292,6 +298,15 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
       info.valid := false.B
 
       retireNum := (1+idx).U
+
+      if(idx == 0) {
+        when(memAccSucc && memAccWB) {
+          cdb.entries(coredef.UNIT_COUNT).name := info.retirement.instr.rdname
+          cdb.entries(coredef.UNIT_COUNT).data := memAccData
+          cdb.entries(coredef.UNIT_COUNT).valid := true.B
+          rw(idx).data := memAccData
+        }
+      }
     }.otherwise {
       rw(idx).addr := 0.U
       rw(idx).data := DontCare
@@ -301,6 +316,12 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
   // Mem opts
   toDC.w := DontCare
   toDC.w.write := false.B
+  toDC.u := DontCare
+  toDC.u.read := false.B
+  toDC.u.write := false.B
+
+  memAccWB := false.B
+  memAccData := DontCare
 
   val retireNext = rob(retirePtr)
   when(retireNext.valid) {
@@ -308,11 +329,29 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
     switch(memAcc.op) {
       is(MemSeqAccOp.s) {
         toDC.w.addr := memAcc.addr
-        toDC.w.be := memAcc.be
+        toDC.w.be := memAcc.computeBe
         toDC.w.data := retireNext.retirement.info.wb
         toDC.w.write := true.B
 
         memAccSucc := !toDC.w.stall
+      }
+
+      is(MemSeqAccOp.ul) {
+        toDC.u.addr := memAcc.addr
+        toDC.u.read := true.B
+
+        memAccSucc := !toDC.u.stall
+        memAccWB := true.B
+        memAccData := memAcc.getSlice(toDC.u.rdata)
+      }
+
+      is(MemSeqAccOp.us) {
+        toDC.u.addr := memAcc.addr
+        toDC.u.write := true.B
+        toDC.u.wdata := retireNext.retirement.info.wb
+        toDC.u.wstrb := memAcc.computeBe
+
+        memAccSucc := !toDC.u.stall
       }
     }
   }

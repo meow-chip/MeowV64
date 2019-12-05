@@ -16,6 +16,7 @@ class LSUExt(implicit val coredef: CoreDef) extends Bundle {
 class LSU(override implicit val coredef: CoreDef) extends ExecUnit(1, new LSUExt) with WithLSUPort {
   val reader = IO(new DCReader(coredef.L1D))
   val saUp = IO(Output(Bool()))
+  val flushed = RegInit(false.B)
 
   reader := DontCare
   reader.read := false.B
@@ -24,14 +25,14 @@ class LSU(override implicit val coredef: CoreDef) extends ExecUnit(1, new LSUExt
   override def map(stage: Int, pipe: PipeInstr, pext: Option[LSUExt]): (LSUExt, Bool) =  {
     val ext = Wire(new LSUExt)
 
-    // TODO: handle flush
-
     val addr = (pipe.rs1val.asSInt + pipe.instr.instr.imm).asUInt
     val aligned = addr(coredef.ADDR_WIDTH-1, 3) ## 0.U(3.W)
     val offset = addr(2, 0)
     val isUncached = false.B
     val isCachedRead = pipe.instr.instr.op === Decoder.Op("LOAD").ident && !isUncached
     val isCachedWrite = pipe.instr.instr.op === Decoder.Op("STORE").ident && !isUncached
+    val isUncachedRead = pipe.instr.instr.op === Decoder.Op("LOAD").ident && isUncached
+    val isUncachedWrite = pipe.instr.instr.op === Decoder.Op("STORE").ident && isUncached
 
     if(stage == 0) {
 
@@ -43,19 +44,23 @@ class LSU(override implicit val coredef: CoreDef) extends ExecUnit(1, new LSUExt
       val tailMask = Wire(UInt((coredef.XLEN/8).W))
       tailMask := 0.U
 
+      ext.mem.len := DontCare
       switch(pipe.instr.instr.funct3) {
-        is(Decoder.STORE_FUNC("SB")) { tailMask := 0x01.U }
-        is(Decoder.STORE_FUNC("SH")) { tailMask := 0x03.U }
-        is(Decoder.STORE_FUNC("SW")) { tailMask := 0x0f.U }
-        is(Decoder.STORE_FUNC("SD")) { tailMask := 0xff.U }
+        is(Decoder.STORE_FUNC("SB")) { ext.mem.len := MemSeqAccLen.B }
+        is(Decoder.STORE_FUNC("SH")) { ext.mem.len := MemSeqAccLen.H }
+        is(Decoder.STORE_FUNC("SW")) { ext.mem.len := MemSeqAccLen.W }
+        is(Decoder.STORE_FUNC("SD")) { ext.mem.len := MemSeqAccLen.D }
       }
-      ext.mem.be := tailMask << offset
+      ext.mem.offset := offset
       ext.mem.addr := aligned
+      ext.mem.sext := false.B
       // Memory write data
       ext.wb := pipe.rs2val << (offset << 3)
       ext.mem.op := MemSeqAccOp.no
 
-      when(isCachedWrite) {
+      when(isUncachedWrite) {
+        ext.mem.op := MemSeqAccOp.us
+      }.elsewhen(isCachedWrite) {
         ext.mem.op := MemSeqAccOp.s
       }
 
@@ -68,19 +73,52 @@ class LSU(override implicit val coredef: CoreDef) extends ExecUnit(1, new LSUExt
       result := signedResult.asUInt
       signedResult := DontCare
 
-      switch(pipe.instr.instr.funct3) {
-        is(Decoder.LOAD_FUNC("LB")) { signedResult := shifted(7, 0).asSInt }
-        is(Decoder.LOAD_FUNC("LH")) { signedResult := shifted(15, 0).asSInt }
-        is(Decoder.LOAD_FUNC("LW")) { signedResult := shifted(31, 0).asSInt }
-        is(Decoder.LOAD_FUNC("LD")) { result := shifted }
-        is(Decoder.LOAD_FUNC("LBU")) { result := shifted(7, 0) }
-        is(Decoder.LOAD_FUNC("LHU")) { result := shifted(16, 0) }
-        is(Decoder.LOAD_FUNC("LWU")) { result := shifted(32, 0) }
-      }
-
       ext := pext.get
+
       when(isCachedRead) {
+        switch(pipe.instr.instr.funct3) {
+          is(Decoder.LOAD_FUNC("LB")) { signedResult := shifted(7, 0).asSInt }
+          is(Decoder.LOAD_FUNC("LH")) { signedResult := shifted(15, 0).asSInt }
+          is(Decoder.LOAD_FUNC("LW")) { signedResult := shifted(31, 0).asSInt }
+          is(Decoder.LOAD_FUNC("LD")) { result := shifted }
+          is(Decoder.LOAD_FUNC("LBU")) { result := shifted(7, 0) }
+          is(Decoder.LOAD_FUNC("LHU")) { result := shifted(16, 0) }
+          is(Decoder.LOAD_FUNC("LWU")) { result := shifted(32, 0) }
+        }
+
         ext.wb := result
+      }.elsewhen(isUncachedRead) {
+        ext.mem.op := MemSeqAccOp.ul
+        switch(pipe.instr.instr.funct3) {
+          is(Decoder.LOAD_FUNC("LB")) {
+            ext.mem.sext := true.B
+            ext.mem.len := MemSeqAccLen.B
+          }
+          is(Decoder.LOAD_FUNC("LH")) {
+            ext.mem.sext := true.B
+            ext.mem.len := MemSeqAccLen.H
+          }
+          is(Decoder.LOAD_FUNC("LW")) {
+            ext.mem.sext := true.B
+            ext.mem.len := MemSeqAccLen.W
+          }
+          is(Decoder.LOAD_FUNC("LD")) {
+            ext.mem.sext := false.B
+            ext.mem.len := MemSeqAccLen.D
+          }
+          is(Decoder.LOAD_FUNC("LBU")) {
+            ext.mem.sext := false.B
+            ext.mem.len := MemSeqAccLen.B
+          }
+          is(Decoder.LOAD_FUNC("LHU")) {
+            ext.mem.sext := false.B
+            ext.mem.len := MemSeqAccLen.H
+          }
+          is(Decoder.LOAD_FUNC("LWU")) {
+            ext.mem.sext := false.B
+            ext.mem.len := MemSeqAccLen.W
+          }
+        }
       }
 
       (ext, false.B)

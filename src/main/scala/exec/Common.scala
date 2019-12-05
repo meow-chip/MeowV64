@@ -2,6 +2,7 @@ package exec
 
 import core.CoreDef
 import chisel3._
+import chisel3.util._
 import chisel3.MultiIOModule
 import instr.InstrExt
 import org.scalatest.tools.RerunningState
@@ -11,6 +12,7 @@ import chisel3.experimental.ChiselEnum
 import _root_.core.ExReq
 import _root_.core.ExType
 import _root_.core.CSRWriter
+import chisel3.util.MuxLookup
 
 class BranchResult(implicit val coredef: CoreDef) extends Bundle {
   val branch = Bool()
@@ -63,14 +65,20 @@ object BranchResult {
 }
 
 object MemSeqAccOp extends ChiselEnum {
-  val no, s, ul, uw = Value
+  val no, s, ul, us = Value
+}
+
+object MemSeqAccLen extends ChiselEnum {
+  val B, H, W, D = Value
 }
 
 class MemSeqAcc(implicit val coredef: CoreDef) extends Bundle {
   self =>
   val op = MemSeqAccOp()
   val addr = UInt(coredef.XLEN.W)
-  val be = UInt((coredef.XLEN / 8).W)
+  val offset = UInt(log2Ceil(coredef.XLEN/8).W)
+  val len = MemSeqAccLen()
+  val sext = Bool()
 
   // Written data is shared with wb
 
@@ -80,6 +88,70 @@ class MemSeqAcc(implicit val coredef: CoreDef) extends Bundle {
   }
 
   def isNoop() = op === MemSeqAccOp.no
+
+  def computeBe(): UInt = {
+    val raw = Wire(UInt((coredef.XLEN / 8).W))
+    raw := DontCare
+    switch(len) {
+      is(MemSeqAccLen.B) {
+        raw := 0x1.U
+      }
+      is(MemSeqAccLen.H) {
+        raw := 0x3.U
+      }
+      is(MemSeqAccLen.W) {
+        raw := 0xf.U
+      }
+      is(MemSeqAccLen.D) {
+        raw := 0xff.U
+      }
+    }
+
+    raw << offset
+  }
+
+  def getSlice(raw: UInt): UInt = {
+    val shifted = raw >> (offset << 3)
+    val ret = Wire(UInt(coredef.XLEN.W))
+    ret := DontCare
+    when(sext) {
+      val sret = Wire(SInt(coredef.XLEN.W))
+      sret := DontCare
+      switch(len) {
+        is(MemSeqAccLen.B) {
+          sret := shifted(7, 0).asSInt()
+        }
+        is(MemSeqAccLen.H) {
+          sret := shifted(15, 0).asSInt()
+        }
+        is(MemSeqAccLen.W) {
+          sret := shifted(31, 0).asSInt()
+        }
+        is(MemSeqAccLen.D) {
+          sret := shifted(63, 0).asSInt()
+        }
+      }
+
+      ret := sret.asUInt()
+    }.otherwise {
+      switch(len) {
+        is(MemSeqAccLen.B) {
+          ret := shifted(7, 0)
+        }
+        is(MemSeqAccLen.H) {
+          ret := shifted(15, 0)
+        }
+        is(MemSeqAccLen.W) {
+          ret := shifted(31, 0)
+        }
+        is(MemSeqAccLen.D) {
+          ret := shifted(63, 0)
+        }
+      }
+    }
+
+    ret
+  }
 }
 
 class RetireInfo(implicit val coredef: CoreDef) extends Bundle {
@@ -281,5 +353,5 @@ class CDBEntry(implicit val coredef: CoreDef) extends Bundle {
 }
 
 class CDB(implicit val coredef: CoreDef) extends Bundle {
-  val entries = Vec(coredef.UNIT_COUNT, new CDBEntry)
+  val entries = Vec(coredef.UNIT_COUNT+1, new CDBEntry)
 }
