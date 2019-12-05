@@ -262,7 +262,7 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
     if(idx == 0) {
       canRetire(idx) := info.valid
     } else {
-      canRetire(idx) := info.valid && canRetire(idx - 1) && !isBranch(idx)
+      canRetire(idx) := info.valid && canRetire(idx - 1) && !isBranch(idx-1)
     }
 
     when(canRetire(idx)) {
