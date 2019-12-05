@@ -9,6 +9,7 @@ import exec._
 import chisel3.util.log2Ceil
 import _root_.core.ExReq
 import _root_.core.ExType
+import _root_.core.CSRWriter
 
 class BranchResult(implicit val coredef: CoreDef) extends Bundle {
   val branch = Bool()
@@ -258,4 +259,8 @@ class CDBEntry(implicit val coredef: CoreDef) extends Bundle {
 
 class CDB(implicit val coredef: CoreDef) extends Bundle {
   val entries = Vec(coredef.UNIT_COUNT, new CDBEntry)
+}
+
+trait WithCSRWriter {
+  val writer: CSRWriter
 }

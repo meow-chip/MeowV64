@@ -61,6 +61,7 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
       Seq(
         Module(new ALU).suggestName("ALU"),
         Module(new Branch).suggestName("Branch"),
+        Module(new CSR).suggestName("CSR"),
         Module(new Bypass).suggestName("Bypass")
       ),
       instr => {
@@ -74,17 +75,18 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
         val gotoBr = (
           instr.op === Decoder.Op("JALR").ident ||
           instr.op === Decoder.Op("BRANCH").ident ||
-          instr.op === Decoder.Op("SYSTEM").ident && (
-            instr.rs2 === Decoder.PRIV_RS2("ECALL") ||
-            instr.rs2 === Decoder.PRIV_RS2("EBREAK") ||
-            instr.rs2 === Decoder.PRIV_RS2("RET")
-          )
+          instr.op === Decoder.Op("SYSTEM").ident && instr.funct3 === Decoder.SYSTEM_FUNC("PRIV")
+        )
+
+        val gotoCSR = (
+          instr.op === Decoder.Op("SYSTEM").ident && instr.funct3 =/= Decoder.SYSTEM_FUNC("PRIV")
         )
 
         Seq(
           gotoALU,
           gotoBr,
-          !gotoALU && !gotoBr
+          gotoCSR,
+          !gotoALU && !gotoBr && !gotoCSR
         )
       }
     )),
@@ -110,6 +112,9 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
       }
     ))
   )
+
+  // Connect extra ports
+  units(0).extras("CSR") <> io.csrWriter
 
   assume(units.length == coredef.UNIT_COUNT)
   // TODO: asserts Bypass is in unit 0
@@ -234,13 +239,9 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
   // Commit
   // FIXME: memory access
   // FIXME: Uncached
-  // FIXME: CSR
+  // FIXME: make CSR act as FENCE
 
   retireNum := 0.U
-
-  io.csrWriter.op := CSROp.rs
-  io.csrWriter.addr := 0.U
-  io.csrWriter.wdata := 0.U
 
   toDC.r := DontCare
   toDC.r.read := false.B

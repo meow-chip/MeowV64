@@ -11,7 +11,7 @@ class CSRExt(implicit val coredef: CoreDef) extends Bundle {
 }
 
 class CSR(override implicit val coredef: CoreDef)
-  extends ExecUnit(0, new CSRExt)
+  extends ExecUnit(0, new CSRExt) with WithCSRWriter
 {
   val writer = IO(new CSRWriter(coredef.XLEN))
   writer.op := CSROp.rs

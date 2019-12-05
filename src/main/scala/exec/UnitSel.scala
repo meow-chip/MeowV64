@@ -7,6 +7,8 @@ import chisel3.util.MuxCase
 import instr.Instr
 import exec.UnitSel.Retirement
 import chisel3.util.log2Ceil
+import _root_.core.CSRWriter
+import scala.collection.mutable
 
 /**
  * Read instructions from reservation stations, and send them into (probably one of multiple) exec unit
@@ -30,6 +32,17 @@ class UnitSel(
   val rs = IO(Flipped(new ResStationExgress))
 
   val retire = IO(Output(new Retirement))
+
+  // Extra ports
+  val extras = new mutable.HashMap[String, Data]()
+  for(u <- units) {
+    if(u.isInstanceOf[WithCSRWriter]) {
+      println("Found extra port: CSR")
+      val csr = IO(new CSRWriter(coredef.XLEN))
+      u.asInstanceOf[WithCSRWriter].writer <> csr
+      extras.put("CSR", csr)
+    }
+  }
 
   val stall = false.B
   ctrl.stall := stall
