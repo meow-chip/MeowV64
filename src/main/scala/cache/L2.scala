@@ -752,7 +752,7 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
     }
   }.otherwise {
     val id = reqTarget - (opts.CORE_COUNT * 2).U
-    when(ops(id) === L1Req.ucRead && !ucSent(reqTarget)) {
+    when(directs(id).read && !ucSent(reqTarget)) {
       axi.ARADDR := directs(id).addr
       axi.ARBURST := AXI.Constants.Burst.INCR.U
       axi.ARID := reqTarget
@@ -779,7 +779,7 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
     // TODO: handle RRESP
     axi.RREADY := true.B
 
-    when(axi.RID <= (opts.CORE_COUNT * 2).U) {
+    when(axi.RID < (opts.CORE_COUNT * 2).U) {
       bufs(axi.RID)(bufptrs(axi.RID)) := axi.RDATA
       bufptrs(axi.RID) := bufptrs(axi.RID) + 1.U
 
@@ -791,7 +791,7 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
       val id = axi.RID - (opts.CORE_COUNT * 2).U
       directs(id).rdata := axi.RDATA
       directs(id).stall := false.B
-      sent(axi.RID) := false.B
+      ucSent(axi.RID) := false.B
     }
   }
 
@@ -882,6 +882,8 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
           }.otherwise {
             ucWalkPtr := ucWalkPtr +% 1.U
           }
+
+          directs(ucWalkPtr).stall := false.B
         }
       }.otherwise {
         ucSendStage := 0.U

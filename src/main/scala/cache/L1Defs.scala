@@ -153,7 +153,7 @@ object L1DCPort {
    */
   object L1Req extends ChiselEnum {
     // TODO: do we include inval here? is it worth it?
-    val idle, read, modify, writeback, ucRead, ucWrite = Value
+    val idle, read, modify, writeback = Value
   }
 
   /**

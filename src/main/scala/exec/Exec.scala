@@ -249,8 +249,10 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
     ent.data := u.retire.info.wb
 
     when(!u.ctrl.stall && !u.retire.instr.instr.vacant) {
-      ent.name := u.retire.instr.rdname
-      ent.valid := ent.name =/= 0.U
+      when(u.retire.info.mem.isNoop()) {
+        ent.name := u.retire.instr.rdname
+        ent.valid := ent.name =/= 0.U
+      }
 
       rob(u.retire.instr.tag).retirement := u.retire
       rob(u.retire.instr.tag).valid := true.B
