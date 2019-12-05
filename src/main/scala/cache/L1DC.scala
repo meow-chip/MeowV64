@@ -73,7 +73,7 @@ class L1DC(val opts: L1DOpts) extends MultiIOModule {
     ret.asUInt
   }
 
-  val stores = Seq.fill(opts.ASSOC)({ SyncReadMem(LINE_PER_ASSOC, new DLine(opts)) })
+  val stores = SyncReadMem(LINE_PER_ASSOC, Vec(opts.ASSOC, new DLine(opts)))
 
   // Ports
   val r = IO(Flipped(new DCReader(opts)))
@@ -92,7 +92,7 @@ class L1DC(val opts: L1DOpts) extends MultiIOModule {
   val pipeAddr = RegInit(0.U(opts.ADDR_WIDTH.W))
 
   val queryAddr = Wire(UInt(opts.ADDR_WIDTH.W))
-  val lookups = VecInit(stores.map(_.read(getIndex(queryAddr))))
+  val lookups = stores.read(getIndex(queryAddr))
 
   // Write FIFO
   class WriteEv(val opts: L1DOpts) extends Bundle {
@@ -165,7 +165,7 @@ class L1DC(val opts: L1DOpts) extends MultiIOModule {
     )
   }
 
-  val wlookups = VecInit(stores.map(_.read(getIndex(wlookupAddr), toL2.l2req === L2Req.idle)))
+  val wlookups = stores.read(getIndex(wlookupAddr), toL2.l2req === L2Req.idle)
   val whit = wlookups.foldLeft(false.B)((acc, line) => acc || (line.valid && line.tag === getTag(waddr)))
 
   val rand = chisel3.util.random.LFSR(8)
@@ -182,11 +182,7 @@ class L1DC(val opts: L1DOpts) extends MultiIOModule {
   writingData := DontCare
   writingAddr := DontCare
 
-  for((assoc, idx) <- stores.zipWithIndex) {
-    when(writing(idx)) {
-      assoc.write(writingAddr, writingData)
-    }
-  }
+  stores.write(writingAddr, VecInit(Seq.fill(opts.ASSOC)(writingData)), writing)
 
   // Rst
   val rstCnt = RegInit(0.U(log2Ceil(LINE_PER_ASSOC).W))
@@ -474,18 +470,15 @@ class L1DC(val opts: L1DOpts) extends MultiIOModule {
       // TODO: assert hit for flush,
       // Assert !dirty for inval
 
-      for((lookup, store) <- lookups.zip(stores)) {
-        when(lookup.valid && lookup.tag === getTag(toL2.l2addr)) {
 
-          /**
-           * Although the next read/write may not fetch the updated value,
-           * this doesn't violate the memory model, because the memory operations
-           * on the same core are still compatible with the program order. Only load/stores from another core
-           * is affected, and writes from this core cannot propagate into other cores within one cycle.
-           */
-          store.write(getIndex(toL2.l2addr), written)
-        }
-      }
+      /**
+       * Although the next read/write may not fetch the updated value,
+       * this doesn't violate the memory model, because the memory operations
+       * on the same core are still compatible with the program order. Only load/stores from another core
+       * is affected, and writes from this core cannot propagate into other cores within one cycle.
+       */
+      val hitmask = VecInit(lookups.map(lookup => lookup.valid && lookup.tag === getTag(toL2.l2addr)))
+      stores.write(getIndex(toL2.l2addr), VecInit(Seq.fill(opts.ASSOC)(written)), hitmask)
     }
   }
 }
