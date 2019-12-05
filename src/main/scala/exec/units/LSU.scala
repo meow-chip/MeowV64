@@ -15,9 +15,11 @@ class LSUExt(implicit val coredef: CoreDef) extends Bundle {
 
 class LSU(override implicit val coredef: CoreDef) extends ExecUnit(1, new LSUExt) with WithLSUPort {
   val reader = IO(new DCReader(coredef.L1D))
+  val saUp = IO(Output(Bool()))
 
   reader := DontCare
   reader.read := false.B
+  saUp := false.B
 
   override def map(stage: Int, pipe: PipeInstr, pext: Option[LSUExt]): (LSUExt, Bool) =  {
     val ext = Wire(new LSUExt)
@@ -91,6 +93,8 @@ class LSU(override implicit val coredef: CoreDef) extends ExecUnit(1, new LSUExt
     info.wb := ext.wb
     info.mem := ext.mem
 
+    saUp := ext.mem.op =/= MemSeqAccOp.no
+
     info
   }
 
@@ -99,4 +103,5 @@ class LSU(override implicit val coredef: CoreDef) extends ExecUnit(1, new LSUExt
 
 trait WithLSUPort {
   val reader: DCReader
+  val saUp: Bool
 }

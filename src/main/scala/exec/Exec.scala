@@ -55,6 +55,8 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
   renamer.cdb := cdb
   renamer.toExec.flush := io.ctrl.flush
 
+  val memAccSucc = Wire(Bool())
+
   // Units
   val units = Seq(
     Module(new UnitSel(
@@ -128,7 +130,14 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
   // TODO: asserts Bypass is in unit 0
 
   val stations = units.zipWithIndex.map({ case (u, idx)=> {
-    val rs = Module(new ResStation(idx)).suggestName(s"ResStation_${idx}")
+    val rs = if(idx != 2) {
+      Module(new OoOResStation(idx)).suggestName(s"ResStation_${idx}")
+    } else {
+      val lsb = Module(new LSBuf(idx)).suggestName(s"LSBuf")
+      lsb.saUp := units(2).extras("saUp")
+      lsb.saDown := memAccSucc
+      lsb
+    }
     rs.cdb := cdb
     rs.exgress <> u.rs
 
@@ -257,7 +266,6 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
   io.branch.nofire()
   io.brSrc := DontCare
 
-  val memAccSucc = Wire(Bool())
   memAccSucc := false.B
 
   // Compute if we can retire a certain instruction

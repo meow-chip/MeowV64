@@ -49,8 +49,11 @@ class UnitSel(
     if(u.isInstanceOf[WithLSUPort]) {
       println("Found extra port: LSU")
       val dcReader = IO(new DCReader(coredef.L1D))
+      val saUp = IO(Output(Bool()))
       u.asInstanceOf[WithLSUPort].reader <> dcReader
+      saUp := u.asInstanceOf[WithLSUPort].saUp
       extras.put("LSU", dcReader)
+      extras.put("saUp", saUp)
     }
   }
 
