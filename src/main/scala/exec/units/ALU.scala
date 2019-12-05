@@ -121,6 +121,7 @@ class ALU(override implicit val coredef: CoreDef)
     // Sign extend if needed
     val info = Wire(new RetireInfo)
     info.branch.nofire()
+    info.mem.noop()
 
     val extended = Wire(SInt(coredef.XLEN.W))
     extended := ext.acc

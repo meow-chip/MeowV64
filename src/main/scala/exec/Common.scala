@@ -7,6 +7,7 @@ import instr.InstrExt
 import org.scalatest.tools.RerunningState
 import exec._
 import chisel3.util.log2Ceil
+import chisel3.experimental.ChiselEnum
 import _root_.core.ExReq
 import _root_.core.ExType
 import _root_.core.CSRWriter
@@ -61,9 +62,30 @@ object BranchResult {
   }
 }
 
+object MemSeqAccOp extends ChiselEnum {
+  val no, s, ul, uw = Value
+}
+
+class MemSeqAcc(implicit val coredef: CoreDef) extends Bundle {
+  self =>
+  val op = MemSeqAccOp()
+  val addr = UInt(coredef.XLEN.W)
+  val be = UInt((coredef.XLEN / 8).W)
+
+  // Written data is shared with wb
+
+  def noop() {
+    self := DontCare
+    op := MemSeqAccOp.no
+  }
+
+  def isNoop() = op === MemSeqAccOp.no
+}
+
 class RetireInfo(implicit val coredef: CoreDef) extends Bundle {
   val wb = UInt(coredef.XLEN.W)
   val branch = new BranchResult
+  val mem = new MemSeqAcc
 }
 
 object RetireInfo {
@@ -71,6 +93,7 @@ object RetireInfo {
     val info = Wire(new RetireInfo)
 
     info.branch.nofire()
+    info.mem.noop()
     info.wb := DontCare
 
     info
@@ -259,8 +282,4 @@ class CDBEntry(implicit val coredef: CoreDef) extends Bundle {
 
 class CDB(implicit val coredef: CoreDef) extends Bundle {
   val entries = Vec(coredef.UNIT_COUNT, new CDBEntry)
-}
-
-trait WithCSRWriter {
-  val writer: CSRWriter
 }

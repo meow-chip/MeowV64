@@ -75,6 +75,7 @@ class Branch(override implicit val coredef: CoreDef) extends ExecUnit(0, new Bra
 
   def finalize(pipe: PipeInstr, ext: BranchExt): RetireInfo = {
     val info = Wire(new RetireInfo)
+    info.mem.noop()
 
     when(ext.ex === ExReq.ret) {
       // info.regWaddr := 0.U

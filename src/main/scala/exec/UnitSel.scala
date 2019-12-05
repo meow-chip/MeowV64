@@ -9,6 +9,9 @@ import exec.UnitSel.Retirement
 import chisel3.util.log2Ceil
 import _root_.core.CSRWriter
 import scala.collection.mutable
+import units.WithCSRWriter
+import exec.units.WithLSUPort
+import cache.DCReader
 
 /**
  * Read instructions from reservation stations, and send them into (probably one of multiple) exec unit
@@ -41,6 +44,13 @@ class UnitSel(
       val csr = IO(new CSRWriter(coredef.XLEN))
       u.asInstanceOf[WithCSRWriter].writer <> csr
       extras.put("CSR", csr)
+    }
+
+    if(u.isInstanceOf[WithLSUPort]) {
+      println("Found extra port: LSU")
+      val dcReader = IO(new DCReader(coredef.L1D))
+      u.asInstanceOf[WithLSUPort].reader <> dcReader
+      extras.put("LSU", dcReader)
     }
   }
 

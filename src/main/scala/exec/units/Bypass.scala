@@ -45,6 +45,7 @@ class Bypass(override implicit val coredef: CoreDef) extends ExecUnit(0, new Byp
   }
   def finalize(pipe: PipeInstr, ext: BypassExt): RetireInfo = {
     val info = Wire(new RetireInfo)
+    info.mem.noop()
 
     when(ext.inval) {
       // Is an invalid instr

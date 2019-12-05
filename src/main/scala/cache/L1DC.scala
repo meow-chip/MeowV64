@@ -345,6 +345,7 @@ class L1DC(val opts: L1DOpts) extends MultiIOModule {
   }
 
   // Handle write interface
+  // This operates synchronizely
   val wmHit = wbuf.foldLeft(false.B)(
     (acc, ev) => ev.valid && ev.addr === w.addr
   )

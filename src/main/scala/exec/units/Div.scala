@@ -181,7 +181,8 @@ class Div(val ROUND_PER_STAGE: Int)(override implicit val coredef: CoreDef) exte
 
     val info = Wire(new RetireInfo)
     info.branch.nofire()
-    // info.regWaddr := pipe.instr.instr.rd
+    info.mem.noop()
+
     val extended = Wire(SInt(coredef.XLEN.W))
     info.wb := extended.asUInt()
 

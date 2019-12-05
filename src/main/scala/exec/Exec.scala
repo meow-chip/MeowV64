@@ -110,11 +110,19 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
 
         Seq(!isMul && !isDiv, isMul, isDiv)
       }
+    )),
+    Module(new UnitSel(
+      Seq(
+        Module(new LSU).suggestName("LSU")
+      ),
+      instr => Seq(true.B)
     ))
+
   )
 
   // Connect extra ports
   units(0).extras("CSR") <> io.csrWriter
+  units(2).extras("LSU") <> toDC.r
 
   assume(units.length == coredef.UNIT_COUNT)
   // TODO: asserts Bypass is in unit 0
@@ -237,16 +245,10 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
   }
 
   // Commit
-  // FIXME: memory access
   // FIXME: Uncached
   // FIXME: make CSR act as FENCE
 
   retireNum := 0.U
-
-  toDC.r := DontCare
-  toDC.r.read := false.B
-  toDC.w := DontCare
-  toDC.w.write := false.B
 
   val canRetire = Wire(Vec(coredef.RETIRE_NUM, Bool()))
   val isBranch = Wire(Vec(coredef.RETIRE_NUM, Bool()))
@@ -255,15 +257,20 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
   io.branch.nofire()
   io.brSrc := DontCare
 
+  val memAccSucc = Wire(Bool())
+  memAccSucc := false.B
+
   // Compute if we can retire a certain instruction
   for(idx <- (0 until coredef.RETIRE_NUM)) {
     val info = rob(retirePtr +% idx.U)
     isBranch(idx) := info.retirement.info.branch.branched()
 
     if(idx == 0) {
-      canRetire(idx) := info.valid
+      // Allow retirement only after mem access is finished
+      canRetire(idx) := info.valid && (memAccSucc || info.retirement.info.mem.isNoop())
     } else {
-      canRetire(idx) := info.valid && canRetire(idx - 1) && !isBranch(idx-1)
+      // Only allow mem ops in the first retire slot
+      canRetire(idx) := info.valid && canRetire(idx - 1) && !isBranch(idx-1) && info.retirement.info.mem.isNoop()
     }
 
     when(canRetire(idx)) {
@@ -280,6 +287,25 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
     }.otherwise {
       rw(idx).addr := 0.U
       rw(idx).data := DontCare
+    }
+  }
+
+  // Mem opts
+  toDC.w := DontCare
+  toDC.w.write := false.B
+
+  val retireNext = rob(retirePtr)
+  when(retireNext.valid) {
+    val memAcc = retireNext.retirement.info.mem
+    switch(memAcc.op) {
+      is(MemSeqAccOp.s) {
+        toDC.w.addr := memAcc.addr
+        toDC.w.be := memAcc.be
+        toDC.w.data := retireNext.retirement.info.wb
+        toDC.w.write := true.B
+
+        memAccSucc := !toDC.w.stall
+      }
     }
   }
 
@@ -323,11 +349,11 @@ object Exec {
 
     switch(instr.op) {
       is(Decoder.Op("LUI").ident, Decoder.Op("AUIPC").ident) {
-        ret := "b01".U(coredef.UNIT_COUNT.W)
+        ret := "b001".U(coredef.UNIT_COUNT.W)
       }
 
       is(Decoder.Op("JALR").ident, Decoder.Op("SYSTEM").ident, Decoder.Op("BRANCH").ident) {
-        ret := "b01".U(coredef.UNIT_COUNT.W)
+        ret := "b001".U(coredef.UNIT_COUNT.W)
       }
 
       is(
@@ -341,6 +367,13 @@ object Exec {
         }.otherwise {
           ret := "b011".U(coredef.UNIT_COUNT.W)
         }
+      }
+
+      is(
+        Decoder.Op("LOAD").ident,
+        Decoder.Op("STORE").ident
+      ) {
+        ret := "b100".U(coredef.UNIT_COUNT.W)
       }
     }
 

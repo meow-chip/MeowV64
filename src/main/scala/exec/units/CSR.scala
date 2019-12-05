@@ -64,6 +64,7 @@ class CSR(override implicit val coredef: CoreDef)
   override def finalize(pipe: PipeInstr, ext: CSRExt): RetireInfo = {
     val info = Wire(new RetireInfo)
     info.branch.nofire()
+    info.mem.noop()
     // info.regWaddr := pipe.instr.instr.rd
 
     info.wb := ext.rdata
@@ -72,4 +73,8 @@ class CSR(override implicit val coredef: CoreDef)
   }
 
   init()
+}
+
+trait WithCSRWriter {
+  val writer: CSRWriter
 }
