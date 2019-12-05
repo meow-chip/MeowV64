@@ -63,6 +63,8 @@ class UnitSel(
     buffer(r, maxDepth - u.DEPTH, stall, ctrl.flush)
   })
 
+  println(s"UnitSel: padding to $maxDepth")
+
   // Arbitration
   for(u <- units) {
     u.io.next := PipeInstr.empty

@@ -56,13 +56,12 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
   renamer.toExec.flush := io.ctrl.flush
 
   // Units
-  // TODO: add more units
   val units = Seq(
     Module(new UnitSel(
       Seq(
-        Module(new ALU),
-        Module(new Branch),
-        Module(new Bypass)
+        Module(new ALU).suggestName("ALU"),
+        Module(new Branch).suggestName("Branch"),
+        Module(new Bypass).suggestName("Bypass")
       ),
       instr => {
         val gotoALU = (
@@ -88,10 +87,32 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
           !gotoALU && !gotoBr
         )
       }
+    )),
+    Module(new UnitSel(
+      Seq(
+        Module(new ALU).suggestName("ALU"),
+        Module(new Mul).suggestName("Mul"),
+        Module(new Div(4)).suggestName("Div")
+      ),
+      instr => {
+        val isMul = (
+          instr.funct7 === Decoder.MULDIV_FUNCT7 && (
+            instr.funct3 === Decoder.MULDIV_FUNC("MUL") ||
+            instr.funct3 === Decoder.MULDIV_FUNC("MULH") ||
+            instr.funct3 === Decoder.MULDIV_FUNC("MULHSU") ||
+            instr.funct3 === Decoder.MULDIV_FUNC("MULHU")
+          )
+        )
+
+        val isDiv = instr.funct7 === Decoder.MULDIV_FUNCT7 && !isMul
+
+        Seq(!isMul && !isDiv, isMul, isDiv)
+      }
     ))
   )
 
   assume(units.length == coredef.UNIT_COUNT)
+  // TODO: asserts Bypass is in unit 0
 
   val stations = units.zipWithIndex.map({ case (u, idx)=> {
     val rs = Module(new ResStation).suggestName(s"ResStation_${idx}")
@@ -301,8 +322,11 @@ object Exec {
 
     switch(instr.op) {
       is(Decoder.Op("LUI").ident, Decoder.Op("AUIPC").ident) {
-        // ret := "b001".U(coredef.UNIT_COUNT.W)
-        ret := "b1".U(coredef.UNIT_COUNT.W)
+        ret := "b01".U(coredef.UNIT_COUNT.W)
+      }
+
+      is(Decoder.Op("JALR").ident, Decoder.Op("SYSTEM").ident, Decoder.Op("BRANCH").ident) {
+        ret := "b01".U(coredef.UNIT_COUNT.W)
       }
 
       is(
@@ -312,11 +336,9 @@ object Exec {
         Decoder.Op("OP-32").ident
       ) {
         when(instr.funct7 === Decoder.MULDIV_FUNCT7) {
-          // ret := "b010".U(coredef.UNIT_COUNT.W)
-          ret := 0.U
+          ret := "b010".U(coredef.UNIT_COUNT.W)
         }.otherwise {
-          // ret := "b011".U(coredef.UNIT_COUNT.W)
-          ret := 1.U
+          ret := "b011".U(coredef.UNIT_COUNT.W)
         }
       }
     }
