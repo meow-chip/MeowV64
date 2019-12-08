@@ -62,7 +62,11 @@ class ALU(override implicit val coredef: CoreDef)
 
       is(Decoder.OP_FUNC("SLL")) {
         // TODO: check shamt[5] when HALF = true
-        acc := op1 << op2(5, 0)
+        when(isDWord) {
+          acc := op1 << op2(5, 0)
+        }.otherwise {
+          acc := op1 << op2(4, 0)
+        }
       }
 
       is(Decoder.OP_FUNC("SLT")) {
@@ -90,7 +94,11 @@ class ALU(override implicit val coredef: CoreDef)
           // SRA
           // In RV64I, only the low 6 bits of rs2 are considered for the
           // shift amount. (c.f. spec p.53)
-          acc := op1 >> op2(5, 0)
+          when(isDWord) {
+            acc := op1 >> op2(5, 0)
+          }.otherwise {
+            acc := op1 >> op2(4, 0)
+          }
         }.otherwise {
           when(isDWord) {
             acc := (op1.asUInt >> op2(5, 0)).asSInt
