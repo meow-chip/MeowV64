@@ -303,14 +303,26 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
     }
   }
 
-  def step(ptr: UInt, includeDirects: Boolean = false) {
-    val grpCnt = if(includeDirects) { 3 } else { 2 }
-
-    when(ptr === (opts.CORE_COUNT * grpCnt - 1).U) {
+  def stepRefiller(ptr: UInt) {
+    when(ptr === (opts.CORE_COUNT * 3 - 1).U) {
       ptr := 0.U
     }.otherwise {
       ptr := ptr + 1.U
     }
+  }
+
+  val nextEventful = Wire(UInt(log2Ceil(opts.CORE_COUNT * 2).W))
+  nextEventful := MuxCase(target, (1 until opts.CORE_COUNT * 2).map(i => {
+    val p = Mux(target < (opts.CORE_COUNT * 2 - i).U, target + i.U, target - (opts.CORE_COUNT*2 - i).U)
+
+    (
+      (!misses(p) || refilled(p)) && ops(p) =/= L1Req.idle,
+      p
+    )
+  }))
+
+  def step() {
+    target := nextEventful
   }
 
   switch(state) {
@@ -331,7 +343,7 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
         is(L1DCPort.L1Req.idle) {
           nstate := L2MainState.idle
 
-          step(target)
+          step()
         }
 
         is(L1DCPort.L1Req.read, L1DCPort.L1Req.modify) {
@@ -341,13 +353,13 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
               nstate := L2MainState.refilled
             }.otherwise {
               nstate := L2MainState.idle
-              step(target)
+              step()
             }
           }.elsewhen(hit) {
             nstate := L2MainState.hit
           }.elsewhen(collided(target)) { // Someone-else is fetching for me, and it's not a hit yet
             nstate := L2MainState.idle
-            step(target)
+            step()
           }.otherwise {
             assert(!(fifoHit && sameAddrRefilling)) // FIFO inhabitance and AXI refilling are mutually exclusive
 
@@ -369,7 +381,7 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
             refilled(target) := false.B
 
             nstate := L2MainState.idle
-            step(target)
+            step()
           }
         }
 
@@ -446,7 +458,7 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
         }
 
         nstate := L2MainState.idle
-        step(target)
+        step()
       }.elsewhen(!hasDirty) {
         // If modyfing, we need to inval them first
         when(targetOps === L1DCPort.L1Req.read) {
@@ -523,7 +535,7 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
         )
 
         nstate := L2MainState.idle
-        step(target)
+        step()
       }
 
       when(!lookups(victim).valid) {
@@ -620,7 +632,7 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
           writeDir(pipeHitIdx, targetAddr, lookups(target).editState(target, L2DirState.shared).withDirty())
 
           nstate := L2MainState.idle
-          step(target)
+          step()
         }.otherwise {
           for((s, p) <- ent.states.zip(pendings)) {
             when(s =/= L2DirState.vacant) {
@@ -705,7 +717,7 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
         }
 
         nstate := L2MainState.idle
-        step(target)
+        step()
       }
     }
   }
@@ -740,15 +752,15 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
         axi.ARVALID := true.B
         when(axi.ARREADY) {
           sent(reqTarget) := true.B
-          step(reqTarget, true)
+          stepRefiller(reqTarget)
         }
       } .otherwise {
         sent(reqTarget) := false.B
-        step(reqTarget, true)
+        stepRefiller(reqTarget)
       }
     }.otherwise {
       // Step
-      step(reqTarget, true)
+      stepRefiller(reqTarget)
     }
   }.otherwise {
     val id = reqTarget - (opts.CORE_COUNT * 2).U
@@ -763,10 +775,10 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
       axi.ARVALID := true.B
       when(axi.ARREADY) {
         ucSent(reqTarget) := true.B
-        step(reqTarget, true)
+        stepRefiller(reqTarget)
       }
     }.otherwise {
-      step(reqTarget, true)
+      stepRefiller(reqTarget)
     }
   }
 

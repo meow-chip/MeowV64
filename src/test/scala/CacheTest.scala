@@ -177,5 +177,5 @@ object CacheTestMain extends App {
   }
 
   println(s"Running with seed ${seed} for ${length} cycles...")
-  CacheTest.run(seed, length, Some(args))
+  CacheTest.run(seed, length, if(args.length > 0) { Some(args) } else { None })
 }
