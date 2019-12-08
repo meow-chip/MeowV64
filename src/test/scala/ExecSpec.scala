@@ -7,18 +7,18 @@ import org.scalatest.Matchers
 
 object ExecSpec {
   val cases = List(
-    ("OP-IMM instructions", "./testcases/meow/hex/op-imm.hex"),
-    ("Load/Store", "./testcases/meow/hex/load-store.hex"),
-    ("Write-merge", "./testcases/meow/hex/write-merge.hex"),
-    ("Unconditional jumps", "./testcases/meow/hex/jump.hex"),
-    ("Branches", "./testcases/meow/hex/branch.hex"),
-    ("Serial output", "./testcases/meow/hex/serial.hex"),
-    ("Multiply", "./testcases/meow/hex/mul.hex"),
-    ("Multiply neg", "./testcases/meow/hex/mul-neg.hex"),
-    ("Division", "./testcases/meow/hex/div.hex"),
-    ("Division neg", "./testcases/meow/hex/div-neg.hex"),
-    ("Div by 0 & overflow", "./testcases/meow/hex/div-special.hex"),
-    ("Fibonacci", "./testcases/meow/hex/fib.hex")
+    ("OP-IMM instructions", "./testcases/meow/bin/op-imm.bin"),
+    ("Load/Store", "./testcases/meow/bin/load-store.bin"),
+    ("Write-merge", "./testcases/meow/bin/write-merge.bin"),
+    ("Unconditional jumps", "./testcases/meow/bin/jump.bin"),
+    ("Branches", "./testcases/meow/bin/branch.bin"),
+    ("Serial output", "./testcases/meow/bin/serial.bin"),
+    ("Multiply", "./testcases/meow/bin/mul.bin"),
+    ("Multiply neg", "./testcases/meow/bin/mul-neg.bin"),
+    ("Division", "./testcases/meow/bin/div.bin"),
+    ("Division neg", "./testcases/meow/bin/div-neg.bin"),
+    ("Div by 0 & overflow", "./testcases/meow/bin/div-special.bin"),
+    ("Fibonacci", "./testcases/meow/bin/fib.bin")
   )
 }
 

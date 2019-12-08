@@ -21,7 +21,7 @@ class WrappedL2(coredef: CoreDef) extends Module {
   val l2 = Module(new L2Cache(coredef.L2))
   val l1d = Module(new L1DC(coredef.L1D))
 
-  l2.directs(0) <> L1DCPort.empty(coredef.L1D)
+  l2.directs(0) <> L1UCPort.empty(coredef.L1D)
   l2.ic(0) <> L1ICPort.empty(coredef.L1I)
   l2.dc(0) <> l1d.toL2
 

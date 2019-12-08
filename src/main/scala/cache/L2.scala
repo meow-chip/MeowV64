@@ -224,6 +224,8 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
   val misses = RegInit(VecInit(Seq.fill(opts.CORE_COUNT * 2)(false.B)))
   val collided = RegInit(VecInit(Seq.fill(opts.CORE_COUNT * 2)(false.B)))
   val refilled = RegInit(VecInit(Seq.fill(opts.CORE_COUNT * 2)(false.B)))
+  val sent = RegInit(VecInit(Seq.fill(opts.CORE_COUNT * 2)(false.B)))
+  val ucSent = RegInit(VecInit(Seq.fill(opts.CORE_COUNT)(false.B)))
   val bufs = RegInit(VecInit(Seq.fill(opts.CORE_COUNT * 2)(
     VecInit(Seq.fill(opts.LINE_WIDTH * 8 / axi.DATA_WIDTH)(0.U(axi.DATA_WIDTH.W)))
   )))
@@ -362,6 +364,7 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
               collided(target) := true.B
             }.otherwise {
               misses(target) := true.B
+              sent(target) := false.B
             }
             refilled(target) := false.B
 
@@ -715,9 +718,6 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
 
   val reqAddr = rawReqAddr(opts.ADDR_WIDTH-1, OFFSET_LENGTH) ## 0.U(OFFSET_LENGTH.W)
   assume(reqAddr.getWidth == opts.ADDR_WIDTH)
-  
-  val sent = RegInit(VecInit(Seq.fill(opts.CORE_COUNT * 2)(false.B)))
-  val ucSent = RegInit(VecInit(Seq.fill(opts.CORE_COUNT)(false.B)))
 
   when(reqTarget < (opts.CORE_COUNT * 2).U) {
     when(sent(reqTarget) =/= misses(reqTarget)) {
@@ -780,8 +780,17 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
     axi.RREADY := true.B
 
     when(axi.RID < (opts.CORE_COUNT * 2).U) {
-      bufs(axi.RID)(bufptrs(axi.RID)) := axi.RDATA
-      bufptrs(axi.RID) := bufptrs(axi.RID) + 1.U
+      val ptr = Wire(UInt())
+      when(sent(axi.RID)) {
+        // Not on the same cycle of AR channel
+        ptr := bufptrs(axi.RID)
+      }.otherwise {
+        // Same cycle on read
+        ptr := 0.U
+      }
+
+      bufs(axi.RID)(ptr) := axi.RDATA
+      bufptrs(axi.RID) := ptr +% 1.U
 
       when(axi.RLAST) {
         refilled(axi.RID) := true.B

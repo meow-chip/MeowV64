@@ -165,7 +165,7 @@ class L1DC(val opts: L1DOpts) extends MultiIOModule {
     )
   }
 
-  val wlookups = stores.read(getIndex(wlookupAddr), toL2.l2req === L2Req.idle)
+  val wlookups = stores.read(getIndex(wlookupAddr))
   val whit = wlookups.foldLeft(false.B)((acc, line) => acc || (line.valid && line.tag === getTag(waddr)))
 
   val rand = chisel3.util.random.LFSR(8)
@@ -176,9 +176,11 @@ class L1DC(val opts: L1DOpts) extends MultiIOModule {
 
   // Write port
   val writing = Wire(Vec(opts.ASSOC, Bool()))
+  val l1writing = Wire(Vec(opts.ASSOC, Bool()))
   val writingData = Wire(new DLine(opts))
   val writingAddr = Wire(UInt(INDEX_WIDTH.W))
-  writing := VecInit(Seq.fill(opts.ASSOC)(false.B))
+  l1writing := VecInit(Seq.fill(opts.ASSOC)(false.B))
+  writing := l1writing
   writingData := DontCare
   writingAddr := DontCare
 
@@ -196,7 +198,7 @@ class L1DC(val opts: L1DOpts) extends MultiIOModule {
 
   switch(state) {
     is(MainState.rst) {
-      writing := VecInit(Seq.fill(opts.ASSOC)(true.B))
+      l1writing := VecInit(Seq.fill(opts.ASSOC)(true.B))
       writingAddr := rstCnt
       writingData := DLine.empty(opts)
 
@@ -244,7 +246,7 @@ class L1DC(val opts: L1DOpts) extends MultiIOModule {
 
           written.dirty := true.B
 
-          writing := hitMask
+          l1writing := hitMask
           writingAddr := getIndex(waddr)
           writingData := written
 
@@ -274,7 +276,7 @@ class L1DC(val opts: L1DOpts) extends MultiIOModule {
 
         when(!toL2.l1stall) {
           // Must be an read-miss
-          writing(victim) := true.B
+          l1writing(victim) := true.B
           writingAddr := getIndex(pipeAddr)
           writingData := invalid
 
@@ -297,8 +299,8 @@ class L1DC(val opts: L1DOpts) extends MultiIOModule {
 
         when(!toL2.l1stall) {
           // Must be an read-miss
-          writing(victim) := true.B
-          writingAddr := getIndex(pipeAddr)
+          l1writing(victim) := true.B
+          writingAddr := getIndex(waddr)
           writingData := invalid
 
           nstate := MainState.wallocRefill
@@ -328,7 +330,7 @@ class L1DC(val opts: L1DOpts) extends MultiIOModule {
       }
 
       when(!toL2.l1stall) {
-        writing(victim) := true.B
+        l1writing(victim) := true.B
         writingAddr := getIndex(writtenAddr)
         writingData := written
 
@@ -476,7 +478,7 @@ class L1DC(val opts: L1DOpts) extends MultiIOModule {
        * on the same core are still compatible with the program order. Only load/stores from another core
        * is affected, and writes from this core cannot propagate into other cores within one cycle.
        */
-      when(toL2.l1stall || state === MainState.idle) {
+      when(!l1writing.asUInt().orR) {
         toL2.l2stall := false.B
         val hitmask = VecInit(lookups.map(lookup => lookup.valid && lookup.tag === getTag(toL2.l2addr)))
         writing := hitmask
