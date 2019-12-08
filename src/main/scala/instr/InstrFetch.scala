@@ -10,10 +10,11 @@ import chisel3.util.Queue
 import chisel3.util.MuxLookup
 import chisel3.util.MuxCase
 
-class InstrExt(val ADDR_WIDTH: Int = 48) extends Bundle {
-  val addr = UInt(ADDR_WIDTH.W)
+class InstrExt(val XLEN: Int = 64) extends Bundle {
+  val addr = UInt(XLEN.W)
   val instr = new Instr
   val vacant = Bool()
+  val invalAddr = Bool()
 
   override def toPrintable: Printable = {
     p"Address: 0x${Hexadecimal(addr)}\n" +
@@ -23,19 +24,20 @@ class InstrExt(val ADDR_WIDTH: Int = 48) extends Bundle {
 }
 
 object InstrExt {
-  def empty(ADDR_WIDTH: Int): InstrExt = {
-    val ret = Wire(new InstrExt(ADDR_WIDTH))
+  def empty(XLEN: Int): InstrExt = {
+    val ret = Wire(new InstrExt(XLEN))
 
     ret.addr := DontCare
     ret.instr := DontCare
     ret.vacant := true.B
+    ret.invalAddr := DontCare
 
     ret
   }
 }
 
 class InstrFifoReader(val coredef: CoreDef) extends Bundle {
-  val view = Input(Vec(coredef.ISSUE_NUM, new InstrExt(coredef.ADDR_WIDTH)))
+  val view = Input(Vec(coredef.ISSUE_NUM, new InstrExt(coredef.XLEN)))
   val cnt = Input(UInt(log2Ceil(coredef.ISSUE_NUM + 1).W))
 
   val pop = Output(UInt(log2Ceil(coredef.ISSUE_NUM + 1).W))
@@ -43,7 +45,7 @@ class InstrFifoReader(val coredef: CoreDef) extends Bundle {
 
 class InstrFetch(coredef: CoreDef) extends MultiIOModule {
   val toCtrl = IO(new Bundle {
-    val pc = Input(UInt(coredef.ADDR_WIDTH.W))
+    val pc = Input(UInt(coredef.XLEN.W))
     val skip = Input(UInt(log2Ceil(coredef.FETCH_NUM).W))
 
     val ctrl = StageCtrl.stage()
@@ -53,11 +55,11 @@ class InstrFetch(coredef: CoreDef) extends MultiIOModule {
   val toIC = IO(Flipped(new ICPort(coredef.L1I)))
   val toExec = IO(Flipped(new InstrFifoReader(coredef)))
 
-  val decoded = Wire(Vec(coredef.FETCH_NUM, new InstrExt(coredef.ADDR_WIDTH)))
+  val decoded = Wire(Vec(coredef.FETCH_NUM, new InstrExt(coredef.XLEN)))
 
   assume(1 << log2Ceil(coredef.ISSUE_FIFO_DEPTH) == coredef.ISSUE_FIFO_DEPTH)
 
-  val issueFifo = RegInit(VecInit(Seq.fill(coredef.ISSUE_FIFO_DEPTH)(InstrExt.empty(coredef.ADDR_WIDTH))))
+  val issueFifo = RegInit(VecInit(Seq.fill(coredef.ISSUE_FIFO_DEPTH)(InstrExt.empty(coredef.XLEN))))
   val issueFifoHead = RegInit(0.U(log2Ceil(coredef.ISSUE_FIFO_DEPTH).W))
   val issueFifoTail = RegInit(0.U(log2Ceil(coredef.ISSUE_FIFO_DEPTH).W))
 
@@ -89,11 +91,11 @@ class InstrFetch(coredef: CoreDef) extends MultiIOModule {
   val tailFailed = RegInit(false.B)
   val tail = RegInit(0.U(Const.INSTR_MIN_WIDTH.W))
 
-  val pipePc = RegInit(0.U(coredef.ADDR_WIDTH.W))
+  val pipePc = RegInit(0.U(coredef.XLEN.W))
   val pipeSkip = RegInit(0.U)
 
   when(!toCtrl.ctrl.stall) {
-    pipePc := toIC.addr
+    pipePc := toCtrl.pc
     pipeSkip := toCtrl.skip
 
     /*
@@ -109,8 +111,10 @@ class InstrFetch(coredef: CoreDef) extends MultiIOModule {
   val vecView = toIC.data.asTypeOf(Vec(coredef.FETCH_NUM, UInt(Const.INSTR_MIN_WIDTH.W)))
 
   for(i <- (0 until coredef.FETCH_NUM)) {
-    decoded(i).addr := pipePc + (i*Const.INSTR_MIN_WIDTH/8).U
+    val addr = pipePc + (i*Const.INSTR_MIN_WIDTH/8).U
+    decoded(i).addr := addr
     decoded(i).vacant := toIC.vacant || i.U < pipeSkip || flushed
+    decoded(i).invalAddr := addr(coredef.XLEN-1, coredef.ADDR_WIDTH).orR()
 
     if(i == coredef.FETCH_NUM-1) {
       val (parsed, success) = vecView(i).tryAsInstr16
@@ -169,7 +173,7 @@ class InstrFetch(coredef: CoreDef) extends MultiIOModule {
   }
 
   val totCnt = cnts(coredef.FETCH_NUM-1)
-  val sieved = Wire(Vec(coredef.FETCH_NUM, new InstrExt(coredef.ADDR_WIDTH)))
+  val sieved = Wire(Vec(coredef.FETCH_NUM, new InstrExt(coredef.XLEN)))
   for(i <- (0 until coredef.FETCH_NUM)) {
     sieved(i) := MuxCase(DontCare, cnts.zip(decoded).map(_ match {
       case (cnt, instr) => ((!instr.vacant) && cnt === (i+1).U, instr)

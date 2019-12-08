@@ -47,8 +47,10 @@ class Bypass(override implicit val coredef: CoreDef) extends ExecUnit(0, new Byp
     val info = Wire(new RetireInfo)
     info.mem.noop()
 
-    when(ext.inval) {
-      // Is an invalid instr
+    when(pipe.instr.invalAddr) {
+      info.branch.ex(ExType.INSTR_ACCESS_FAULT)
+      info.wb := DontCare
+    }.elsewhen(ext.inval) {
       info.branch.ex(ExType.ILLEGAL_INSTR)
       info.wb := DontCare
     }.elsewhen(pipe.instr.instr.op === Decoder.Op("JAL").ident) {

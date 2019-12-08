@@ -38,7 +38,7 @@ object ExReq extends ChiselEnum {
 
 class Ctrl(coredef: CoreDef) extends MultiIOModule {
   val io = IO(new Bundle{
-    val pc = Output(UInt(coredef.ADDR_WIDTH.W))
+    val pc = Output(UInt(coredef.XLEN.W))
     val skip = Output(UInt(log2Ceil(coredef.FETCH_NUM).W))
 
     val fetch = StageCtrl.ctrl()
@@ -63,7 +63,7 @@ class Ctrl(coredef: CoreDef) extends MultiIOModule {
     val mcountinhibit = new CSRPort(coredef.XLEN)
   });
 
-  val pc = RegInit(coredef.INIT_VEC.U(coredef.ADDR_WIDTH.W))
+  val pc = RegInit(coredef.INIT_VEC.U(coredef.XLEN.W))
   io.pc := pc
 
   io.fetch.flush := false.B
@@ -72,7 +72,7 @@ class Ctrl(coredef: CoreDef) extends MultiIOModule {
   io.skip := 0.U
 
   val branch = Wire(Bool())
-  val baddr = Wire(UInt(coredef.ADDR_WIDTH.W))
+  val baddr = Wire(UInt(coredef.XLEN.W))
 
   // Rst comes together with an branch
   // TODO: impl rst (a.k.a. FENCE.I)
@@ -89,7 +89,7 @@ class Ctrl(coredef: CoreDef) extends MultiIOModule {
     val instrOffset = log2Ceil(Const.INSTR_MIN_WIDTH / 8)
     val issueOffset = log2Ceil(coredef.FETCH_NUM)
     val pcAlign = instrOffset + issueOffset
-    val alignedPC = baddr(coredef.ADDR_WIDTH-1, pcAlign) ## 0.U(pcAlign.W)
+    val alignedPC = baddr(coredef.XLEN-1, pcAlign) ## 0.U(pcAlign.W)
 
     pc := alignedPC + (Const.INSTR_MIN_WIDTH / 8 * coredef.FETCH_NUM).U
     io.pc := alignedPC
@@ -178,7 +178,7 @@ class Ctrl(coredef: CoreDef) extends MultiIOModule {
   when(br.req.ex === ExReq.ex) {
     // Branch into mtvec
     branch := true.B
-    baddr := mtvec(coredef.ADDR_WIDTH-1, 2) ## 0.U(2.W)
+    baddr := mtvec(coredef.XLEN-1, 2) ## 0.U(2.W)
 
     // Save related stuffs
     mepc := br.src

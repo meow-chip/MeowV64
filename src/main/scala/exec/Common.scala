@@ -16,7 +16,7 @@ import chisel3.util.MuxLookup
 
 class BranchResult(implicit val coredef: CoreDef) extends Bundle {
   val branch = Bool()
-  val target = UInt(coredef.ADDR_WIDTH.W)
+  val target = UInt(coredef.XLEN.W)
 
   val ex = ExReq()
   val extype = ExType()
@@ -179,7 +179,7 @@ class RenamedInstr(implicit val coredef: CoreDef) extends Bundle {
 }
 
 class PipeInstr(implicit val coredef: CoreDef) extends Bundle {
-  val instr = new InstrExt(coredef.ADDR_WIDTH)
+  val instr = new InstrExt(coredef.XLEN)
 
   val rs1val = UInt(coredef.XLEN.W)
   val rs2val = UInt(coredef.XLEN.W)
@@ -206,7 +206,7 @@ class ReservedInstr(override implicit val coredef: CoreDef) extends PipeInstr {
 object PipeInstr {
   def empty(implicit coredef: CoreDef): PipeInstr = {
     val ret = Wire(new PipeInstr)
-    ret.instr := InstrExt.empty(coredef.ADDR_WIDTH)
+    ret.instr := InstrExt.empty(coredef.XLEN)
     ret.rs1val := DontCare
     ret.rs2val := DontCare
     ret.rdname := DontCare
@@ -220,7 +220,7 @@ object ReservedInstr {
   def empty(implicit coredef: CoreDef): ReservedInstr = {
     val ret = Wire(new ReservedInstr)
     ret := DontCare
-    ret.instr := InstrExt.empty(coredef.ADDR_WIDTH)
+    ret.instr := InstrExt.empty(coredef.XLEN)
 
     ret
   }

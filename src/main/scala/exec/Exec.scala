@@ -16,6 +16,7 @@ import _root_.core.Core
 import exec.Exec.ROBEntry
 import _root_.core.CSROp
 import cache.L1UCPort
+import _root_.core.ExReq
 
 /**
  * Out-of-order exection (Tomasulo's algorithm)
@@ -94,7 +95,8 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
           gotoCSR,
           !gotoALU && !gotoBr && !gotoCSR
         )
-      }
+      },
+      Some(3)
     )),
     Module(new UnitSel(
       Seq(
@@ -212,7 +214,7 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
 
       sending := 0.U
 
-      when(!applicables.orR()) {
+      when(toIF.view(idx).invalAddr || !applicables.orR()) {
         // Is an invalid instruction
         selfCanIssue := stations(0).ingress.free && !taken(0)
         sending := 1.U
@@ -301,6 +303,11 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
       // So we can safely sets io.branch to the last valid branch info
       io.branch := info.retirement.info.branch
       io.brSrc := info.retirement.instr.instr.addr
+
+      when(info.retirement.info.branch.ex =/= ExReq.none) {
+        // Don't write-back exceptioned instr
+        rw(idx).addr := 0.U
+      }
 
       info.valid := false.B
 

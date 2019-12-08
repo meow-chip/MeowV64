@@ -22,7 +22,8 @@ import cache.DCReader
 @chiselName
 class UnitSel(
   gen : => Seq[ExecUnitInt],
-  arbitration: Instr => Seq[Bool]
+  arbitration: Instr => Seq[Bool],
+  bypassIdx: Option[Int] = None
 )(implicit val coredef: CoreDef) extends MultiIOModule {
   val units = gen
 
@@ -86,10 +87,19 @@ class UnitSel(
     u.io.next := PipeInstr.empty
   }
 
-  val execMap = arbitration(rs.instr.instr.instr)
-  assume(execMap.length == units.length)
+  val execMap = Wire(Vec(units.length, Bool()))
+  execMap := arbitration(rs.instr.instr.instr)
   // Asserts exactly one can exec this instr
-  val execMapUInt = VecInit(execMap).asUInt
+
+  // Contains a bypass unit, bypassing all inval instructions to there
+  if(bypassIdx.isDefined) {
+    when(rs.instr.instr.invalAddr) {
+      execMap := VecInit(Seq.fill(units.length)(false.B))
+      execMap(bypassIdx.get) := true.B
+    }
+  }
+
+  val execMapUInt = execMap.asUInt
   val execMapNoDup = !((execMapUInt -% 1.U) & execMapUInt).orR
   assert(!rs.valid || execMapNoDup && execMapUInt.orR())
 

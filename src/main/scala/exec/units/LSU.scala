@@ -7,10 +7,13 @@ import cache._
 import chisel3.experimental.ChiselEnum
 import exec._
 import _root_.core.CoreDef
+import _root_.core.ExType
 
 class LSUExt(implicit val coredef: CoreDef) extends Bundle {
   val mem = new MemSeqAcc
   val wb = UInt(coredef.XLEN.W)
+  val lInvalAddr = Bool()
+  val sInvalAddr = Bool()
 }
 
 class LSU(override implicit val coredef: CoreDef) extends ExecUnit(1, new LSUExt) with WithLSUPort {
@@ -33,12 +36,13 @@ class LSU(override implicit val coredef: CoreDef) extends ExecUnit(1, new LSUExt
     val isCachedWrite = pipe.instr.instr.op === Decoder.Op("STORE").ident && !isUncached
     val isUncachedRead = pipe.instr.instr.op === Decoder.Op("LOAD").ident && isUncached
     val isUncachedWrite = pipe.instr.instr.op === Decoder.Op("STORE").ident && isUncached
+    val isInvalAddr = addr(coredef.XLEN-1, coredef.ADDR_WIDTH).orR
 
     if(stage == 0) {
 
       // First stage, send LOAD addr
       reader.addr := aligned
-      reader.read := isCachedRead
+      reader.read := isCachedRead && !isInvalAddr
 
       // Compute write be
       val tailMask = Wire(UInt((coredef.XLEN/8).W))
@@ -63,6 +67,9 @@ class LSU(override implicit val coredef: CoreDef) extends ExecUnit(1, new LSUExt
       }.elsewhen(isCachedWrite) {
         ext.mem.op := MemSeqAccOp.s
       }
+
+      ext.lInvalAddr := (isCachedRead || isUncachedRead) && isInvalAddr
+      ext.sInvalAddr := (isCachedWrite || isUncachedWrite) && isInvalAddr
 
       (ext, false.B)
     } else {
@@ -127,11 +134,20 @@ class LSU(override implicit val coredef: CoreDef) extends ExecUnit(1, new LSUExt
 
   override def finalize(pipe: PipeInstr, ext: LSUExt): RetireInfo = {
     val info = Wire(new RetireInfo)
-    info.branch.nofire()
-    info.wb := ext.wb
-    info.mem := ext.mem
 
     saUp := ext.mem.op =/= MemSeqAccOp.no
+
+    info.wb := ext.wb
+    when(ext.lInvalAddr) {
+      info.branch.ex(ExType.LOAD_ACCESS_FAULT)
+      info.mem.noop()
+    }.elsewhen(ext.sInvalAddr) {
+      info.branch.ex(ExType.LOAD_ACCESS_FAULT)
+      info.mem.noop()
+    }.otherwise {
+      info.branch.nofire()
+      info.mem := ext.mem
+    }
 
     info
   }
