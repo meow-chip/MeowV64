@@ -53,3 +53,5 @@ libraryDependencies ++= Seq("chisel3","chisel-iotesters").map {
 scalacOptions ++= scalacOptionsVersion(scalaVersion.value)
 
 javacOptions ++= javacOptionsVersion(scalaVersion.value)
+
+testOptions in Test += Tests.Argument("-oT") 

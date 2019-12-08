@@ -4,6 +4,7 @@ import chisel3._
 import chisel3.iotesters.PeekPokeTester
 import org.scalatest.FlatSpec
 import org.scalatest.Matchers
+import org.scalatest.ConfigMap
 import java.io.File
 
 object RiscvTestsSpec {
@@ -21,5 +22,5 @@ class RiscvTestsSpec extends FlatSpec with Matchers {
 }
 
 object RiscvTestsMain extends App {
-  (new RiscvTestsSpec).execute()
+  (new RiscvTestsSpec).execute(stats = true, shortstacks = true)
 }

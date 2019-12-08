@@ -64,7 +64,7 @@ class LSU(override implicit val coredef: CoreDef) extends ExecUnit(1, new LSUExt
         ext.mem.op := MemSeqAccOp.s
       }
 
-      (ext, reader.stall)
+      (ext, false.B)
     } else {
       val shifted = reader.data >> (offset << 3)
       val signedResult = Wire(SInt(coredef.XLEN.W)).suggestName("signedResult")
@@ -121,7 +121,7 @@ class LSU(override implicit val coredef: CoreDef) extends ExecUnit(1, new LSUExt
         }
       }
 
-      (ext, false.B)
+      (ext, reader.stall)
     }
   }
 
