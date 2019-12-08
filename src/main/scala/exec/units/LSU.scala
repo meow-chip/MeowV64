@@ -82,8 +82,8 @@ class LSU(override implicit val coredef: CoreDef) extends ExecUnit(1, new LSUExt
           is(Decoder.LOAD_FUNC("LW")) { signedResult := shifted(31, 0).asSInt }
           is(Decoder.LOAD_FUNC("LD")) { result := shifted }
           is(Decoder.LOAD_FUNC("LBU")) { result := shifted(7, 0) }
-          is(Decoder.LOAD_FUNC("LHU")) { result := shifted(16, 0) }
-          is(Decoder.LOAD_FUNC("LWU")) { result := shifted(32, 0) }
+          is(Decoder.LOAD_FUNC("LHU")) { result := shifted(15, 0) }
+          is(Decoder.LOAD_FUNC("LWU")) { result := shifted(31, 0) }
         }
 
         ext.wb := result
