@@ -8,7 +8,7 @@ import java.io.File
 
 object RiscvTestsSpec {
   val cases = new File("./testcases/riscv-tests/isa").listFiles
-    .filter(_.isFile).filter(_.getName.endsWith(".hex"))
+    .filter(_.isFile).filter(_.getName.endsWith(".bin"))
     .map(_.getPath).toList
 }
 
