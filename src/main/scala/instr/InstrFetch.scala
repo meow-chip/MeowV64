@@ -73,6 +73,7 @@ class InstrFetch(coredef: CoreDef) extends MultiIOModule {
   toIC.addr := Mux(flushed, flushedJmpTo, toCtrl.pc)
   toIC.read := (!issueFifoNearlyFull) || toCtrl.ctrl.flush
 
+  // issueFifoNearlyFull only halts IC, but doesn't stop the decoder
   val proceed = (!toIC.vacant) && (!toIC.stall)
   toCtrl.ctrl.stall := !toCtrl.ctrl.flush && (toIC.stall || issueFifoNearlyFull || flushed)
 
@@ -118,7 +119,7 @@ class InstrFetch(coredef: CoreDef) extends MultiIOModule {
       when(!success) {
         decoded(i).vacant := true.B
 
-        when(proceed) {
+        when(proceed && !decoded(i).vacant) {
           tailFailed := true.B
           tail := vecView(i)
         }
