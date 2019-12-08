@@ -167,6 +167,7 @@ class L1DC(val opts: L1DOpts) extends MultiIOModule {
 
   val wlookups = stores.read(getIndex(wlookupAddr))
   val whit = wlookups.foldLeft(false.B)((acc, line) => acc || (line.valid && line.tag === getTag(waddr)))
+  val wdirtyHit = wlookups.foldLeft(false.B)((acc, line) => acc || (line.valid && line.tag === getTag(waddr) && line.dirty))
 
   val rand = chisel3.util.random.LFSR(8)
   val victim = RegInit(0.U(ASSOC_IDX_WIDTH.W))
@@ -224,36 +225,48 @@ class L1DC(val opts: L1DOpts) extends MultiIOModule {
 
       assert(wbufHead =/= wbufTail)
 
-      when(whit) {
+      def commit() {
+        val hitMask = VecInit(wlookups.map(lookup => lookup.valid && lookup.tag === getTag(waddr)))
+        val lookup = MuxCase(DLine.empty(opts), wlookups.zipWithIndex.map({ case (lookup, idx) => (
+          hitMask(idx),
+          lookup
+        )}))
+
+        val written = Wire(lookup.cloneType)
+        written := lookup
+        written.data(getSublineIdx(waddr)) := muxBE(
+          wbuf(wbufHead).be,
+          wbuf(wbufHead).wdata,
+          lookup.data(getSublineIdx(waddr))
+        )
+
+        written.dirty := true.B
+
+        l1writing := hitMask
+        writingAddr := getIndex(waddr)
+        writingData := written
+
+        wbuf(wbufHead).valid := false.B
+        wbufHead := wbufHead +% 1.U
+
+        nstate := MainState.idle
+      }
+
+      when(
+        RegNext(toL2.l2req) =/= L2Req.idle && RegNext(getIndex(toL2.l2addr)) === getIndex(waddr)
+      ) {
+        // Wait for one extra cycle
+        nstate := MainState.writing
+      }.elsewhen(wdirtyHit) {
+        // Commit directly
+        commit()
+      }.elsewhen(whit) {
         // Is an write hit, send modify directly
         toL2.l1req := L1DCPort.L1Req.modify
 
         when(!toL2.l1stall) {
           // Commit
-          val hitMask = VecInit(wlookups.map(lookup => lookup.valid && lookup.tag === getTag(waddr)))
-          val lookup = MuxCase(DLine.empty(opts), wlookups.zipWithIndex.map({ case (lookup, idx) => (
-            hitMask(idx),
-            lookup
-          )}))
-
-          val written = Wire(lookup.cloneType)
-          written := lookup
-          written.data(getSublineIdx(waddr)) := muxBE(
-            wbuf(wbufHead).be,
-            wbuf(wbufHead).wdata,
-            lookup.data(getSublineIdx(waddr))
-          )
-
-          written.dirty := true.B
-
-          l1writing := hitMask
-          writingAddr := getIndex(waddr)
-          writingData := written
-
-          wbuf(wbufHead).valid := false.B
-          wbufHead := wbufHead +% 1.U
-
-          nstate := MainState.idle
+          commit()
         }
       }.otherwise {
         // Not hit, goto walloc

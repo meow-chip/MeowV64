@@ -156,7 +156,7 @@ object CacheTest {
 
 object CacheSpec {
   val DEFAULT_SEED = 0L
-  val DEFAULT_LENGTH = 1000000
+  val DEFAULT_LENGTH = 100000
 }
 
 class CacheSpec extends FlatSpec with Matchers {
