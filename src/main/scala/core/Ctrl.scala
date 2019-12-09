@@ -130,6 +130,7 @@ class Ctrl(coredef: CoreDef) extends MultiIOModule {
     0.U(coredef.XLEN)
     | mpie << 7
     | mie << 3
+    | 2.U(2.W) << 32 // UXL
   )
 
   when(csr.mstatus.write) {

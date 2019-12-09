@@ -32,7 +32,7 @@ class CSR(override implicit val coredef: CoreDef)
 
       is(Decoder.SYSTEM_FUNC("CSRRWI")) {
         writer.op := CSROp.rw
-        writer.wdata := pipe.instr.instr.imm.asUInt // Zero extends
+        writer.wdata := pipe.instr.instr.rs1
       }
 
       is(Decoder.SYSTEM_FUNC("CSRRS")) {
@@ -42,7 +42,7 @@ class CSR(override implicit val coredef: CoreDef)
 
       is(Decoder.SYSTEM_FUNC("CSRRSI")) {
         writer.op := CSROp.rs
-        writer.wdata := pipe.instr.instr.imm.asUInt // Zero extends
+        writer.wdata := pipe.instr.instr.rs1
       }
 
       is(Decoder.SYSTEM_FUNC("CSRRC")) {
@@ -52,7 +52,7 @@ class CSR(override implicit val coredef: CoreDef)
 
       is(Decoder.SYSTEM_FUNC("CSRRCI")) {
         writer.op := CSROp.rc
-        writer.wdata := pipe.instr.instr.imm.asUInt // Zero extends
+        writer.wdata := pipe.instr.instr.rs1
       }
     }
 
