@@ -5,6 +5,7 @@ import chisel3.util._
 import instr.Decoder
 import exec._
 import _root_.core.CoreDef
+import Chisel.experimental.chiselName
 
 class DivExt(implicit val coredef: CoreDef) extends Bundle {
   val r = UInt((coredef.XLEN*2).W) // Dividend
@@ -12,6 +13,7 @@ class DivExt(implicit val coredef: CoreDef) extends Bundle {
   val q = UInt(coredef.XLEN.W)
 }
 
+@chiselName
 class Div(val ROUND_PER_STAGE: Int)(override implicit val coredef: CoreDef) extends ExecUnit(
   coredef.XLEN / ROUND_PER_STAGE,
   new DivExt
@@ -36,7 +38,7 @@ class Div(val ROUND_PER_STAGE: Int)(override implicit val coredef: CoreDef) exte
 
   def map(stage: Int, pipe: PipeInstr, _ext: Option[DivExt]): (DivExt, Bool) = {
     if(stage == 0) {
-      val init = Wire(new DivExt)
+      val init = Wire(new DivExt).suggestName("init")
       val op1s = Wire(SInt(coredef.XLEN.W))
       val op2s = Wire(SInt(coredef.XLEN.W))
 
@@ -58,7 +60,7 @@ class Div(val ROUND_PER_STAGE: Int)(override implicit val coredef: CoreDef) exte
 
       when(
         pipe.instr.instr.funct3 === Decoder.MULDIV_FUNC("DIVU")
-        && pipe.instr.instr.funct3 === Decoder.MULDIV_FUNC("REMU")
+        || pipe.instr.instr.funct3 === Decoder.MULDIV_FUNC("REMU")
       ) { // Unsigned
         init.r := op1
         init.d := op2
@@ -68,13 +70,13 @@ class Div(val ROUND_PER_STAGE: Int)(override implicit val coredef: CoreDef) exte
         val sop2 = op2.asSInt
 
         init.q := 0.U
-        when(sop1(coredef.XLEN-1)) {
+        when(sop1 < 0.S) {
           init.r := (-sop1).asUInt
         }.otherwise {
           init.r := op1
         }
 
-        when(sop2(coredef.XLEN-1)) {
+        when(sop2 < 0.S) {
           init.d := (-sop2).asUInt
         }.otherwise {
           init.d := op2.asUInt
@@ -132,7 +134,7 @@ class Div(val ROUND_PER_STAGE: Int)(override implicit val coredef: CoreDef) exte
     val rneg = Wire(Bool())
     when(
       pipe.instr.instr.funct3 === Decoder.MULDIV_FUNC("DIVU")
-      && pipe.instr.instr.funct3 === Decoder.MULDIV_FUNC("REMU")
+      || pipe.instr.instr.funct3 === Decoder.MULDIV_FUNC("REMU")
     ) { // Unsigned
       qneg := false.B
       rneg := false.B
