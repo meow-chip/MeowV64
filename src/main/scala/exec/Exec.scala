@@ -17,6 +17,7 @@ import exec.Exec.ROBEntry
 import _root_.core.CSROp
 import cache.L1UCPort
 import _root_.core.ExReq
+import Chisel.experimental.chiselName
 
 /**
  * Out-of-order exection (Tomasulo's algorithm)
@@ -27,6 +28,7 @@ import _root_.core.ExReq
  *   This limit affects our rob buffer length, as well as renamed reg tags' length
  * - Issue FIFO is not depleted
  */
+@chiselName
 class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
   val io = IO(new Bundle {
     val ctrl = StageCtrl.stage()
@@ -214,7 +216,11 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
 
       sending := 0.U
 
-      when(toIF.view(idx).invalAddr || !applicables.orR()) {
+      when(
+        toIF.view(idx).invalAddr
+        || toIF.view(idx).instr.base === InstrType.toInt(InstrType.RESERVED)
+        || !applicables.orR()
+      ) {
         // Is an invalid instruction
         selfCanIssue := stations(0).ingress.free && !taken(0)
         sending := 1.U

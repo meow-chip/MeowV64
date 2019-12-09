@@ -13,6 +13,7 @@ import _root_.core.ExReq
 import _root_.core.ExType
 import _root_.core.CSRWriter
 import chisel3.util.MuxLookup
+import instr.Decoder.InstrType
 
 class BranchResult(implicit val coredef: CoreDef) extends Bundle {
   val branch = Bool()
@@ -194,7 +195,9 @@ class ReservedInstr(override implicit val coredef: CoreDef) extends PipeInstr {
   val rs1ready = Bool()
   val rs2ready = Bool()
 
-  def ready = rs1ready && rs2ready
+  def inval = instr.invalAddr || instr.instr.base === InstrType.toInt(InstrType.RESERVED)
+
+  def ready = (inval || rs1ready && rs2ready)
 
   def validate() {
     // Asserts that name === 0 -> ready

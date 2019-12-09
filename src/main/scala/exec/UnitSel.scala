@@ -93,7 +93,7 @@ class UnitSel(
 
   // Contains a bypass unit, bypassing all inval instructions to there
   if(bypassIdx.isDefined) {
-    when(rs.instr.instr.invalAddr) {
+    when(rs.instr.inval) {
       execMap := VecInit(Seq.fill(units.length)(false.B))
       execMap(bypassIdx.get) := true.B
     }
