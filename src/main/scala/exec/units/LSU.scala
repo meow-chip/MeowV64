@@ -14,6 +14,9 @@ class LSUExt(implicit val coredef: CoreDef) extends Bundle {
   val wb = UInt(coredef.XLEN.W)
   val lInvalAddr = Bool()
   val sInvalAddr = Bool()
+
+  val lUnaligned = Bool()
+  val sUnaligned = Bool()
 }
 
 class LSU(override implicit val coredef: CoreDef) extends ExecUnit(1, new LSUExt) with WithLSUPort {
@@ -32,17 +35,40 @@ class LSU(override implicit val coredef: CoreDef) extends ExecUnit(1, new LSUExt
     val aligned = addr(coredef.ADDR_WIDTH-1, 3) ## 0.U(3.W)
     val offset = addr(2, 0)
     val isUncached = addr(47)
-    val isCachedRead = pipe.instr.instr.op === Decoder.Op("LOAD").ident && !isUncached
-    val isCachedWrite = pipe.instr.instr.op === Decoder.Op("STORE").ident && !isUncached
-    val isUncachedRead = pipe.instr.instr.op === Decoder.Op("LOAD").ident && isUncached
-    val isUncachedWrite = pipe.instr.instr.op === Decoder.Op("STORE").ident && isUncached
+    val isRead = pipe.instr.instr.op === Decoder.Op("LOAD").ident
+    val isWrite = pipe.instr.instr.op === Decoder.Op("STORE").ident
+
+    val isCachedRead = isRead && !isUncached
+    val isCachedWrite = isWrite && !isUncached
+    val isUncachedRead = isRead && isUncached
+    val isUncachedWrite = isWrite && isUncached
     val isInvalAddr = addr(coredef.XLEN-1, coredef.ADDR_WIDTH).orR
+
+    // Is unaligned?
+    val isUnaligned = Wire(Bool())
+    isUnaligned := false.B
+    /**
+     * According to ISA, the least two bits of funct3 repersents the size of the load/store:
+     * - (L/S)B[U]: 00
+     * - (L/S)H[U]: 01
+     * - (L/S)W[U]: 10
+     * - (L/S)D: 11
+     */
+    val size = pipe.instr.instr.funct3(1, 0)
+    when(size === 1.U) {
+      isUnaligned := offset(0)
+    }.elsewhen(size === 2.U) {
+      isUnaligned := offset(1, 0).orR
+    }.elsewhen(size === 3.U) {
+      isUnaligned := offset.orR
+    }
+    // For size = 0, addr is always aligned
 
     if(stage == 0) {
 
       // First stage, send LOAD addr
       reader.addr := aligned
-      reader.read := isCachedRead && !isInvalAddr
+      reader.read := isCachedRead && !isInvalAddr &&  !isUnaligned
 
       // Compute write be
       val tailMask = Wire(UInt((coredef.XLEN/8).W))
@@ -68,8 +94,10 @@ class LSU(override implicit val coredef: CoreDef) extends ExecUnit(1, new LSUExt
         ext.mem.op := MemSeqAccOp.s
       }
 
-      ext.lInvalAddr := (isCachedRead || isUncachedRead) && isInvalAddr
-      ext.sInvalAddr := (isCachedWrite || isUncachedWrite) && isInvalAddr
+      ext.lInvalAddr := isRead && isInvalAddr
+      ext.sInvalAddr := isWrite && isInvalAddr
+      ext.lUnaligned := isRead && isUnaligned
+      ext.sUnaligned := isWrite && isUnaligned
 
       (ext, false.B)
     } else {
@@ -143,6 +171,12 @@ class LSU(override implicit val coredef: CoreDef) extends ExecUnit(1, new LSUExt
       info.mem.noop()
     }.elsewhen(ext.sInvalAddr) {
       info.branch.ex(ExType.LOAD_ACCESS_FAULT)
+      info.mem.noop()
+    }.elsewhen(ext.lUnaligned) {
+      info.branch.ex(ExType.LOAD_ADDR_MISALIGN)
+      info.mem.noop()
+    }.elsewhen(ext.sUnaligned) {
+      info.branch.ex(ExType.STORE_ADDR_MISALIGN)
       info.mem.noop()
     }.otherwise {
       info.branch.nofire()
