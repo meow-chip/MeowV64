@@ -187,6 +187,11 @@ object Decoder {
       val rs1e = ui(11, 7)
       val rs2e = ui(6, 2)
 
+      // Helper for assigning unsigned immediates
+      val uimm = Wire(UInt(32.W))
+      result.imm := uimm.asSInt()
+      uimm := DontCare
+
       // RD position will differ by instr
 
       def fail() = {
@@ -204,7 +209,7 @@ object Decoder {
           result.rd := rs2t
           result.rs1 := 2.U
           result.rs2 := DontCare
-          result.imm := (ui(10, 7) ## ui(12, 11) ## ui(5) ## ui(6)).asSInt << 2
+          uimm := ui(10, 7) ## ui(12, 11) ## ui(5) ## ui(6) ## 0.U(2.W)
           result.funct3 := OP_FUNC("ADD/SUB") // ADDI
         }
         is("00001".asBits(5.W)) { // FLD
@@ -215,7 +220,7 @@ object Decoder {
           result.rs1 := rs1t
           result.rs2 := DontCare
           result.rd := rs2t
-          result.imm := (ui(5) ## ui(12, 10) ## ui(6) ## 0.U(2.W)).asSInt
+          uimm := ui(5) ## ui(12, 10) ## ui(6) ## 0.U(2.W)
           result.funct3 := LOAD_FUNC("LW")
         }
         is("00011".asBits(5.W)) { // LD
@@ -223,7 +228,7 @@ object Decoder {
           result.rs1 := rs1t
           result.rs2 := DontCare
           result.rd := rs2t
-          result.imm := (ui(6, 5) ## ui(12, 10) ## 0.U(3.W)).asSInt
+          uimm := ui(6, 5) ## ui(12, 10) ## 0.U(3.W)
           result.funct3 := LOAD_FUNC("LD")
         }
         is("00100".asBits(5.W)) { // Reserved
@@ -237,7 +242,7 @@ object Decoder {
           result.rs1 := rs1t
           result.rs2 := rs2t
           result.rd := DontCare
-          result.imm := (ui(5) ## ui(12, 10) ## ui(6) ## 0.U(2.W)).asSInt
+          uimm := ui(5) ## ui(12, 10) ## ui(6) ## 0.U(2.W)
           result.funct3 := STORE_FUNC("SW")
         }
         is("00111".asBits(5.W)) { // SD
@@ -245,7 +250,7 @@ object Decoder {
           result.rs1 := rs1t
           result.rs2 := rs2t
           result.rd := DontCare
-          result.imm := (ui(6, 5) ## ui(12, 10) ## 0.U(2.W)).asSInt
+          uimm := ui(6, 5) ## ui(12, 10) ## 0.U(3.W)
           result.funct3 := STORE_FUNC("SD")
         }
 
@@ -298,7 +303,7 @@ object Decoder {
             result.rd := rs1t
             result.imm := (0.U(1.W) ## ui(12) ## ui(6, 2)).asSInt
             result.funct3 := OP_FUNC("SRL/SRA")
-            result.funct7 := ui(11, 10) ## 0.U(5.U)
+            result.funct7 := ui(11, 10) ## 0.U(5.W)
           }.elsewhen(ui(10) === 0.U) { // ANDI
             result.op := Op("OP-IMM").ident
             result.rs1 := rs1t
@@ -396,7 +401,7 @@ object Decoder {
           result.rs1 := 2.U // x2 = sp
           result.rs2 := DontCare
           result.rd := rs1e
-          result.imm := (ui(3, 2) ## ui(12) ## ui(6, 4) ## 0.U(2.W)).asSInt
+          uimm := ui(3, 2) ## ui(12) ## ui(6, 4) ## 0.U(2.W)
           result.funct3 := LOAD_FUNC("LW")
         }
         is("10011".asBits(5.W)) { // LDSP
@@ -404,7 +409,7 @@ object Decoder {
           result.rs1 := 2.U // x2 = sp
           result.rs2 := DontCare
           result.rd := rs1e
-          result.imm := (ui(4, 2) ## ui(12) ## ui(6, 5) ## 0.U(3.W)).asSInt
+          uimm := ui(4, 2) ## ui(12) ## ui(6, 5) ## 0.U(3.W)
           result.funct3 := LOAD_FUNC("LD")
         }
         is("10100".asBits(5.W)) { // J[AL]R/MV/ADD
@@ -452,7 +457,7 @@ object Decoder {
           result.rs1 := 2.U // x2 = sp
           result.rs2 := rs2e
           result.rd := DontCare
-          result.imm := (ui(8, 7) ## ui(12, 9) ## 0.U(2.W)).asSInt
+          uimm := ui(8, 7) ## ui(12, 9) ## 0.U(2.W)
           result.funct3 := STORE_FUNC("SW")
         }
         is("10111".asBits(5.W)) { // SDSP
@@ -460,7 +465,7 @@ object Decoder {
           result.rs1 := 2.U // x2 = sp
           result.rs2 := rs2e
           result.rd := DontCare
-          result.imm := (ui(9, 7) ## ui(12, 10) ## 0.U(3.W)).asSInt
+          uimm := ui(9, 7) ## ui(12, 10) ## 0.U(3.W)
           result.funct3 := STORE_FUNC("SD")
         }
       }

@@ -21,14 +21,14 @@ class Bypass(override implicit val coredef: CoreDef) extends ExecUnit(0, new Byp
 
     switch(pipe.instr.instr.op) {
       is(Decoder.Op("LUI").ident) {
-        val extended = Wire(SInt(64.W))
+        val extended = Wire(SInt(coredef.XLEN.W))
         extended := pipe.instr.instr.imm
         ext.acc := extended.asUInt
         ext.inval := false.B
       }
 
       is(Decoder.Op("AUIPC").ident) {
-        val result = Wire(SInt(64.W))
+        val result = Wire(SInt(coredef.XLEN.W))
         result := pipe.instr.instr.imm + pipe.instr.addr.asSInt
         ext.acc := result.asUInt
         ext.inval := false.B
