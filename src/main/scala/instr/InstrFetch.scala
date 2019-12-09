@@ -113,7 +113,9 @@ class InstrFetch(coredef: CoreDef) extends MultiIOModule {
   for(i <- (0 until coredef.FETCH_NUM)) {
     val addr = pipePc + (i*Const.INSTR_MIN_WIDTH/8).U
     decoded(i).addr := addr
-    decoded(i).vacant := toIC.vacant || i.U < pipeSkip || flushed
+    // Instr skipped because of fetch pipeline events
+    val fetchVacant = toIC.vacant || i.U < pipeSkip || flushed
+    decoded(i).vacant := fetchVacant
     decoded(i).invalAddr := addr(coredef.XLEN-1, coredef.ADDR_WIDTH).orR()
 
     if(i == coredef.FETCH_NUM-1) {
@@ -123,7 +125,7 @@ class InstrFetch(coredef: CoreDef) extends MultiIOModule {
       when(!success) {
         decoded(i).vacant := true.B
 
-        when(proceed && !decoded(i).vacant) {
+        when(proceed && !fetchVacant) {
           tailFailed := true.B
           tail := vecView(i)
         }
