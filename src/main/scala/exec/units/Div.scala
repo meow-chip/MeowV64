@@ -55,31 +55,25 @@ class Div(val ROUND_PER_STAGE: Int)(override implicit val coredef: CoreDef) exte
         op2s := pipe.rs2val(31, 0).asSInt
       }
 
-      val op1 = op1s.asUInt()
-      val op2 = op2s.asUInt()
-
       when(
         pipe.instr.instr.funct3 === Decoder.MULDIV_FUNC("DIVU")
         || pipe.instr.instr.funct3 === Decoder.MULDIV_FUNC("REMU")
       ) { // Unsigned
-        init.r := op1
-        init.d := op2
+        init.r := op1s.asUInt()
+        init.d := op2s.asUInt()
         init.q := 0.U
       }.otherwise { // Signed
-        val sop1 = op1.asSInt
-        val sop2 = op2.asSInt
-
         init.q := 0.U
-        when(sop1 < 0.S) {
-          init.r := (-sop1).asUInt
+        when(op1s < 0.S) {
+          init.r := (-op1s).asUInt()
         }.otherwise {
-          init.r := op1
+          init.r := op1s.asUInt()
         }
 
-        when(sop2 < 0.S) {
-          init.d := (-sop2).asUInt
+        when(op2s < 0.S) {
+          init.d := (-op2s).asUInt
         }.otherwise {
-          init.d := op2.asUInt
+          init.d := op2s.asUInt
         }
       }
 
@@ -127,9 +121,6 @@ class Div(val ROUND_PER_STAGE: Int)(override implicit val coredef: CoreDef) exte
       op2s := pipe.rs2val(31, 0).asSInt
     }
 
-    val fq = Wire(SInt(coredef.XLEN.W))
-    val fr = Wire(SInt(coredef.XLEN.W))
-
     val qneg = Wire(Bool())
     val rneg = Wire(Bool())
     when(
@@ -152,27 +143,29 @@ class Div(val ROUND_PER_STAGE: Int)(override implicit val coredef: CoreDef) exte
       r := ext.r + ext.d
     }
 
-    val hq = Wire(SInt(coredef.XLEN.W))
-    val hr = Wire(SInt(coredef.XLEN.W))
-
-    when(isDWord) {
-      hq := q.asSInt
-      hr := r.asSInt
-    }.otherwise {
-      hq := q(31, 0).asSInt
-      hr := r(31, 0).asSInt
-    }
+    val sq = Wire(SInt(coredef.XLEN.W))
+    val sr = Wire(SInt(coredef.XLEN.W))
+    val fq = Wire(SInt(coredef.XLEN.W))
+    val fr = Wire(SInt(coredef.XLEN.W))
 
     when(qneg) {
-      fq := (-hq)
+      sq := -q.asSInt()
     }.otherwise {
-      fq := hq
+      sq := q.asSInt()
     }
 
     when(rneg) {
-      fr := (-hr)
+      sr := -r.asSInt()
     }.otherwise {
-      fr := hr
+      sr := r.asSInt()
+    }
+
+    when(isDWord) {
+      fq := sq
+      fr := sr
+    }.otherwise {
+      fq := sq(31, 0).asSInt
+      fr := sr(31, 0).asSInt
     }
 
     /*
