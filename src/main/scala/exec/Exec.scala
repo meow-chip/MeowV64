@@ -190,14 +190,20 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
   val maxIssueNum = retirePtr -% issuePtr -% 1.U // issuePtr cannot reach retirePtr
   assert(issueNum <= maxIssueNum)
 
+  val wasGFence = RegInit(false.B)
   val canIssue = Wire(Vec(coredef.ISSUE_NUM, Bool()))
   var taken = 0.U(coredef.UNIT_COUNT.W)
   issueNum := 0.U
-
+  
   for(idx <- (0 until coredef.ISSUE_NUM)) {
     val selfCanIssue = Wire(Bool()).suggestName(s"selfCanIssue_$idx")
     val sending = Wire(UInt(coredef.UNIT_COUNT.W)).suggestName(s"sending_$idx")
     val instr = Wire(new ReservedInstr)
+
+    // Is global fence? (FENCE.I, CSR)
+    val isGFence = (
+      instr.instr.instr.op === Decoder.Op("SYSTEM").ident && instr.instr.instr.funct7 =/= Decoder.SYSTEM_FUNC("PRIV")
+    )
 
     // At most only one sending
     assert(!(sending & (sending -% 1.U)).orR)
@@ -225,6 +231,11 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
         selfCanIssue := stations(0).ingress.free && !taken(0)
         sending := 1.U
         renamer.toExec.invalMap(idx) := true.B
+      }.elsewhen(wasGFence && issuePtr =/= retirePtr) {
+        // GFence in-flight
+        sending := DontCare
+        selfCanIssue := false.B
+        // TODO: only apply to first instr to optimize timing?
       }.otherwise {
         val mask = applicables & avails & ~taken
         mask.suggestName(s"mask_$idx")
@@ -235,6 +246,18 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
         )))
 
         selfCanIssue := mask.orR()
+
+        if(idx != 0) {
+          // Cannot issue GFence that is not on the first slot
+          when(isGFence) {
+            selfCanIssue := false.B
+          }
+        } else {
+          // Block GFence if there is still in-flight instrs
+          when(retirePtr =/= issuePtr) {
+            selfCanIssue := false.B
+          }
+        }
       }
     }
 
@@ -249,6 +272,10 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
           s.ingress.push := true.B
           s.ingress.instr := instr
         }
+      }
+
+      if(idx == 0) {
+        wasGFence := isGFence
       }
     }
 
@@ -273,7 +300,6 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
   }
 
   // Commit
-  // FIXME: make CSR act as FENCE
 
   retireNum := 0.U
 
