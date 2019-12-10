@@ -31,17 +31,18 @@ import cache.DCFenceStatus
  */
 @chiselName
 class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
-  val io = IO(new Bundle {
+  val toCtrl = IO(new Bundle {
     val ctrl = StageCtrl.stage()
 
     val branch = Output(new BranchResult)
-    val brSrc = Output(UInt(coredef.ADDR_WIDTH.W))
-
-    val csrWriter = new CSRWriter(coredef.XLEN)
+    val src = Output(UInt(coredef.ADDR_WIDTH.W))
+    val tval = Output(UInt(coredef.XLEN.W))
   })
 
+  val csrWriter = IO(new CSRWriter(coredef.XLEN))
+
   // We don't stall now
-  io.ctrl.stall := false.B
+  toCtrl.ctrl.stall := false.B
 
   val rr = IO(Vec(coredef.ISSUE_NUM*2, new RegReader))
   val rw = IO(Vec(coredef.RETIRE_NUM, new RegWriter))
@@ -60,7 +61,7 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
   val renamer = Module(new Renamer)
   renamer.rr <> rr
   renamer.cdb := cdb
-  renamer.toExec.flush := io.ctrl.flush
+  renamer.toExec.flush := toCtrl.ctrl.flush
 
   val memAccSucc = Wire(Bool())
   val memAccWB = Wire(Bool())
@@ -138,7 +139,7 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
   )
 
   // Connect extra ports
-  units(0).extras("CSR") <> io.csrWriter
+  units(0).extras("CSR") <> csrWriter
   units(2).extras("LSU") <> toDC.r
 
   assume(units.length == coredef.UNIT_COUNT)
@@ -162,7 +163,7 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
 
   for(s <- stations) {
     s.cdb := cdb
-    s.ctrl.flush := io.ctrl.flush
+    s.ctrl.flush := toCtrl.ctrl.flush
 
     // By default: nothing pushes
     s.ingress := DontCare
@@ -170,7 +171,7 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
   }
 
   for(u <- units) {
-    u.ctrl.flush := io.ctrl.flush
+    u.ctrl.flush := toCtrl.ctrl.flush
   }
 
   // ROB & ptrs
@@ -310,8 +311,9 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
   val isBranch = Wire(Vec(coredef.RETIRE_NUM, Bool()))
 
   // Default: no branch if nothing is retired
-  io.branch.nofire()
-  io.brSrc := DontCare
+  toCtrl.branch.nofire()
+  toCtrl.src := DontCare
+  toCtrl.tval := DontCare
 
   memAccSucc := false.B
 
@@ -335,13 +337,17 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
       rw(idx).addr := info.retirement.instr.instr.instr.getRd
       rw(idx).data := info.retirement.info.wb
       // Branching. canRetire(idx) -> \forall i < idx, !isBranch(i)
-      // So we can safely sets io.branch to the last valid branch info
-      io.branch := info.retirement.info.branch
-      io.brSrc := info.retirement.instr.instr.addr
+      // So we can safely sets toCtrl.branch to the last valid branch info
+      toCtrl.branch := info.retirement.info.branch
+      toCtrl.src := info.retirement.instr.instr.addr
 
       when(info.retirement.info.branch.ex =/= ExReq.none) {
         // Don't write-back exceptioned instr
         rw(idx).addr := 0.U
+      }
+
+      when(info.retirement.info.branch.ex === ExReq.ex) {
+        toCtrl.tval := info.retirement.info.wb
       }
 
       info.valid := false.B
@@ -413,7 +419,7 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
   assert(!(canRetire.asUInt & (canRetire.asUInt+%1.U)).orR)
 
   // Flushing control
-  when(io.ctrl.flush) {
+  when(toCtrl.ctrl.flush) {
     issuePtr := 0.U
     retirePtr := 0.U
 
@@ -476,4 +482,4 @@ object Exec {
 
     ret
   }
-}
+  }

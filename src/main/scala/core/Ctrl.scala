@@ -49,6 +49,7 @@ class Ctrl(coredef: CoreDef) extends MultiIOModule {
   val br = IO(new Bundle {
     val req = Input(new BranchResult()(coredef))
     val src = Input(UInt(coredef.ADDR_WIDTH.W))
+    val tval = Input(UInt(coredef.XLEN.W))
   })
 
   val csr = IO(new Bundle {
@@ -187,7 +188,7 @@ class Ctrl(coredef: CoreDef) extends MultiIOModule {
     // Save related stuffs
     mepc := br.src
     mcause := (false.B << (coredef.XLEN-1)) | br.req.extype.asUInt()
-    mtval := 0.U
+    mtval := br.tval
 
     mpie := mie
     mie := false.B

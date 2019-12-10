@@ -156,6 +156,11 @@ class LSU(override implicit val coredef: CoreDef) extends ExecUnit(1, new LSUExt
         }
       }
 
+      // Finally, reuse write-back during misalign rw to write tval
+      when(isUnaligned) {
+        ext.wb := addr
+      }
+
       (ext, reader.stall)
     }
   }

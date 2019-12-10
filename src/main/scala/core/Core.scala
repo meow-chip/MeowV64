@@ -44,16 +44,17 @@ class Core(val coredef: CoreDef = DefaultDef) extends Module {
   exec.toIF <> fetch.toExec
   exec.rr <> reg.io.reads
   exec.rw <> reg.io.writes
-  exec.io.ctrl <> ctrl.io.exec
-  exec.io.csrWriter <> csrWriter
+  exec.toCtrl.ctrl <> ctrl.io.exec
+  exec.csrWriter <> csrWriter
 
   exec.toDC.r <> l1d.r
   exec.toDC.w <> l1d.w
   exec.toDC.fs <> l1d.fs
   exec.toDC.u <> l2.directs(0)
   
-  ctrl.br.req <> exec.io.branch
-  ctrl.br.src <> exec.io.brSrc
+  ctrl.br.req <> exec.toCtrl.branch
+  ctrl.br.src <> exec.toCtrl.src
+  ctrl.br.tval <> exec.toCtrl.tval
 
   io.pc := ctrl.io.pc
 
