@@ -132,7 +132,7 @@ class InstrFetch(coredef: CoreDef) extends MultiIOModule {
           tail := vecView(i)
         }
       }.otherwise {
-        when(proceed) {
+        when(proceed && !fetchVacant) {
           tailFailed := false.B
         }
       }
