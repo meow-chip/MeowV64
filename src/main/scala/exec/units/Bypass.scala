@@ -52,7 +52,7 @@ class Bypass(override implicit val coredef: CoreDef) extends ExecUnit(0, new Byp
       info.wb := DontCare
     }.elsewhen(ext.inval) {
       info.branch.ex(ExType.ILLEGAL_INSTR)
-      info.wb := DontCare
+      info.wb := 0.U
     }.elsewhen(pipe.instr.instr.op === Decoder.Op("JAL").ident) {
       val linked = Wire(UInt(coredef.ADDR_WIDTH.W))
       linked := pipe.instr.addr + 4.U
