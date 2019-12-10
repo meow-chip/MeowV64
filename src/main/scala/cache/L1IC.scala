@@ -32,6 +32,17 @@ class ILine(val opts: L1Opts) extends Bundle {
   val data = Vec(TRANSFER_COUNT, UInt(opts.TRANSFER_SIZE.W))
 }
 
+object ILine {
+  def default(opts: L1Opts): ILine = {
+    val ret = Wire(new ILine(opts))
+    ret.tag := DontCare
+    ret.data := DontCare
+    ret.valid := false.B
+
+    ret
+  }
+}
+
 // TODO: Change to xpm_tdpmem
 @chiselName
 class L1IC(opts: L1Opts) extends MultiIOModule {
@@ -52,7 +63,18 @@ class L1IC(opts: L1Opts) extends MultiIOModule {
   val INDEX_WIDTH = INDEX_OFFSET_WIDTH - OFFSET_WIDTH
   val IGNORED_WIDTH = log2Ceil(opts.TRANSFER_SIZE / 8)
 
+  assume(INDEX_WIDTH == log2Ceil(LINE_PER_ASSOC))
+
   val stores = SyncReadMem(LINE_PER_ASSOC, Vec(opts.ASSOC, new ILine(opts)))
+
+  val writerAddr = Wire(UInt(INDEX_WIDTH.W))
+  val writerData = Wire(new ILine(opts))
+  val writerMask = Wire(Vec(opts.ASSOC, Bool()))
+
+  stores.write(writerAddr, VecInit(Seq.fill(opts.ASSOC)(writerData)), writerMask)
+  writerAddr := DontCare
+  writerData := DontCare
+  writerMask := VecInit(Seq.fill(opts.ASSOC)(false.B))
 
   def getTransferOffset(addr: UInt) = addr(OFFSET_WIDTH-1, IGNORED_WIDTH)
   def getIndex(addr: UInt) = addr(INDEX_OFFSET_WIDTH-1, OFFSET_WIDTH)
@@ -115,11 +137,20 @@ class L1IC(opts: L1Opts) extends MultiIOModule {
   when(state === S2State.rst) {
     rstCnt := rstCnt +% 1.U
 
+    writerAddr := rstCnt
+    writerData := ILine.default(opts)
+    writerMask := VecInit(Seq.fill(opts.ASSOC)(true.B))
+
     when(rstCnt.andR()) {
       // Omit current request
       toCPU.vacant := true.B
       nstate := S2State.idle
     }
+  }.elsewhen(toCPU.rst) {
+    nstate := S2State.rst
+    rstCnt := 0.U
+    pipeRead := false.B
+    exitedRead := false.B
   }.otherwise {
     switch(state) {
       is(S2State.idle) {
@@ -152,7 +183,10 @@ class L1IC(opts: L1Opts) extends MultiIOModule {
           val victim = rand(ASSOC_IDX_WIDTH-1, 0)
           val mask = (0 until opts.ASSOC).map(_.U === victim)
 
-          stores.write(getIndex(pipeAddr), VecInit(Seq.fill(opts.ASSOC)(written)), mask)
+          writerAddr := getIndex(pipeAddr)
+          writerData := written
+          writerMask := mask
+
           savedReadouts := rawReadouts
           savedReadouts(victim) := written
 

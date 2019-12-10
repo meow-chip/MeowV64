@@ -68,23 +68,25 @@ class InstrFetch(coredef: CoreDef) extends MultiIOModule {
   val issueFifoNearlyFull = issueFifoSize > (coredef.ISSUE_FIFO_DEPTH - coredef.FETCH_NUM * 2 - 1).U
 
   val flushed = RegInit(false.B)
+  val flushedRst = RegInit(false.B)
   val flushedJmpTo = RegInit(0.U(coredef.ADDR_WIDTH.W))
 
-  toIC.rst := toCtrl.irst
 
   toIC.addr := Mux(flushed, flushedJmpTo, toCtrl.pc)
+  toIC.rst := Mux(flushed, flushedRst, toCtrl.irst)
   toIC.read := (!issueFifoNearlyFull) || toCtrl.ctrl.flush
 
   // issueFifoNearlyFull only halts IC, but doesn't stop the decoder
-  val proceed = (!toIC.vacant) && (!toIC.stall)
+  val proceed = !toIC.stall
   toCtrl.ctrl.stall := !toCtrl.ctrl.flush && (toIC.stall || issueFifoNearlyFull || flushed)
 
   when(toCtrl.ctrl.flush) {
     when(toIC.stall) {
       flushed := true.B
       flushedJmpTo := toCtrl.pc
+      flushedRst := toCtrl.irst
     }
-  }.elsewhen(proceed) {
+  }.elsewhen(!toIC.stall) {
     flushed := false.B
   }
 

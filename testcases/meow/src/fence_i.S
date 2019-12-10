@@ -3,7 +3,7 @@
 _start:
   li t0, 0x1145141919810
   sd t0, 0(sp)
-  fence
+  fence.i
   ld t1, 0(sp)
   bne t0, t1, fail
   ret

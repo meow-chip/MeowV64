@@ -39,6 +39,7 @@ class Core(val coredef: CoreDef = DefaultDef) extends Module {
   fetch.toCtrl.pc <> ctrl.io.pc
   fetch.toCtrl.skip <> ctrl.io.skip
   fetch.toCtrl.ctrl <> ctrl.io.fetch
+  fetch.toCtrl.irst <> ctrl.io.irst
 
   exec.toIF <> fetch.toExec
   exec.rr <> reg.io.reads

@@ -166,7 +166,13 @@ class LSU(override implicit val coredef: CoreDef) extends ExecUnit(1, new LSUExt
     saUp := ext.mem.op =/= MemSeqAccOp.no
 
     info.wb := ext.wb
-    when(ext.lInvalAddr) {
+    when(
+      pipe.instr.instr.op === Decoder.Op("MEM-MISC").ident
+      && pipe.instr.instr.funct3 === Decoder.MEM_MISC_FUNC("FENCE.I")
+    ) {
+      info.branch.ifence(pipe.instr.addr + 4.U)
+      info.mem.noop()
+    }.elsewhen(ext.lInvalAddr) {
       info.branch.ex(ExType.LOAD_ACCESS_FAULT)
       info.mem.noop()
     }.elsewhen(ext.sInvalAddr) {

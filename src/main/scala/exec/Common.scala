@@ -17,6 +17,7 @@ import instr.Decoder.InstrType
 
 class BranchResult(implicit val coredef: CoreDef) extends Bundle {
   val branch = Bool()
+  val irst = Bool()
   val target = UInt(coredef.XLEN.W)
 
   val ex = ExReq()
@@ -25,6 +26,7 @@ class BranchResult(implicit val coredef: CoreDef) extends Bundle {
   def nofire() = {
     branch := false.B
     target := DontCare
+    irst := false.B
 
     ex := ExReq.none
     extype := DontCare
@@ -33,6 +35,16 @@ class BranchResult(implicit val coredef: CoreDef) extends Bundle {
   def fire(addr: UInt) = {
     branch := true.B
     target := addr
+    irst := false.B
+
+    ex := ExReq.none
+    extype := DontCare
+  }
+
+  def ifence(addr: UInt) = {
+    branch := true.B
+    target := addr
+    irst := true.B
 
     ex := ExReq.none
     extype := DontCare
@@ -41,6 +53,7 @@ class BranchResult(implicit val coredef: CoreDef) extends Bundle {
   def ex(et: ExType.Type) {
     branch := false.B
     target := DontCare
+    irst := false.B
 
     ex := ExReq.ex
     extype := et
@@ -49,6 +62,7 @@ class BranchResult(implicit val coredef: CoreDef) extends Bundle {
   def eret() {
     branch := false.B
     target := DontCare
+    irst := false.B
 
     ex := ExReq.ret
     extype := DontCare

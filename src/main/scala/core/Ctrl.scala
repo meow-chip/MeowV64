@@ -40,6 +40,7 @@ class Ctrl(coredef: CoreDef) extends MultiIOModule {
   val io = IO(new Bundle{
     val pc = Output(UInt(coredef.XLEN.W))
     val skip = Output(UInt(log2Ceil(coredef.FETCH_NUM).W))
+    val irst = Output(Bool())
 
     val fetch = StageCtrl.ctrl()
     val exec = StageCtrl.ctrl()
@@ -68,6 +69,7 @@ class Ctrl(coredef: CoreDef) extends MultiIOModule {
 
   io.fetch.flush := false.B
   io.exec.flush := false.B
+  io.irst := false.B
 
   io.skip := 0.U
 
@@ -94,6 +96,7 @@ class Ctrl(coredef: CoreDef) extends MultiIOModule {
     pc := alignedPC + (Const.INSTR_MIN_WIDTH / 8 * coredef.FETCH_NUM).U
     io.pc := alignedPC
     io.skip := baddr(pcAlign, 0) >> instrOffset
+    io.irst := br.req.irst
   }.elsewhen(!io.fetch.stall) {
     // printf(p"PC: ${Hexadecimal(io.pc)}\n")
     pc := pc + (Const.INSTR_MIN_WIDTH / 8 * coredef.FETCH_NUM).U
