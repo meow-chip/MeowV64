@@ -104,8 +104,8 @@ class UnitSel(
   val execMapNoDup = !((execMapUInt -% 1.U) & execMapUInt).orR
   assert(!rs.valid || execMapNoDup && execMapUInt.orR())
 
-  val pipeExecMap = Reg(Vec(units.length, Bool()))
-  val pipeInstr = Reg(new ReservedInstr)
+  val pipeExecMap = RegInit(VecInit(Seq.fill(units.length)(false.B)))
+  val pipeInstr = RegInit(ReservedInstr.empty)
   val pipeInstrValid = RegInit(false.B)
 
   val pipeInput = Wire(Bool())
