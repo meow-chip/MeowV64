@@ -47,17 +47,24 @@ class Div(val ROUND_PER_STAGE: Int)(override implicit val coredef: CoreDef) exte
         || pipe.instr.instr.op === Decoder.Op("OP").ident
       )
 
+      val isUnsigned = (
+        pipe.instr.instr.funct3 === Decoder.MULDIV_FUNC("DIVU")
+        || pipe.instr.instr.funct3 === Decoder.MULDIV_FUNC("REMU")
+      )
+
       when(isDWord) {
         op1s := pipe.rs1val.asSInt
         op2s := pipe.rs2val.asSInt
+      }.elsewhen(isUnsigned) { // UW, do not sign-extend
+        op1s := (0.U(32.W) ## pipe.rs1val(31, 0)).asSInt
+        op2s := (0.U(32.W) ## pipe.rs2val(31, 0)).asSInt
       }.otherwise {
         op1s := pipe.rs1val(31, 0).asSInt
         op2s := pipe.rs2val(31, 0).asSInt
       }
 
       when(
-        pipe.instr.instr.funct3 === Decoder.MULDIV_FUNC("DIVU")
-        || pipe.instr.instr.funct3 === Decoder.MULDIV_FUNC("REMU")
+        isUnsigned
       ) { // Unsigned
         init.r := op1s.asUInt()
         init.d := op2s.asUInt()
