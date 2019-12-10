@@ -222,6 +222,7 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
 
   // Refillers
   val misses = RegInit(VecInit(Seq.fill(opts.CORE_COUNT * 2)(false.B)))
+  val missesAddr = RegInit(VecInit(Seq.fill(opts.CORE_COUNT * 2)(0.U(opts.ADDR_WIDTH.W)))) // Pipe addr to optimize timing
   val collided = RegInit(VecInit(Seq.fill(opts.CORE_COUNT * 2)(false.B)))
   val refilled = RegInit(VecInit(Seq.fill(opts.CORE_COUNT * 2)(false.B)))
   val sent = RegInit(VecInit(Seq.fill(opts.CORE_COUNT * 2)(false.B)))
@@ -370,12 +371,14 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
               // Refill from FIFO
               bufs(target) := fifoHitData.asTypeOf(bufs(target))
               misses(target) := true.B
+              missesAddr(target) := addrs(target)
               refilled(target) := true.B
               nstate := L2MainState.refilled
             }.elsewhen(sameAddrRefilling) {
               collided(target) := true.B
             }.otherwise {
               misses(target) := true.B
+              missesAddr(target) := addrs(target)
               sent(target) := false.B
             }
             refilled(target) := false.B
@@ -726,7 +729,7 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
   val axiGrpNum = opts.LINE_WIDTH * 8 / axi.DATA_WIDTH
 
   val reqTarget = RegInit(0.U(log2Ceil(opts.CORE_COUNT * 3).W))
-  val rawReqAddr = addrs(reqTarget)
+  val rawReqAddr = missesAddr(reqTarget)
 
   val reqAddr = rawReqAddr(opts.ADDR_WIDTH-1, OFFSET_LENGTH) ## 0.U(OFFSET_LENGTH.W)
   assume(reqAddr.getWidth == opts.ADDR_WIDTH)
@@ -734,6 +737,8 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
   when(reqTarget < (opts.CORE_COUNT * 2).U) {
     when(sent(reqTarget) =/= misses(reqTarget)) {
       when(misses(reqTarget)) {
+        assert(rawReqAddr === addrs(reqTarget))
+
         axi.ARADDR := reqAddr
         axi.ARBURST := AXI.Constants.Burst.INCR.U
         // axi.ARCACHE ignored
