@@ -8,7 +8,7 @@ import org.scalatest.ConfigMap
 import java.io.File
 
 object RiscvTestsSpec {
-  val knownFails = Seq("rv64-mi-p-scall.bin")
+  val knownFails = Seq("rv64mi-p-scall.bin")
   val cases = new File("./testcases/riscv-tests/isa").listFiles
     .filter(_.isFile).filter(_.getName.endsWith(".bin"))
     .filter(f => knownFails.foldLeft(true)((ret, cur) => ret && !f.getName().endsWith(cur)))
