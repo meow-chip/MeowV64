@@ -4,7 +4,7 @@
 .globl _start
 _start:
   # Div by zero
-  li a0, 0x1145141919810
+  li a0, 0x19260817
   li a1, 0x0
 
   div t0, a0, a1
