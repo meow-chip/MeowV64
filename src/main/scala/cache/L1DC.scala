@@ -24,6 +24,10 @@ class DCWriter(val opts: L1DOpts) extends Bundle {
   val stall = Input(Bool())
 }
 
+class DCFenceStatus(val opts: L1DOpts) extends Bundle {
+  val wbufClear = Input(Bool())
+}
+
 class DLine(val opts: L1Opts) extends Bundle {
   val INDEX_OFFSET_WIDTH = log2Ceil(opts.SIZE / opts.ASSOC)
   val TAG_WIDTH = opts.ADDR_WIDTH - INDEX_OFFSET_WIDTH
@@ -78,6 +82,7 @@ class L1DC(val opts: L1DOpts) extends MultiIOModule {
   // Ports
   val r = IO(Flipped(new DCReader(opts)))
   val w = IO(Flipped(new DCWriter(opts)))
+  val fs = IO(Flipped(new DCFenceStatus(opts)))
   val toL2 = IO(new L1DCPort(opts))
 
   assert(r.addr(IGNORED_WIDTH-1, 0) === 0.U)
@@ -119,6 +124,8 @@ class L1DC(val opts: L1DOpts) extends MultiIOModule {
   val WBUF_IDX_WIDTH = log2Ceil(opts.WRITE_BUF_DEPTH)
   val wbufHead = RegInit(0.U(WBUF_IDX_WIDTH.W))
   val wbufTail = RegInit(0.U(WBUF_IDX_WIDTH.W))
+
+  fs.wbufClear := wbufHead === wbufTail
 
   val pendingRead = Wire(Bool())
 

@@ -18,6 +18,7 @@ import _root_.core.CSROp
 import cache.L1UCPort
 import _root_.core.ExReq
 import Chisel.experimental.chiselName
+import cache.DCFenceStatus
 
 /**
  * Out-of-order exection (Tomasulo's algorithm)
@@ -50,6 +51,7 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
   val toDC = IO(new Bundle {
     val r = new DCReader(coredef.L1D)
     val w = new DCWriter(coredef.L1D)
+    val fs = new DCFenceStatus(coredef.L1D)
     val u = new L1UCPort(coredef.L1D)
   })
 
@@ -149,6 +151,7 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
       val lsb = Module(new LSBuf(idx)).suggestName(s"LSBuf")
       lsb.saUp := units(2).extras("saUp")
       lsb.saDown := memAccSucc
+      lsb.fs := toDC.fs
       lsb
     }
     rs.cdb := cdb
@@ -254,7 +257,7 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
           }
         } else {
           // Block GFence if there is still in-flight instrs
-          when(retirePtr =/= issuePtr) {
+          when(isGFence && retirePtr =/= issuePtr) {
             selfCanIssue := false.B
           }
         }
@@ -464,7 +467,8 @@ object Exec {
 
       is(
         Decoder.Op("LOAD").ident,
-        Decoder.Op("STORE").ident
+        Decoder.Op("STORE").ident,
+        Decoder.Op("MEM-MISC").ident
       ) {
         ret := "b100".U(coredef.UNIT_COUNT.W)
       }

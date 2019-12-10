@@ -5,6 +5,7 @@ import chisel3.util.MuxLookup
 import chisel3.util.log2Ceil
 import chisel3.util.MuxCase
 import instr.Decoder
+import cache.DCFenceStatus
 
 class ResStationExgress(implicit val coredef: CoreDef) extends Bundle {
   val instr = Output(new ReservedInstr)
@@ -141,7 +142,10 @@ class OoOResStation(val idx: Int)(implicit val coredef: CoreDef) extends MultiIO
 /**
  * Load-Store Buffer
  * 
- * Instructions are executed in-order
+ * Instructions are executed in-order, so effects of all memory operations
+ * become visible to the core itself in program order
+ * 
+ * L1 may do RAW and WAW reordering, so the effect may not be in program order for other cores
  */
 class LSBuf(val idx: Int)(implicit val coredef: CoreDef) extends MultiIOModule with ResStation {
 
@@ -154,6 +158,8 @@ class LSBuf(val idx: Int)(implicit val coredef: CoreDef) extends MultiIOModule w
   })
 
   val exgress = IO(new ResStationExgress)
+
+  val fs = IO(new DCFenceStatus(coredef.L1D))
 
   val cdb = IO(Input(new CDB))
   val ctrl = IO(new Bundle {
@@ -176,8 +182,19 @@ class LSBuf(val idx: Int)(implicit val coredef: CoreDef) extends MultiIOModule w
   // Extra restrictions: no pending writes
 
   val headIsLoad = store(head).instr.instr.op === Decoder.Op("LOAD").ident
+  val headIsFence = store(head).instr.instr.op === Decoder.Op("MEM-MISC").ident
+  // TODO: optimize: allow stores with different address to slip over?
   val loadBlocked = saUp || pendingMemAcc =/= 0.U
-  exgress.valid := head =/= tail && store(head).ready && (!headIsLoad || !loadBlocked)
+  val fenceBlocked = saUp || pendingMemAcc =/= 0.U || !fs.wbufClear
+  val instrReady = head =/= tail && store(head).ready
+  when(headIsFence) {
+    exgress.valid := instrReady && !fenceBlocked
+  }.elsewhen(headIsLoad) {
+    exgress.valid := instrReady && !loadBlocked
+  }.otherwise {
+    exgress.valid := instrReady
+  }
+
   exgress.instr := store(head)
   when(exgress.pop) {
     head := head +% 1.U
