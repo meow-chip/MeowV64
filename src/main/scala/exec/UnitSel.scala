@@ -23,7 +23,8 @@ import cache.DCReader
 class UnitSel(
   gen : => Seq[ExecUnitInt],
   arbitration: Instr => Seq[Bool],
-  bypassIdx: Option[Int] = None
+  bypassIdx: Option[Int] = None,
+  hasPipe: Boolean = true
 )(implicit val coredef: CoreDef) extends MultiIOModule {
   val units = gen
 
@@ -103,14 +104,41 @@ class UnitSel(
   val execMapNoDup = !((execMapUInt -% 1.U) & execMapUInt).orR
   assert(!rs.valid || execMapNoDup && execMapUInt.orR())
 
+  val pipeExecMap = Reg(Vec(units.length, Bool()))
+  val pipeInstr = Reg(new ReservedInstr)
+  val pipeInstrValid = RegInit(false.B)
+
+  val pipeInput = Wire(Bool())
+
   rs.pop := false.B
 
-  when(rs.valid) {
-    for((u, e) <- units.zip(execMap)) {
-      when(e) {
-        u.io.next := rs.instr
-        rs.pop := !u.io.stall
-        // TODO: ignore other fields?
+  if(hasPipe) {
+    when(pipeInstrValid) {
+      pipeInput := false.B
+      for((u, e) <- units.zip(pipeExecMap)) {
+        when(e) {
+          u.io.next := pipeInstr
+          pipeInput := !u.io.stall
+        }
+      }
+    }.otherwise {
+      pipeInput := true.B
+    }
+
+    when(pipeInput) {
+      pipeInstr := rs.instr
+      pipeExecMap := execMap
+      pipeInstrValid := rs.valid
+      rs.pop := rs.valid
+    }
+  } else {
+    pipeInput := DontCare
+    when(rs.valid) {
+      for((u, e) <- units.zip(execMap)) {
+        when(e) {
+          u.io.next := rs.instr
+          rs.pop := !u.io.stall
+        }
       }
     }
   }
@@ -143,6 +171,7 @@ class UnitSel(
   when(ctrl.flush) {
     retireHead := 0.U
     retireTail := 0.U
+    pipeInstrValid := false.B
   }
 }
 

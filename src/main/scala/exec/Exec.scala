@@ -137,7 +137,8 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
       Seq(
         Module(new LSU).suggestName("LSU")
       ),
-      instr => Seq(true.B)
+      instr => Seq(true.B),
+      hasPipe = false
     ))
 
   )
@@ -339,12 +340,27 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
       canRetire(idx) := info.valid && canRetire(idx - 1) && !isBranch(idx-1) && info.retirement.info.mem.isNoop()
     }
 
+    // Short-circuit long-path in idx == 0, l1d stall -> ctrl pc -> l1i
+    // to avoid depending on l1d signals
+    if(idx == 0) {
+      when(info.valid) {
+        when(!info.retirement.info.mem.isNoop()) {
+          toCtrl.branch.nofire()
+        }.otherwise {
+          toCtrl.branch := info.retirement.info.branch
+        }
+      }
+    }
+
     when(canRetire(idx)) {
       rw(idx).addr := info.retirement.instr.instr.instr.getRd
       rw(idx).data := info.retirement.info.wb
       // Branching. canRetire(idx) -> \forall i < idx, !isBranch(i)
       // So we can safely sets toCtrl.branch to the last valid branch info
-      toCtrl.branch := info.retirement.info.branch
+
+      if(idx != 0) {
+        toCtrl.branch := info.retirement.info.branch
+      }
 
       when(info.retirement.info.branch.ex =/= ExReq.none) {
         // Don't write-back exceptioned instr
