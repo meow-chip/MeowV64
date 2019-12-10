@@ -48,9 +48,18 @@ class Ctrl(coredef: CoreDef) extends MultiIOModule {
 
   val br = IO(new Bundle {
     val req = Input(new BranchResult()(coredef))
-    val src = Input(UInt(coredef.ADDR_WIDTH.W))
     val tval = Input(UInt(coredef.XLEN.W))
   })
+
+  val toExec = IO(new Bundle {
+    val retCnt = Input(UInt(log2Ceil(coredef.RETIRE_NUM + 1).W))
+    val nepc = Input(UInt(coredef.XLEN.W))
+    
+    val int = Output(Bool())
+    val intAck = Input(Bool())
+  })
+
+  val eint = IO(Input(Bool()))
 
   val csr = IO(new Bundle {
     val mcycle = new CSRPort(coredef.XLEN)
@@ -66,6 +75,7 @@ class Ctrl(coredef: CoreDef) extends MultiIOModule {
   });
 
   val pc = RegInit(coredef.INIT_VEC.U(coredef.XLEN.W))
+  val snepc = RegInit(coredef.INIT_VEC.U(coredef.XLEN.W))
   io.pc := pc
 
   io.fetch.flush := false.B
@@ -76,6 +86,26 @@ class Ctrl(coredef: CoreDef) extends MultiIOModule {
 
   val branch = Wire(Bool())
   val baddr = Wire(UInt(coredef.XLEN.W))
+
+  // MEPC in the front!
+  val mepc = RegInit(0.U(coredef.XLEN.W))
+
+  // Next retired instruction
+  val nepc = Wire(UInt(coredef.XLEN.W))
+  when(toExec.retCnt =/= 0.U) {
+    val recv = Wire(UInt(coredef.XLEN.W))
+    recv := toExec.nepc
+    when(br.req.ex === ExReq.ret) {
+      recv := mepc
+    }.elsewhen(br.req.branch) {
+      recv:= toExec.nepc
+    }
+
+    snepc := recv
+    nepc := recv
+  }.otherwise {
+    nepc := snepc
+  }
 
   // Rst comes together with an branch
   // TODO: impl rst (a.k.a. FENCE.I)
@@ -98,6 +128,8 @@ class Ctrl(coredef: CoreDef) extends MultiIOModule {
     io.pc := alignedPC
     io.skip := baddr(pcAlign, 0) >> instrOffset
     io.irst := br.req.irst
+
+    snepc := baddr
   }.elsewhen(!io.fetch.stall) {
     // printf(p"PC: ${Hexadecimal(io.pc)}\n")
     pc := pc + (Const.INSTR_MIN_WIDTH / 8 * coredef.FETCH_NUM).U
@@ -161,14 +193,13 @@ class Ctrl(coredef: CoreDef) extends MultiIOModule {
   }
 
   // TODO: wire mip
-  csr.mip.rdata := 0.U
+  csr.mip.rdata := eint
   csr.mip.wdata := DontCare
   csr.mip.write := DontCare
 
   // mtvec, mtval, mepc, mcause
   val mtvec = RegInit(0.U(coredef.XLEN.W))
   val mtval = RegInit(0.U(coredef.XLEN.W))
-  val mepc = RegInit(0.U(coredef.XLEN.W))
   val mcause = RegInit(0.U(coredef.XLEN.W))
   csr.mtvec <> CSRPort.fromReg(coredef.XLEN, mtvec)
   csr.mtval <> CSRPort.fromReg(coredef.XLEN, mtval)
@@ -180,14 +211,24 @@ class Ctrl(coredef: CoreDef) extends MultiIOModule {
 
   // Exceptions
   // FIXME: support vercotized mtvec
-  when(br.req.ex === ExReq.ex) {
+  toExec.int := eint
+  val ex = (br.req.ex === ExReq.ex) || (toExec.intAck && mie)
+  val cause = Wire(UInt(coredef.XLEN.W))
+  when(toExec.intAck && mie) {
+    cause := (true.B << (coredef.XLEN-1)) | 8.U
+  }.otherwise {
+    cause := (false.B << (coredef.XLEN-1)) | br.req.extype.asUInt()
+  }
+
+  // FIXME: interrupt at MRET
+  when(ex) {
     // Branch into mtvec
     branch := true.B
     baddr := mtvec(coredef.XLEN-1, 2) ## 0.U(2.W)
 
     // Save related stuffs
-    mepc := br.src
-    mcause := (false.B << (coredef.XLEN-1)) | br.req.extype.asUInt()
+    mepc := nepc
+    mcause := cause
     mtval := br.tval
 
     mpie := mie

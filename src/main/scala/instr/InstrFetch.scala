@@ -21,6 +21,9 @@ class InstrExt(val XLEN: Int = 64) extends Bundle {
     p"Vacant: ${vacant}\n" +
     p"${instr}"
   }
+
+  // TODO: perdiction
+  def npc: UInt = Mux(instr.base === InstrType.toInt(InstrType.C), addr + 2.U, addr + 4.U)
 }
 
 object InstrExt {

@@ -10,6 +10,7 @@ import exec.Exec
 class Core(val coredef: CoreDef = DefaultDef) extends Module {
   val io = IO(new Bundle {
     val axi = new AXI(coredef.XLEN, coredef.ADDR_WIDTH)
+    val eint = Input(Bool())
 
     // Debug
     val pc = Output(UInt(coredef.ADDR_WIDTH.W))
@@ -53,8 +54,14 @@ class Core(val coredef: CoreDef = DefaultDef) extends Module {
   exec.toDC.u <> l2.directs(0)
   
   ctrl.br.req <> exec.toCtrl.branch
-  ctrl.br.src <> exec.toCtrl.src
   ctrl.br.tval <> exec.toCtrl.tval
+
+  ctrl.toExec.retCnt := exec.toCtrl.retCnt
+  ctrl.toExec.nepc := exec.toCtrl.nepc
+  ctrl.toExec.int <> exec.toCtrl.int
+  ctrl.toExec.intAck := exec.toCtrl.intAck
+
+  ctrl.eint := io.eint
 
   io.pc := ctrl.io.pc
 

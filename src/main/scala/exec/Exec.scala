@@ -33,10 +33,14 @@ import cache.DCFenceStatus
 class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
   val toCtrl = IO(new Bundle {
     val ctrl = StageCtrl.stage()
+    val retCnt = Output(UInt(log2Ceil(coredef.RETIRE_NUM+1).W))
+    val nepc = Output(UInt(coredef.XLEN.W))
 
     val branch = Output(new BranchResult)
-    val src = Output(UInt(coredef.ADDR_WIDTH.W))
     val tval = Output(UInt(coredef.XLEN.W))
+
+    val int = Input(Bool())
+    val intAck = Output(Bool())
   })
 
   val csrWriter = IO(new CSRWriter(coredef.XLEN))
@@ -190,6 +194,8 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
   issuePtr := issuePtr + issueNum
   retirePtr := retirePtr + retireNum
 
+  toCtrl.retCnt := retireNum
+
   // Issue
   val maxIssueNum = retirePtr -% issuePtr -% 1.U // issuePtr cannot reach retirePtr
   assert(issueNum <= maxIssueNum)
@@ -312,8 +318,8 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
 
   // Default: no branch if nothing is retired
   toCtrl.branch.nofire()
-  toCtrl.src := DontCare
   toCtrl.tval := DontCare
+  toCtrl.nepc := DontCare
 
   memAccSucc := false.B
 
@@ -339,15 +345,16 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
       // Branching. canRetire(idx) -> \forall i < idx, !isBranch(i)
       // So we can safely sets toCtrl.branch to the last valid branch info
       toCtrl.branch := info.retirement.info.branch
-      toCtrl.src := info.retirement.instr.instr.addr
 
       when(info.retirement.info.branch.ex =/= ExReq.none) {
         // Don't write-back exceptioned instr
         rw(idx).addr := 0.U
       }
 
+      toCtrl.nepc := info.retirement.instr.instr.npc
       when(info.retirement.info.branch.ex === ExReq.ex) {
         toCtrl.tval := info.retirement.info.wb
+        toCtrl.nepc := info.retirement.instr.instr.addr
       }
 
       info.valid := false.B
@@ -409,6 +416,13 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
         memAccSucc := !toDC.u.stall
       }
     }
+  }
+
+  // intAck
+  when(retireNext.retirement.info.mem.op =/= MemSeqAccOp.no && !memAccSucc) {
+    toCtrl.intAck := false.B
+  }.otherwise {
+    toCtrl.intAck := toCtrl.int
   }
 
   // Asserts that at most one can branch
