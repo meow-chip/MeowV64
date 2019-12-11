@@ -752,7 +752,7 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
         // axi.ARPROT ignored
         // axi.ARQOS ignored
         // axi.ARREGION ignored
-        axi.ARSIZE := AXI.Constants.Size.from(axi.DATA_WIDTH).U
+        axi.ARSIZE := AXI.Constants.Size.from(axi.DATA_WIDTH / 8).U
 
         axi.ARVALID := true.B
         when(axi.ARREADY) {
@@ -838,7 +838,7 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
         // axi.AWPROT := omitted
         // axi.AWQOS := omitted
         // axi.AWREGION := omitted
-        axi.AWSIZE := AXI.Constants.Size.from(axi.DATA_WIDTH).U
+        axi.AWSIZE := AXI.Constants.Size.from(axi.DATA_WIDTH / 8).U
         axi.AWVALID := true.B
 
         when(axi.AWREADY) {
@@ -886,7 +886,7 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
         assert(axi.AWADDR(log2Ceil(opts.XLEN / 8)-1, 0) === 0.U)
         axi.AWBURST := AXI.Constants.Burst.INCR.U
         axi.AWLEN := 0.U
-        axi.AWSIZE := AXI.Constants.Size.from(axi.DATA_WIDTH).U
+        axi.AWSIZE := AXI.Constants.Size.from(axi.DATA_WIDTH / 8).U
         axi.AWVALID := ucSendStage === 0.U
         when(axi.AWVALID && axi.AWREADY) {
           ucSendStage := 1.U
