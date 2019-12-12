@@ -314,9 +314,6 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
 
   retireNum := 0.U
 
-  val canRetire = Wire(Vec(coredef.RETIRE_NUM, Bool()))
-  val isBranch = Wire(Vec(coredef.RETIRE_NUM, Bool()))
-
   // Default: no branch if nothing is retired
   toCtrl.branch.nofire()
   toCtrl.tval := DontCare
@@ -327,68 +324,89 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
   cdb.entries(coredef.UNIT_COUNT) := DontCare
   cdb.entries(coredef.UNIT_COUNT).valid := false.B
 
-  // Compute if we can retire a certain instruction
-  for(idx <- (0 until coredef.RETIRE_NUM)) {
-    val info = rob(retirePtr +% idx.U)
-    isBranch(idx) := info.retirement.info.branch.branched()
-
-    if(idx == 0) {
-      // Allow retirement only after mem access is finished
-      canRetire(idx) := info.valid && (memAccSucc || info.retirement.info.mem.isNoop())
-    } else {
-      // Only allow mem ops in the first retire slot
-      canRetire(idx) := info.valid && canRetire(idx - 1) && !isBranch(idx-1) && info.retirement.info.mem.isNoop()
+  when(!rob(retirePtr).valid) {
+    // First one invalid, cannot retire anything
+    retireNum := 0.U
+    toCtrl.branch.nofire()
+    for(rwp <- rw) {
+      rwp.addr := 0.U
+      rwp.data := DontCare
     }
-
-    // Short-circuit long-path in idx == 0, l1d stall -> ctrl pc -> l1i
-    // to avoid depending on l1d signals
-    if(idx == 0) {
-      when(info.valid) {
-        when(!info.retirement.info.mem.isNoop()) {
-          toCtrl.branch.nofire()
-        }.otherwise {
-          toCtrl.branch := info.retirement.info.branch
-        }
-      }
+  }.elsewhen(!rob(retirePtr).retirement.info.mem.isNoop()) {
+    // Is memory operation, wait for memAccSucc
+    toCtrl.branch.nofire()
+    for(rwp <- rw) {
+      rwp.addr := 0.U
+      rwp.data := DontCare
     }
-
-    when(canRetire(idx)) {
-      rw(idx).addr := info.retirement.instr.instr.instr.getRd
-      rw(idx).data := info.retirement.info.wb
-      // Branching. canRetire(idx) -> \forall i < idx, !isBranch(i)
-      // So we can safely sets toCtrl.branch to the last valid branch info
-
-      if(idx != 0) {
-        toCtrl.branch := info.retirement.info.branch
-      }
-
-      when(info.retirement.info.branch.ex =/= ExReq.none) {
-        // Don't write-back exceptioned instr
-        rw(idx).addr := 0.U
-      }
-
-      toCtrl.nepc := info.retirement.instr.instr.npc
-      when(info.retirement.info.branch.ex === ExReq.ex) {
-        toCtrl.tval := info.retirement.info.wb
-        toCtrl.nepc := info.retirement.instr.instr.addr
-      }
-
-      info.valid := false.B
-
-      retireNum := (1+idx).U
-
-      if(idx == 0) {
-        when(memAccSucc && memAccWB) {
-          cdb.entries(coredef.UNIT_COUNT).name := info.retirement.instr.rdname
-          cdb.entries(coredef.UNIT_COUNT).data := memAccData
-          cdb.entries(coredef.UNIT_COUNT).valid := true.B
-          rw(idx).data := memAccData
-        }
+    when(memAccSucc) {
+      retireNum := 1.U
+      rob(retirePtr).valid := false.B
+      retirePtr := retirePtr +% 1.U
+      when(memAccWB) {
+        cdb.entries(coredef.UNIT_COUNT).name := rob(retirePtr).retirement.instr.rdname
+        cdb.entries(coredef.UNIT_COUNT).data := memAccData
+        cdb.entries(coredef.UNIT_COUNT).valid := true.B
+        rw(0).addr := rob(retirePtr).retirement.instr.instr.instr.getRd
+        rw(0).data := memAccData
       }
     }.otherwise {
-      rw(idx).addr := 0.U
-      rw(idx).data := DontCare
+      retireNum := 0.U
     }
+  }.otherwise {
+    val canRetire = Wire(Vec(coredef.RETIRE_NUM, Bool()))
+    val isBranch = Wire(Vec(coredef.RETIRE_NUM, Bool()))
+
+    // First only not memory operation, possible to do multiple retirement
+    // Compute if we can retire a certain instruction
+    for(idx <- (0 until coredef.RETIRE_NUM)) {
+      val info = rob(retirePtr +% idx.U)
+      isBranch(idx) := info.retirement.info.branch.branched()
+
+      if(idx == 0) {
+        canRetire(idx) := info.valid
+      } else {
+        // Only allow mem ops in the first retire slot
+        canRetire(idx) := info.valid && canRetire(idx - 1) && !isBranch(idx-1) && info.retirement.info.mem.isNoop()
+      }
+
+      when(canRetire(idx)) {
+        rw(idx).addr := info.retirement.instr.instr.instr.getRd
+        rw(idx).data := info.retirement.info.wb
+
+        // Branching. canRetire(idx) -> \forall i < idx, !isBranch(i)
+        // So we can safely sets toCtrl.branch to the last valid branch info
+        toCtrl.branch := info.retirement.info.branch
+
+        when(info.retirement.info.branch.ex =/= ExReq.none) {
+          // Don't write-back exceptioned instr
+          rw(idx).addr := 0.U
+        }
+
+        toCtrl.nepc := info.retirement.instr.instr.npc
+        when(info.retirement.info.branch.ex === ExReq.ex) {
+          toCtrl.tval := info.retirement.info.wb
+          toCtrl.nepc := info.retirement.instr.instr.addr
+        }
+
+        info.valid := false.B
+
+        retireNum := (1+idx).U
+
+        if(idx == 0) {
+        }
+      }.otherwise {
+        rw(idx).addr := 0.U
+        rw(idx).data := DontCare
+      }
+    }
+
+    // Asserts that at most one can branch
+    val branchMask = isBranch.asUInt() & canRetire.asUInt()
+    assert(!(branchMask & (branchMask-%1.U)).orR)
+
+    // Asserts that canRetire forms a tailing 1 sequence, e.g.: 00011111
+    assert(!(canRetire.asUInt & (canRetire.asUInt+%1.U)).orR)
   }
 
   // Mem opts
@@ -440,13 +458,6 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
   }.otherwise {
     toCtrl.intAck := toCtrl.int
   }
-
-  // Asserts that at most one can branch
-  val branchMask = isBranch.asUInt() & canRetire.asUInt()
-  assert(!(branchMask & (branchMask-%1.U)).orR)
-
-  // Asserts that canRetire forms a tailing 1 sequence, e.g.: 00011111
-  assert(!(canRetire.asUInt & (canRetire.asUInt+%1.U)).orR)
 
   // Flushing control
   when(toCtrl.ctrl.flush) {
