@@ -67,22 +67,6 @@ class UnitSel(
     u.io.pause := false.B
   }
 
-  val maxDepth = units.map(_.DEPTH).max
-  val noDelayUnitCount = units.count(_.DEPTH == 0)
-  val fifoDepth = if(maxDepth == 0) {
-    3
-  } else {
-    units.map(_.DEPTH).sum - maxDepth + units.size - noDelayUnitCount + 2
-  }
-
-  // One extra cell for asserting retireTail never reaches retireHead
-
-  println(s"UnitSel: with FIFO depth $fifoDepth")
-
-  val retireFifo = RegInit(VecInit(Seq.fill(fifoDepth)(Retirement.empty)))
-  val retireHead = RegInit(0.U(log2Ceil(fifoDepth).W))
-  val retireTail = RegInit(0.U(log2Ceil(fifoDepth).W))
-
   // Arbitration
   for(u <- units) {
     u.io.next := PipeInstr.empty
@@ -144,33 +128,62 @@ class UnitSel(
   }
 
   // Puts into retire FIFO 
-  var prevTail = retireTail
-  for(u <- units) {
-    val newTail = Wire(UInt(log2Ceil(fifoDepth).W))
-    newTail := prevTail
-    when(!u.io.stall && !u.io.retired.instr.vacant) {
-      retireFifo(prevTail) := Retirement.from(u.io)
-      newTail := Mux(prevTail === (fifoDepth-1).U, 0.U, prevTail +% 1.U)
+
+  val maxDepth = units.map(_.DEPTH).max
+  val noDelayUnitCount = units.count(_.DEPTH == 0)
+  val fifoDepth = units.map(_.DEPTH).sum - maxDepth + units.size - noDelayUnitCount + 2
+
+  // One extra cell for asserting retireTail never reaches retireHead
+
+  if(units.length == 1) {
+    println("UnitSel: Single unit")
+    retire := Retirement.from(units(0).io)
+    when(units(0).io.stall) {
+      retire := Retirement.empty
+    }
+  } else if(maxDepth == 0) {
+    println("UnitSel: All units have 0 delay")
+    retire := MuxCase(Retirement.empty, units.map(u => (
+      !u.io.stall && !u.io.retired.instr.vacant, Retirement.from(u.io)
+    )))
+  } else {
+    println(s"UnitSel: with FIFO depth $fifoDepth")
+
+    val retireFifo = RegInit(VecInit(Seq.fill(fifoDepth)(Retirement.empty)))
+    val retireHead = RegInit(0.U(log2Ceil(fifoDepth).W))
+    val retireTail = RegInit(0.U(log2Ceil(fifoDepth).W))
+
+    var prevTail = retireTail
+    for(u <- units) {
+      val newTail = Wire(UInt(log2Ceil(fifoDepth).W))
+      newTail := prevTail
+      when(!u.io.stall && !u.io.retired.instr.vacant) {
+        retireFifo(prevTail) := Retirement.from(u.io)
+        newTail := Mux(prevTail === (fifoDepth-1).U, 0.U, prevTail +% 1.U)
+      }
+
+      assert(prevTail === retireHead || newTail =/= retireHead)
+      prevTail = newTail
+    }
+    retireTail := prevTail
+
+    // Output
+
+    when(retireTail === retireHead) {
+      retire := Retirement.empty
+    }.otherwise {
+      retire := retireFifo(retireHead)
+      retireHead := Mux(retireHead === (fifoDepth-1).U, 0.U, retireHead +% 1.U)
     }
 
-    assert(prevTail === retireHead || newTail =/= retireHead)
-    prevTail = newTail
-  }
-  retireTail := prevTail
-
-  // Output
-
-  when(retireTail === retireHead) {
-    retire := Retirement.empty
-  }.otherwise {
-    retire := retireFifo(retireHead)
-    retireHead := Mux(retireHead === (fifoDepth-1).U, 0.U, retireHead +% 1.U)
+    when(ctrl.flush) {
+      retireHead := 0.U
+      retireTail := 0.U
+    }
   }
 
   // Flush
   when(ctrl.flush) {
-    retireHead := 0.U
-    retireTail := 0.U
     pipeInstrValid := false.B
   }
 }
