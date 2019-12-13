@@ -144,11 +144,20 @@ class UnitSel(
     }.otherwise {
       pipeRetire := Retirement.from(units(0).io)
     }
+    when(ctrl.flush) {
+      pipeRetire := Retirement.empty
+    }
   } else if(maxDepth == 0) {
     println("UnitSel: All units have 0 delay")
-    retire := RegNext(MuxCase(Retirement.empty, units.map(u => (
+    val pipeRetire = RegInit(Retirement.empty)
+    retire := pipeRetire
+    pipeRetire := MuxCase(Retirement.empty, units.map(u => (
       !u.io.stall && !u.io.retired.instr.vacant, Retirement.from(u.io)
-    ))))
+    )))
+
+    when(ctrl.flush) {
+      pipeRetire := Retirement.empty
+    }
   } else {
     println(s"UnitSel: with FIFO depth $fifoDepth")
 
