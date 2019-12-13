@@ -259,6 +259,7 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
   val targetAddr = addrs(target)
   val targetOps = ops(target)
   val targetIndex = targetAddr(INDEX_OFFSET_LENGTH-1, OFFSET_LENGTH)
+  val pipeTargetAddr = RegNext(targetAddr)
 
   val sameAddrRefilling = (0 until opts.CORE_COUNT * 2).foldLeft(false.B)(
     (acc, idx) => acc || misses(idx) && addrs(idx) === targetAddr
@@ -297,10 +298,11 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
 
   for((d, p) <- dc.iterator.zip(pendings.iterator)) {
     d.l2req := p
+    // TODO: investigate can we use pipeTargetAddr here
     when(pendingVictim) {
-      d.l2addr := pipeLookups(victim).tag ## targetAddr(INDEX_OFFSET_LENGTH-1, 0)
+      d.l2addr := pipeLookups(victim).tag ## pipeTargetAddr(INDEX_OFFSET_LENGTH-1, 0)
     }.otherwise {
-      d.l2addr := targetAddr
+      d.l2addr := pipeTargetAddr
     }
   }
 
