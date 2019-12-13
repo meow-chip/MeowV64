@@ -137,15 +137,18 @@ class UnitSel(
 
   if(units.length == 1) {
     println("UnitSel: Single unit")
-    retire := Retirement.from(units(0).io)
+    val pipeRetire = RegInit(Retirement.empty)
+    retire := pipeRetire
     when(units(0).io.stall) {
-      retire := Retirement.empty
+      pipeRetire := Retirement.empty
+    }.otherwise {
+      pipeRetire := Retirement.from(units(0).io)
     }
   } else if(maxDepth == 0) {
     println("UnitSel: All units have 0 delay")
-    retire := MuxCase(Retirement.empty, units.map(u => (
+    retire := RegNext(MuxCase(Retirement.empty, units.map(u => (
       !u.io.stall && !u.io.retired.instr.vacant, Retirement.from(u.io)
-    )))
+    ))))
   } else {
     println(s"UnitSel: with FIFO depth $fifoDepth")
 

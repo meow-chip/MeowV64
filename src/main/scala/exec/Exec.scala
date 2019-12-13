@@ -453,7 +453,7 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
   }
 
   // intAck
-  when(retireNext.retirement.info.mem.op =/= MemSeqAccOp.no) {
+  when(retireNext.valid && retireNext.retirement.info.mem.op =/= MemSeqAccOp.no) {
     toCtrl.intAck := false.B
   }.otherwise {
     toCtrl.intAck := toCtrl.int
