@@ -29,14 +29,12 @@ class ILine(val opts: L1Opts) extends Bundle {
 
   val tag = UInt(TAG_WIDTH.W)
   val valid = Bool()
-  val data = Vec(TRANSFER_COUNT, UInt(opts.TRANSFER_SIZE.W))
 }
 
 object ILine {
   def default(opts: L1Opts): ILine = {
     val ret = Wire(new ILine(opts))
     ret.tag := DontCare
-    ret.data := DontCare
     ret.valid := false.B
 
     ret
@@ -65,14 +63,21 @@ class L1IC(opts: L1Opts) extends MultiIOModule {
 
   assume(INDEX_WIDTH == log2Ceil(LINE_PER_ASSOC))
 
-  val stores = SyncReadMem(LINE_PER_ASSOC, Vec(opts.ASSOC, new ILine(opts)))
+  val TRANSFER_COUNT = opts.LINE_WIDTH * 8 / opts.TRANSFER_SIZE
+
+  val directories = Mem(LINE_PER_ASSOC, Vec(opts.ASSOC, new ILine(opts)))
+  val stores = SyncReadMem(LINE_PER_ASSOC, Vec(opts.ASSOC, Vec(TRANSFER_COUNT, UInt(opts.TRANSFER_SIZE.W))))
 
   val writerAddr = Wire(UInt(INDEX_WIDTH.W))
-  val writerData = Wire(new ILine(opts))
+  val writerDir = Wire(new ILine(opts))
+  val writerData = Wire(Vec(TRANSFER_COUNT, UInt(opts.TRANSFER_SIZE.W)))
   val writerMask = Wire(Vec(opts.ASSOC, Bool()))
 
+  directories.write(writerAddr, VecInit(Seq.fill(opts.ASSOC)(writerDir)), writerMask)
   stores.write(writerAddr, VecInit(Seq.fill(opts.ASSOC)(writerData)), writerMask)
+
   writerAddr := DontCare
+  writerDir := DontCare
   writerData := DontCare
   writerMask := VecInit(Seq.fill(opts.ASSOC)(false.B))
 
@@ -93,8 +98,10 @@ class L1IC(opts: L1Opts) extends MultiIOModule {
   }.otherwise {
     readingAddr := toCPU.addr
   }
-  val rawReadouts = stores.read(getIndex(readingAddr))
-  val savedReadouts = Reg(Vec(opts.ASSOC, new ILine(opts)))
+  val readouts = directories.read(getIndex(readingAddr))
+  val dataReadouts = stores.read(getIndex(readingAddr))
+  val hitMap = VecInit(readouts.map(r => r.valid && r.tag === getTag(readingAddr)))
+  val pipeHitMap = RegNext(hitMap)
 
   // Stage 2, data mux, refilling, reset
   val state = RegInit(S2State.rst)
@@ -106,14 +113,13 @@ class L1IC(opts: L1Opts) extends MultiIOModule {
     exitedAddr(opts.ADDR_WIDTH-1, OFFSET_WIDTH) === pipeAddr(opts.ADDR_WIDTH-1, OFFSET_WIDTH) &&
     RegNext(state) === S2State.refill
   )
-  val readouts = Mux(sameLineRAW && state === S2State.idle, savedReadouts, rawReadouts)
+  val savedLine = Reg(Vec(TRANSFER_COUNT, UInt(opts.TRANSFER_SIZE.W)))
 
   val rand = chisel3.util.random.LFSR(8)
   val victim = RegInit(0.U(log2Ceil(opts.ASSOC)))
 
   val rstCnt = RegInit(0.U(INDEX_WIDTH.W))
   val rstLine = Wire(new ILine(opts))
-  rstLine.data := 0.U.asTypeOf(rstLine.data)
   rstLine.tag := 0.U
   rstLine.valid := false.B
 
@@ -138,7 +144,7 @@ class L1IC(opts: L1Opts) extends MultiIOModule {
     rstCnt := rstCnt +% 1.U
 
     writerAddr := rstCnt
-    writerData := ILine.default(opts)
+    writerDir := ILine.default(opts)
     writerMask := VecInit(Seq.fill(opts.ASSOC)(true.B))
 
     when(rstCnt.andR()) {
@@ -154,11 +160,15 @@ class L1IC(opts: L1Opts) extends MultiIOModule {
   }.otherwise {
     switch(state) {
       is(S2State.idle) {
-        val hit = readouts.foldLeft(false.B)((acc, line) => acc || line.valid && line.tag === getTag(pipeAddr))
-        val rdata = MuxCase(0.U.asTypeOf(new ILine(opts).data), readouts.map(line => (line.valid && getTag(pipeAddr) === line.tag, line.data)))
+        val rdata = Mux1H(
+          dataReadouts.zipWithIndex.map({ case (line, idx) => pipeHitMap(idx) -> line })
+        )
 
         when(pipeRead) {
-          when(hit) {
+          when(sameLineRAW) {
+            toCPU.vacant := false.B
+            toCPU.data := savedLine(getTransferOffset(pipeAddr))
+          }.elsewhen(pipeHitMap.asUInt().orR) {
             toCPU.vacant := false.B
             toCPU.data := rdata(getTransferOffset(pipeAddr))
           }.otherwise {
@@ -177,20 +187,21 @@ class L1IC(opts: L1Opts) extends MultiIOModule {
         when(!toL2.stall) {
           val written = Wire(new ILine(opts))
           written.tag := getTag(pipeAddr)
-          written.data := toL2.data.asTypeOf(written.data)
           written.valid := true.B
 
           val victim = rand(ASSOC_IDX_WIDTH-1, 0)
           val mask = (0 until opts.ASSOC).map(_.U === victim)
 
+          val dataView = toL2.data.asTypeOf(writerData)
+
           writerAddr := getIndex(pipeAddr)
-          writerData := written
+          writerDir := written
           writerMask := mask
+          writerData := dataView
 
-          savedReadouts := rawReadouts
-          savedReadouts(victim) := written
+          savedLine := dataView
 
-          toCPU.data := written.data(getTransferOffset(pipeAddr))
+          toCPU.data := dataView(getTransferOffset(pipeAddr))
           toCPU.vacant := false.B
 
           nstate := S2State.idle
