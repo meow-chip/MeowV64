@@ -776,6 +776,7 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
       axi.ARBURST := AXI.Constants.Burst.INCR.U
       axi.ARID := reqTarget
       axi.ARLEN := 0.U
+      axi.ARSIZE := AXI.Constants.Size.from(axi.DATA_WIDTH / 8).U
 
       assume(axi.DATA_WIDTH == opts.XLEN)
 
