@@ -17,7 +17,7 @@ class BPTag(coredef: CoreDef, SIZE: Int) extends Bundle {
 
 object BPTag {
   def default(coredef: CoreDef, SIZE: Int): ILine = {
-    val ret = Wire(new ILine(opts))
+    val ret = Wire(new BPTag())
     ret.tag := DontCare
     ret.valid := false.B
 
@@ -56,18 +56,18 @@ class BPU(coredef: CoreDef, SIZE: Int, ASSOC: Int) extends MultiIOModule {
   val writerData = Wire(new BPEntry())
   val writerMask = Wire(Vec(ASSOC, Bool()))
 
-  directories.write(writerAddr, VecInit(Seq.fill(opts.ASSOC)(writerDir)), writerMask)
-  stores.write(writerAddr, VecInit(Seq.fill(opts.ASSOC)(writerData)), writerMask)
+  directories.write(writerAddr, VecInit(Seq.fill(ASSOC)(writerDir)), writerMask)
+  stores.write(writerAddr, VecInit(Seq.fill(ASSOC)(writerData)), writerMask)
 
   writerAddr := DontCare
   writerDir := DontCare
   writerData := DontCare
-  writerMask := VecInit(Seq.fill(opts.ASSOC)(false.B))
+  writerMask := VecInit(Seq.fill(ASSOC)(false.B))
 
   assume(INDEX_WIDTH == log2Ceil(LINE_PER_ASSOC))
 
-  val getIndex(addr: UInt) = addr(INDEX_OFFSET_WIDTH-1, OFFSET_WIDTH)
-  val getTag(addr: UInt) = addr(coredef.ADDR_WIDTH-1, INDEX_OFFSET_WIDTH)
+  def getIndex(addr: UInt) = addr(INDEX_OFFSET_WIDTH-1, OFFSET_WIDTH)
+  def getTag(addr: UInt) = addr(coredef.ADDR_WIDTH-1, INDEX_OFFSET_WIDTH)
   def toAligned(addr: UInt) = getTag(addr) ## getIndex(addr) ## 0.U(1.W) // The input address should be aligned anyway
 
   // Prediction part
