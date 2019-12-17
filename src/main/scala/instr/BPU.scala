@@ -16,8 +16,8 @@ class BPTag(coredef: CoreDef, SIZE: Int) extends Bundle {
 }
 
 object BPTag {
-  def default(coredef: CoreDef, SIZE: Int): BPTag = {
-    val ret = Wire(new BPTag())
+  def empty(coredef: CoreDef, SIZE: Int): BPTag = {
+    val ret = Wire(new BPTag(coredef, SIZE))
     ret.tag := DontCare
     ret.valid := false.B
 
@@ -49,11 +49,11 @@ class BPU(coredef: CoreDef, SIZE: Int, ASSOC: Int) extends MultiIOModule {
   val INDEX_WIDTH = INDEX_OFFSET_WIDTH - OFFSET_WIDTH
 
   val directories = Mem(LINE_PER_ASSOC, Vec(ASSOC, new BPTag(coredef, SIZE)))
-  val stores = SyncReadMem(LINE_PER_ASSOC, Vec(ASSOC, new BPEntry()))
+  val stores = SyncReadMem(LINE_PER_ASSOC, Vec(ASSOC, BPEntry()))
 
   val writerAddr = Wire(UInt(INDEX_WIDTH.W))
-  val writerDir = Wire(new BPTag())
-  val writerData = Wire(new BPEntry())
+  val writerDir = Wire(BPTag.empty(coredef, SIZE))
+  val writerData = Wire(BPEntry())
   val writerMask = Wire(Vec(ASSOC, Bool()))
 
   directories.write(writerAddr, VecInit(Seq.fill(ASSOC)(writerDir)), writerMask)
@@ -82,20 +82,20 @@ class BPU(coredef: CoreDef, SIZE: Int, ASSOC: Int) extends MultiIOModule {
   val rdata = Mux1H(dataReadouts.zipWithIndex.map({ case (line, idx) => pipeHitMap(idx) -> line }))
 
   when(pipeQuery) {
-    when(pipeHitMap.asUInt().orR {
-            toFetch.taken := (rdata === BPEntry.t) || (rdata === BPEntry.wt)
-         }).otherwise {
-            val victim = rand(ASSOC_IDX_WIDTH-1, 0)
-            val mask = (0 until ASSOC).map(_.U === victim)
-            val written = Wire(new BPTag())
-            written.tag := getTag(pipePC)
-            written.valid := true.B
-            writerAddr := getIndex(pipePC)
-            writerDir := written
-            writerMask := mask
-            writerData := BPEntry.wt
+    when(pipeHitMap.asUInt().orR) {
+      toFetch.taken := (rdata === BPEntry.t) || (rdata === BPEntry.wt)
+    }.otherwise {
+      val victim = rand(ASSOC_IDX_WIDTH-1, 0)
+      val mask = (0 until ASSOC).map(_.U === victim)
+      val written = Wire(new BPTag(coredef, SIZE))
+      written.tag := getTag(pipePC)
+      written.valid := true.B
+      writerAddr := getIndex(pipePC)
+      writerDir := written
+      writerMask := mask
+      writerData := BPEntry.wt
 
-            toFetch.taken := false.B
+      toFetch.taken := false.B
     }
   }
 
@@ -112,7 +112,7 @@ class BPU(coredef: CoreDef, SIZE: Int, ASSOC: Int) extends MultiIOModule {
   when(pipeUpd) {
     val victim = rand(ASSOC_IDX_WIDTH-1, 0)
     val mask = (0 until ASSOC).map(_.U === victim)
-    val written = Wire(new BPTag())
+    val written = Wire(new BPTag(coredef, SIZE))
     written.tag := getTag(pipeUpdPC)
     written.valid := true.B
     writerAddr := getIndex(pipeUpdPC)
