@@ -4,7 +4,7 @@ import chisel3._
 import _root_.cache._
 import _root_.core._
 import _root_.data._
-import chisel3.util.log2Ceil
+import chisel3.util._
 import chisel3.experimental.ChiselEnum
 
 class BPTag(coredef: CoreDef, SIZE: Int) extends Bundle {
@@ -16,7 +16,7 @@ class BPTag(coredef: CoreDef, SIZE: Int) extends Bundle {
 }
 
 object BPTag {
-  def default(coredef: CoreDef, SIZE: Int): ILine = {
+  def default(coredef: CoreDef, SIZE: Int): BPTag = {
     val ret = Wire(new BPTag())
     ret.tag := DontCare
     ret.valid := false.B
@@ -49,9 +49,9 @@ class BPU(coredef: CoreDef, SIZE: Int, ASSOC: Int) extends MultiIOModule {
   val INDEX_WIDTH = INDEX_OFFSET_WIDTH - OFFSET_WIDTH
 
   val directories = Mem(LINE_PER_ASSOC, Vec(ASSOC, new BPTag(coredef, SIZE)))
-  val stores = SyncReadMem(LINE_PAER_ASSOC, Vec(ASSOC, new BPEntry()))
+  val stores = SyncReadMem(LINE_PER_ASSOC, Vec(ASSOC, new BPEntry()))
 
-  val writerAddr = Wire(UINT(INDEX_WIDTH.W))
+  val writerAddr = Wire(UInt(INDEX_WIDTH.W))
   val writerDir = Wire(new BPTag())
   val writerData = Wire(new BPEntry())
   val writerMask = Wire(Vec(ASSOC, Bool()))
@@ -71,6 +71,7 @@ class BPU(coredef: CoreDef, SIZE: Int, ASSOC: Int) extends MultiIOModule {
   def toAligned(addr: UInt) = getTag(addr) ## getIndex(addr) ## 0.U(1.W) // The input address should be aligned anyway
 
   // Prediction part
+  val rand = chisel3.util.random.LFSR(8)
   val readouts = directories.read(getIndex(toFetch.pc))
   val dataReadouts = stores.read(getIndex(toFetch.pc))
   val hitMap = VecInit(readouts.map(r => r.valid && r.tag === getTag(toFetch.pc)))
