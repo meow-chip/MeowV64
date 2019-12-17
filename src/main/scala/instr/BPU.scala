@@ -31,14 +31,14 @@ object BPEntry extends ChiselEnum {
 
 class BPU(coredef: CoreDef, SIZE: Int, ASSOC: Int) extends MultiIOModule {
   val toFetch = IO(new Bundle{
-                     val pc = Input(UInt(coredef.XLEN.W))
-                     val query = Input(Bool())
-                     val taken = Output(Bool())
+                    val query = Input(Bool()) // when query is true, BPU returns the prediction
+                    val pc = Input(UInt(coredef.XLEN.W)) // the address (pc) of the query branch 
+                    val taken = Output(Bool()) // the query result: will the branch be taken
                    })
   val toCtrl = IO(new Bundle{
-                    val upd = Input(Bool())
-                    val actpc = Input(UInt(coredef.XLEN.W))
-                    val fired = Input(Bool())
+                    val upd = Input(Bool()) // when upd is true, BPU updates the branch history table
+                    val actpc = Input(UInt(coredef.XLEN.W)) // pc of the branch which is gonna to update
+                    val fired = Input(Bool()) // does the branch be taken
                   })
 
   val LINE_PER_ASSOC = SIZE / ASSOC
