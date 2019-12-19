@@ -21,8 +21,8 @@ abstract class CoreDef {
   val UNIT_COUNT: Int = 3
   val RESERVATION_STATION_DEPTHS = Seq(
     4,
-    4,
-    4
+    2,
+    2
   )
 
   val CYCLE_PER_TIMEUNIT: Int = 50 // We're running on 50M
@@ -35,25 +35,25 @@ abstract class CoreDef {
     val CORE_COUNT: Int = 1
     val LINE_WIDTH: Int = outer.L12_LINE_WIDTH
     val TRANSFER_SIZE: Int = 0 // Actually ignored
-    val SIZE: Int = 32768 // 32K L2
+    val SIZE: Int = 16384 // 32K L2
     val WB_DEPTH: Int = 4
     val XLEN: Int = outer.XLEN
   } with L2Opts
 
   object L1I extends {
     val ADDR_WIDTH: Int = outer.ADDR_WIDTH
-    val ASSOC: Int = 4
+    val ASSOC: Int = 2
     val LINE_WIDTH: Int = outer.L12_LINE_WIDTH
-    val SIZE: Int = 4096 // 4K L1 I
+    val SIZE: Int = 2048 // 4K L1 I
     val TRANSFER_SIZE: Int = FETCH_NUM * 16
     val XLEN: Int = outer.XLEN
   } with L1Opts
 
   object L1D extends {
     val ADDR_WIDTH: Int = outer.ADDR_WIDTH
-    val ASSOC: Int = 4
+    val ASSOC: Int = 2
     val LINE_WIDTH: Int = outer.L12_LINE_WIDTH
-    val SIZE: Int = 4096 // 4K L1 D
+    val SIZE: Int = 2048 // 4K L1 D
     val TRANSFER_SIZE: Int = outer.XLEN
     val XLEN: Int = outer.XLEN
 

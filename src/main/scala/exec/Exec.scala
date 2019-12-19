@@ -111,7 +111,7 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
       Seq(
         Module(new ALU).suggestName("ALU"),
         Module(new Mul).suggestName("Mul"),
-        Module(new Div(4)).suggestName("Div")
+        Module(new Div(16)).suggestName("Div")
       ),
       instr => {
         val regALU = (
