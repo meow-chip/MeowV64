@@ -89,8 +89,6 @@ class L1IC(opts: L1Opts) extends MultiIOModule {
   // Stage 1, tag fetch, data fetch
   val pipeRead = RegInit(false.B)
   val pipeAddr = RegInit(0.U(opts.ADDR_WIDTH.W))
-  val exitedRead = RegInit(false.B)
-  val exitedAddr = RegInit(0.U(opts.ADDR_WIDTH.W))
 
   val readingAddr = Wire(UInt(opts.ADDR_WIDTH.W))
   when(toCPU.stall) {
@@ -101,6 +99,7 @@ class L1IC(opts: L1Opts) extends MultiIOModule {
   val readouts = directories.read(getIndex(readingAddr))
   val dataReadouts = stores.read(getIndex(readingAddr))
   val hitMap = VecInit(readouts.map(r => r.valid && r.tag === getTag(readingAddr)))
+  val pipeReadouts = RegNext(readouts)
   val pipeHitMap = RegNext(hitMap)
 
   // Stage 2, data mux, refilling, reset
@@ -108,11 +107,8 @@ class L1IC(opts: L1Opts) extends MultiIOModule {
   val nstate = Wire(S2State())
 
   // To prevents RAW
-  val sameLineRAW = (
-    exitedRead &&
-    exitedAddr(opts.ADDR_WIDTH-1, OFFSET_WIDTH) === pipeAddr(opts.ADDR_WIDTH-1, OFFSET_WIDTH) &&
-    RegNext(state) === S2State.refill
-  )
+  val sameLineRAW = RegInit(false.B)
+  val justVictimized = RegInit(false.B)
   val savedLine = Reg(Vec(TRANSFER_COUNT, UInt(opts.TRANSFER_SIZE.W)))
 
   val rand = chisel3.util.random.LFSR(8)
@@ -133,8 +129,8 @@ class L1IC(opts: L1Opts) extends MultiIOModule {
   when(!toCPU.stall) {
     pipeRead := toCPU.read
     pipeAddr := toCPU.addr
-    exitedAddr := pipeAddr
-    exitedRead := pipeRead
+    sameLineRAW := false.B
+    justVictimized := false.B
   }
 
   val waitBufAddr = RegInit(0.U(opts.ADDR_WIDTH.W))
@@ -156,7 +152,6 @@ class L1IC(opts: L1Opts) extends MultiIOModule {
     nstate := S2State.rst
     rstCnt := 0.U
     pipeRead := false.B
-    exitedRead := false.B
   }.otherwise {
     switch(state) {
       is(S2State.idle) {
@@ -168,7 +163,7 @@ class L1IC(opts: L1Opts) extends MultiIOModule {
           when(sameLineRAW) {
             toCPU.vacant := false.B
             toCPU.data := savedLine(getTransferOffset(pipeAddr))
-          }.elsewhen(pipeHitMap.asUInt().orR) {
+          }.elsewhen(!justVictimized && pipeHitMap.asUInt().orR) {
             toCPU.vacant := false.B
             toCPU.data := rdata(getTransferOffset(pipeAddr))
           }.otherwise {
@@ -200,6 +195,8 @@ class L1IC(opts: L1Opts) extends MultiIOModule {
           writerData := dataView
 
           savedLine := dataView
+          sameLineRAW := (getTag(toCPU.addr) ## getIndex(toCPU.addr)) === (getTag(pipeAddr) ## getIndex(pipeAddr))
+          justVictimized := pipeReadouts(victim).valid && (getTag(toCPU.addr) ## getIndex(toCPU.addr)) === (pipeReadouts(victim).tag ## getIndex(pipeAddr))
 
           toCPU.data := dataView(getTransferOffset(pipeAddr))
           toCPU.vacant := false.B
