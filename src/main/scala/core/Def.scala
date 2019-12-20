@@ -9,7 +9,7 @@ abstract class CoreDef {
   val ISSUE_NUM: Int = 2
   val RETIRE_NUM: Int = 2
   val ISSUE_FIFO_DEPTH: Int = FETCH_NUM * 4
-  val INIT_VEC: BigInt = BigInt("FFFFFFFF8000", 16)
+  val INIT_VEC: BigInt = BigInt("FFFF20000000", 16)
 
   val HART_ID: Int = 0
 
