@@ -192,6 +192,10 @@ class LSU(override implicit val coredef: CoreDef) extends ExecUnit(1, new LSUExt
     }.otherwise {
       info.branch.nofire()
       info.mem := ext.mem
+
+      when(ext.mem.addr(coredef.ADDR_WIDTH-2) === false.B) {
+        ext.mem.addr(coredef.ADDR_WIDTH-1) := false.B
+      }
     }
 
     info
