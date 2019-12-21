@@ -9,7 +9,10 @@ import exec.Exec
 
 class Core(val coredef: CoreDef = DefaultDef) extends Module {
   val io = IO(new Bundle {
-    val axi = new AXI(coredef.XLEN, coredef.ADDR_WIDTH)
+    val iaxi = new AXI(coredef.XLEN, coredef.ADDR_WIDTH)
+    val daxi = new AXI(coredef.XLEN, coredef.ADDR_WIDTH)
+    val uaxi = new AXI(coredef.XLEN, coredef.ADDR_WIDTH)
+
     val eint = Input(Bool())
 
     // Debug
@@ -20,14 +23,14 @@ class Core(val coredef: CoreDef = DefaultDef) extends Module {
 
   val ctrl = Module(new Ctrl(coredef))
   
-  // Caches
-  val l2 = Module(new L2Cache(coredef.L2))
-  val l1i = Module(new L1IC(coredef.L1I))
-  val l1d = Module(new L1DC(coredef.L1D))
+  // AXI adapters
+  val icpass = Module(new L1ICPass(coredef.L1I))
+  val dcpass = Module(new L1DCPass(coredef.L1D))
+  val ucpass = Module(new UCPass(coredef.L1D))
 
-  l2.axi <> io.axi
-  l2.ic(0) <> l1i.toL2
-  l2.dc(0) <> l1d.toL2
+  icpass.axi <> io.iaxi
+  dcpass.axi <> io.daxi
+  ucpass.axi <> io.uaxi
 
   val fetch = Module(new InstrFetch(coredef))
   val exec = Module(new Exec()(coredef))
@@ -36,7 +39,7 @@ class Core(val coredef: CoreDef = DefaultDef) extends Module {
   val (csrWriter, csr) = CSR.gen(coredef.XLEN, coredef.HART_ID)
 
   fetch.toCtrl.irst := false.B // For FENCE.I
-  fetch.toIC <> l1i.toCPU
+  fetch.toIC <> icpass.toCPU
   fetch.toCtrl.pc <> ctrl.io.pc
   fetch.toCtrl.skip <> ctrl.io.skip
   fetch.toCtrl.ctrl <> ctrl.io.fetch
@@ -48,10 +51,11 @@ class Core(val coredef: CoreDef = DefaultDef) extends Module {
   exec.toCtrl.ctrl <> ctrl.io.exec
   exec.csrWriter <> csrWriter
 
-  exec.toDC.r <> l1d.r
-  exec.toDC.w <> l1d.w
-  exec.toDC.fs <> l1d.fs
-  exec.toDC.u <> l2.directs(0)
+  exec.toDC.r <> dcpass.r
+  exec.toDC.w <> dcpass.w
+  exec.toDC.fs <> dcpass.fs
+
+  exec.toDC.u <> ucpass.toCPU
   
   ctrl.br.req <> exec.toCtrl.branch
   ctrl.br.tval <> exec.toCtrl.tval
