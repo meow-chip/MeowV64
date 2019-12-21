@@ -531,6 +531,12 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
             targetAddr,
             L2DirEntry.withAddr(opts, targetAddr).editState(target, newState)
           )
+        }.otherwise {
+          writeDir(
+            victim,
+            targetAddr,
+            L2DirEntry.withAddr(opts, targetAddr)
+          )
         }
 
         writeData(

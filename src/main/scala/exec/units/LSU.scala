@@ -194,7 +194,11 @@ class LSU(override implicit val coredef: CoreDef) extends ExecUnit(1, new LSUExt
       info.mem := ext.mem
 
       when(ext.mem.addr(coredef.ADDR_WIDTH-2) === false.B) {
-        ext.mem.addr(coredef.ADDR_WIDTH-1) := false.B
+        val splashed = ext.mem.addr.asBools
+        val edited = Wire(Vec(coredef.XLEN, Bool()))
+        edited := splashed
+        edited(coredef.ADDR_WIDTH-1) := false.B
+        info.mem.addr := edited.asUInt()
       }
     }
 

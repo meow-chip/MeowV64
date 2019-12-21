@@ -19,7 +19,7 @@ class ICPort(val opts: L1Opts) extends Bundle {
 }
 
 object S2State extends ChiselEnum {
-  val rst, idle, refill = Value
+  val rst, idle, refill, refilled = Value
 }
 
 class ILine(val opts: L1Opts) extends Bundle {
@@ -101,15 +101,11 @@ class L1IC(opts: L1Opts) extends MultiIOModule {
   val hitMap = VecInit(readouts.map(r => r.valid && r.tag === getTag(readingAddr)))
   val pipeReadouts = RegNext(readouts)
   val pipeHitMap = RegNext(hitMap)
+  assert((hitMap.asUInt() & (hitMap.asUInt() -% 1.U)) === 0.U)
 
   // Stage 2, data mux, refilling, reset
   val state = RegInit(S2State.rst)
   val nstate = Wire(S2State())
-
-  // To prevents RAW
-  val sameLineRAW = RegInit(false.B)
-  val justVictimized = RegInit(false.B)
-  val savedLine = Reg(Vec(TRANSFER_COUNT, UInt(opts.TRANSFER_SIZE.W)))
 
   val rand = chisel3.util.random.LFSR(8)
   val victim = RegInit(0.U(log2Ceil(opts.ASSOC)))
@@ -129,81 +125,87 @@ class L1IC(opts: L1Opts) extends MultiIOModule {
   when(!toCPU.stall) {
     pipeRead := toCPU.read
     pipeAddr := toCPU.addr
-    sameLineRAW := false.B
-    justVictimized := false.B
   }
 
   val waitBufAddr = RegInit(0.U(opts.ADDR_WIDTH.W))
   val waitBufFull = RegInit(false.B)
+  val pipeOutput = Reg(toCPU.data.cloneType)
 
-  when(state === S2State.rst) {
-    rstCnt := rstCnt +% 1.U
+  switch(state) {
+    is(S2State.rst) {
+      rstCnt := rstCnt +% 1.U
 
-    writerAddr := rstCnt
-    writerDir := ILine.default(opts)
-    writerMask := VecInit(Seq.fill(opts.ASSOC)(true.B))
+      writerAddr := rstCnt
+      writerDir := ILine.default(opts)
+      writerMask := VecInit(Seq.fill(opts.ASSOC)(true.B))
 
-    when(rstCnt.andR()) {
-      // Omit current request
-      toCPU.vacant := true.B
-      nstate := S2State.idle
+      when(rstCnt.andR()) {
+        // Omit current request
+        toCPU.vacant := true.B
+        nstate := S2State.idle
+      }
     }
-  }.elsewhen(toCPU.rst) {
-    nstate := S2State.rst
-    rstCnt := 0.U
-    pipeRead := false.B
-  }.otherwise {
-    switch(state) {
-      is(S2State.idle) {
-        val rdata = Mux1H(
-          dataReadouts.zipWithIndex.map({ case (line, idx) => pipeHitMap(idx) -> line })
-        )
+    is(S2State.idle) {
+      val rdata = Mux1H(
+        dataReadouts.zipWithIndex.map({ case (line, idx) => pipeHitMap(idx) -> line })
+      )
 
-        when(pipeRead) {
-          when(sameLineRAW) {
-            toCPU.vacant := false.B
-            toCPU.data := savedLine(getTransferOffset(pipeAddr))
-          }.elsewhen(!justVictimized && pipeHitMap.asUInt().orR) {
-            toCPU.vacant := false.B
-            toCPU.data := rdata(getTransferOffset(pipeAddr))
-          }.otherwise {
-            nstate := S2State.refill
-          }
-        }.otherwise {
-          toCPU.vacant := true.B
-          nstate := S2State.idle
-        }
-      }
-
-      is(S2State.refill) {
-        toL2.addr := toAligned(pipeAddr)
-        toL2.read := true.B
-
-        when(!toL2.stall) {
-          val written = Wire(new ILine(opts))
-          written.tag := getTag(pipeAddr)
-          written.valid := true.B
-
-          val victim = rand(ASSOC_IDX_WIDTH-1, 0)
-          val mask = (0 until opts.ASSOC).map(_.U === victim)
-
-          val dataView = toL2.data.asTypeOf(writerData)
-
-          writerAddr := getIndex(pipeAddr)
-          writerDir := written
-          writerMask := mask
-          writerData := dataView
-
-          savedLine := dataView
-          sameLineRAW := (getTag(toCPU.addr) ## getIndex(toCPU.addr)) === (getTag(pipeAddr) ## getIndex(pipeAddr))
-          justVictimized := pipeReadouts(victim).valid && (getTag(toCPU.addr) ## getIndex(toCPU.addr)) === (pipeReadouts(victim).tag ## getIndex(pipeAddr))
-
-          toCPU.data := dataView(getTransferOffset(pipeAddr))
+      when(pipeRead) {
+        when(pipeHitMap.asUInt().orR) {
           toCPU.vacant := false.B
+          toCPU.data := rdata(getTransferOffset(pipeAddr))
+        }.otherwise {
+          nstate := S2State.refill
+        }
+      }.otherwise {
+        toCPU.vacant := true.B
 
+        when(toCPU.rst) {
+          nstate := S2State.rst
+          rstCnt := 0.U
+          pipeRead := false.B
+        }.otherwise {
           nstate := S2State.idle
         }
       }
+    }
+
+    is(S2State.refill) {
+      toL2.addr := toAligned(pipeAddr)
+      toL2.read := true.B
+
+      when(!toL2.stall) {
+        val written = Wire(new ILine(opts))
+        written.tag := getTag(pipeAddr)
+        written.valid := true.B
+
+        val victim = rand(ASSOC_IDX_WIDTH-1, 0)
+        val mask = (0 until opts.ASSOC).map(_.U === victim)
+
+        val dataView = toL2.data.asTypeOf(writerData)
+
+        writerAddr := getIndex(pipeAddr)
+        writerDir := written
+        writerMask := mask
+        writerData := dataView
+
+        pipeOutput := dataView(getTransferOffset(pipeAddr))
+
+        nstate := S2State.refilled
+      }
+    }
+
+    is(S2State.refilled) {
+      when(toCPU.rst) {
+        nstate := S2State.rst
+        rstCnt := 0.U
+        pipeRead := false.B
+      }.otherwise {
+        nstate := S2State.idle
+      }
+
+      toCPU.data := pipeOutput
+      toCPU.vacant := false.B
     }
   }
 }
