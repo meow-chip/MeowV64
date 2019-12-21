@@ -18,7 +18,7 @@ class L1DCPass(val opts: L1DOpts) extends MultiIOModule {
 
   val axi = IO(new AXI(opts.XLEN))
 
-  axi := 0.U.asTypeOf(axi)
+  axi <> 0.U.asTypeOf(axi)
 
   fs.wbufClear := true.B
 

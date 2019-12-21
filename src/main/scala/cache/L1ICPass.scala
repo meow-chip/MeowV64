@@ -15,9 +15,17 @@ class L1ICPass(val opts: L1Opts) extends MultiIOModule {
 
   val axi = IO(new AXI(opts.XLEN))
 
-  axi := 0.U.asTypeOf(axi)
+  axi <> 0.U.asTypeOf(axi)
 
-  // Silently ignores toCPU.rst
+  val pipeRead = RegInit(false.B)
+  val pipeAddr = Reg(UInt(opts.ADDR_WIDTH.W))
+
+  when(!toCPU.stall) {
+    pipeRead := toCPU.read && !toCPU.rst
+    pipeAddr := toCPU.addr
+  }
+
+  toCPU.vacant := !pipeRead
 
   // Reader
   object RState extends ChiselEnum {
@@ -30,14 +38,14 @@ class L1ICPass(val opts: L1Opts) extends MultiIOModule {
   nrstate := rstate
   toCPU.stall := nrstate =/= RState.idle
 
-  val aligned = toCPU.addr(opts.ADDR_WIDTH-1, 3)
-  val offset = toCPU.addr(2)
+  val aligned = pipeAddr(opts.ADDR_WIDTH-1, 3) ## 0.U(3.W)
+  val offset = pipeAddr(2)
 
   toCPU.data := Mux(offset, axi.RDATA(63, 32), axi.RDATA(31, 0))
 
   switch(rstate) {
     is(RState.idle) {
-      when(toCPU.read) {
+      when(pipeRead) {
         nrstate := RState.req
       }
     }
