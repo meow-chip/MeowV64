@@ -55,6 +55,7 @@ class L1ICPass(val opts: L1Opts) extends MultiIOModule {
       axi.ARVALID := true.B
       axi.ARSIZE := AXI.Constants.Size.S8.U
       axi.ARLEN := 0.U
+      axi.ARBURST := AXI.Constants.Burst.INCR.U
 
       when(axi.ARREADY) {
         nrstate := RState.data

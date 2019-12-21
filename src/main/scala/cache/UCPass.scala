@@ -43,6 +43,7 @@ class UCPass(val opts: L1DOpts) extends MultiIOModule {
       axi.ARVALID := true.B
       axi.ARSIZE := AXI.Constants.Size.S8.U
       axi.ARLEN := 0.U
+      axi.ARBURST := AXI.Constants.Burst.INCR.U
 
       when(axi.ARREADY) {
         nrstate := RState.data
@@ -79,6 +80,7 @@ class UCPass(val opts: L1DOpts) extends MultiIOModule {
       axi.AWVALID := true.B
       axi.AWSIZE := AXI.Constants.Size.S8.U
       axi.AWLEN := 0.U
+      axi.AWBURST := AXI.Constants.Burst.INCR.U
 
       when(axi.AWREADY) {
         nwstate := WState.data
@@ -91,6 +93,13 @@ class UCPass(val opts: L1DOpts) extends MultiIOModule {
       axi.WLAST := true.B
       axi.WVALID := true.B
       when(axi.WVALID) {
+        nwstate := WState.resp
+      }
+    }
+
+    is(WState.resp) {
+      axi.BREADY := true.B
+      when(axi.BVALID) {
         nwstate := WState.idle
       }
     }

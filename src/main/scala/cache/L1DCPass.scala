@@ -27,6 +27,14 @@ class L1DCPass(val opts: L1DOpts) extends MultiIOModule {
     val idle, req, data = Value;
   }
 
+  val pipeRead = RegInit(false.B)
+  val pipeAddr = Reg(UInt(opts.ADDR_WIDTH.W))
+
+  when(!r.stall) {
+    pipeRead := r.read
+    pipeAddr := r.addr
+  }
+
   val rstate = RegInit(RState.idle)
   val nrstate = Wire(RState())
   rstate := nrstate
@@ -37,16 +45,17 @@ class L1DCPass(val opts: L1DOpts) extends MultiIOModule {
 
   switch(rstate) {
     is(RState.idle) {
-      when(r.read) {
+      when(pipeRead) {
         nrstate := RState.req
       }
     }
 
     is(RState.req) {
-      axi.ARADDR := r.addr
+      axi.ARADDR := pipeAddr
       axi.ARVALID := true.B
       axi.ARSIZE := AXI.Constants.Size.S8.U
       axi.ARLEN := 0.U
+      axi.ARBURST := AXI.Constants.Burst.INCR.U
 
       when(axi.ARREADY) {
         nrstate := RState.data
@@ -80,10 +89,11 @@ class L1DCPass(val opts: L1DOpts) extends MultiIOModule {
     }
 
     is(WState.req) {
-      axi.AWADDR := r.addr
+      axi.AWADDR := w.addr
       axi.AWVALID := true.B
       axi.AWSIZE := AXI.Constants.Size.S8.U
       axi.AWLEN := 0.U
+      axi.AWBURST := AXI.Constants.Burst.INCR.U
 
       when(axi.AWREADY) {
         nwstate := WState.data
@@ -96,6 +106,13 @@ class L1DCPass(val opts: L1DOpts) extends MultiIOModule {
       axi.WLAST := true.B
       axi.WVALID := true.B
       when(axi.WVALID) {
+        nwstate := WState.resp
+      }
+    }
+
+    is(WState.resp) {
+      axi.BREADY := true.B
+      when(axi.BVALID) {
         nwstate := WState.idle
       }
     }
