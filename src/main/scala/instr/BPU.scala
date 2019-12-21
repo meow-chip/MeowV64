@@ -7,17 +7,17 @@ import _root_.data._
 import chisel3.util._
 import chisel3.experimental.ChiselEnum
 
-class BPTag(coredef: CoreDef, SIZE: Int) extends Bundle {
+class BPTag(val ADDR_WIDTH: Int, val SIZE: Int) extends Bundle {
   val INDEX_OFFSET_WIDTH = log2Ceil(SIZE)
-  val TAG_WIDTH = coredef.ADDR_WIDTH - INDEX_OFFSET_WIDTH
+  val TAG_WIDTH = ADDR_WIDTH - INDEX_OFFSET_WIDTH
 
   val tag = UInt(TAG_WIDTH.W)
   val valid = Bool()
 }
 
 object BPTag {
-  def empty(coredef: CoreDef, SIZE: Int): BPTag = {
-    val ret = Wire(new BPTag(coredef, SIZE))
+  def empty(ADDR_WIDTH: Int, SIZE: Int): BPTag = {
+    val ret = Wire(new BPTag(ADDR_WIDTH, SIZE))
     ret.tag := DontCare
     ret.valid := false.B
 
@@ -25,130 +25,126 @@ object BPTag {
   }
 }
 
-object BPEntry extends ChiselEnum {
-  val t, wt, wnt, nt = Value
+class BPEntry(val BIT: Int) extends Bundle {
+  val entry = UInt(BIT.W)
+
+  def taken() = {
+    val upd = Wire(new BPEntry(BIT))
+    upd.entry := Mux(entry.andR, entry, entry +% 1.U)
+    upd
+  }
+
+  def notaken() = {
+    val upd = Wire(new BPEntry(BIT))
+    upd.entry := Mux(entry === 0.U, 0.U, entry -% 1.U)
+    upd
+  }
+
+  def predict() = entry(BIT - 1)
 }
 
-class BPU(coredef: CoreDef, SIZE: Int, ASSOC: Int) extends MultiIOModule {
+class BPU(val XLEN: Int, val ADDR_WIDTH: Int, val SIZE: Int, val FETCH_NUM: Int, val BIT: Int) extends MultiIOModule {
   val toFetch = IO(new Bundle{
                     val query = Input(Bool()) // when query is true, BPU returns the prediction
-                    val pc = Input(UInt(coredef.XLEN.W)) // the address (pc) of the query branch 
-                    val taken = Output(Bool()) // the query result: will the branch be taken
+                    val pc = Input(UInt(XLEN.W)) // the address (pc) of the query branch
+                    val taken = Output(Vec(FETCH_NUM, Bool())) // the query result: will the branch be taken
                    })
   val toCtrl = IO(new Bundle{
                     val upd = Input(Bool()) // when upd is true, BPU updates the branch history table
-                    val actpc = Input(UInt(coredef.XLEN.W)) // pc of the branch which is gonna to update
+                    val updPC = Input(UInt(XLEN.W)) // pc of the branch which is gonna to update
                     val fired = Input(Bool()) // does the branch be taken
                   })
 
-  val LINE_PER_ASSOC = SIZE / ASSOC
+  val LINE_PER_ASSOC = SIZE
 
-  val ASSOC_IDX_WIDTH = log2Ceil(ASSOC)
-  val OFFSET_WIDTH = 1 // Compressed instruction is 2 byte
-  val INDEX_OFFSET_WIDTH = log2Ceil(SIZE / ASSOC)
-  val INDEX_WIDTH = INDEX_OFFSET_WIDTH - OFFSET_WIDTH
+  val OFFSET_WIDTH = log2Ceil(FETCH_NUM * Const.INSTR_MIN_WIDTH/8) // Compressed instruction is 2 byte
+  val INDEX_WIDTH = log2Ceil(SIZE)
+  val INDEX_OFFSET_WIDTH = INDEX_WIDTH + OFFSET_WIDTH
 
-  val directories = Mem(LINE_PER_ASSOC, Vec(ASSOC, new BPTag(coredef, SIZE)))
-  val stores = SyncReadMem(LINE_PER_ASSOC, Vec(ASSOC, BPEntry()))
+  val directories = Mem(LINE_PER_ASSOC, new BPTag(ADDR_WIDTH, SIZE))
+  val stores = SyncReadMem(LINE_PER_ASSOC, Vec(FETCH_NUM, new BPEntry(BIT)))
 
   val writerAddr = Wire(UInt(INDEX_WIDTH.W))
-  val writerDir = Wire(BPTag.empty(coredef, SIZE))
-  val writerData = Wire(BPEntry())
-  val writerMask = Wire(Vec(ASSOC, Bool()))
+  val writerDir = Wire(new BPTag(ADDR_WIDTH, SIZE))
+  val writerData = Wire(new BPEntry(BIT))
+  val writerMask = Wire(Vec(FETCH_NUM, Bool()))
 
-  directories.write(writerAddr, VecInit(Seq.fill(ASSOC)(writerDir)), writerMask)
-  stores.write(writerAddr, VecInit(Seq.fill(ASSOC)(writerData)), writerMask)
+  directories.write(writerAddr, writerDir)
+  stores.write(writerAddr, VecInit(Seq.fill(FETCH_NUM)(writerData)), writerMask)
 
   writerAddr := DontCare
   writerDir := DontCare
   writerData := DontCare
-  writerMask := VecInit(Seq.fill(ASSOC)(false.B))
+  writerMask := VecInit(Seq.fill(FETCH_NUM)(false.B))
 
   assume(INDEX_WIDTH == log2Ceil(LINE_PER_ASSOC))
 
   def getIndex(addr: UInt) = addr(INDEX_OFFSET_WIDTH-1, OFFSET_WIDTH)
-  def getTag(addr: UInt) = addr(coredef.ADDR_WIDTH-1, INDEX_OFFSET_WIDTH)
-  def toAligned(addr: UInt) = getTag(addr) ## getIndex(addr) ## 0.U(1.W) // The input address should be aligned anyway
+  def getTag(addr: UInt) = addr(ADDR_WIDTH-1, INDEX_OFFSET_WIDTH)
+  def getOffset(addr: UInt) = addr(OFFSET_WIDTH-1, log2Ceil(Const.INSTR_MIN_WIDTH/8))
+  def toAligned(addr: UInt) = getTag(addr) ## getIndex(addr) ## 0.U(OFFSET_WIDTH.W) // The input address should be aligned anyway
 
   // Prediction part
-  val rand = chisel3.util.random.LFSR(8)
-  val readouts = directories.read(getIndex(toFetch.pc))
+  val readout = directories.read(getIndex(toFetch.pc))
   val dataReadouts = stores.read(getIndex(toFetch.pc))
-  val hitMap = VecInit(readouts.map(r => r.valid && r.tag === getTag(toFetch.pc)))
-  val pipeHitMap = RegNext(hitMap)
+  val hit = readout.valid && readout.tag === getTag(toFetch.pc)
+  val pipeHit = RegNext(hit)
   val pipeQuery = RegNext(toFetch.query)
   val pipePC = RegNext(toFetch.pc)
-
-  val rdata = Mux1H(dataReadouts.zipWithIndex.map({ case (line, idx) => pipeHitMap(idx) -> line }))
+  toFetch.taken := VecInit(Seq.fill(FETCH_NUM)(false.B))
 
   when(pipeQuery) {
-    when(pipeHitMap.asUInt().orR) {
-      toFetch.taken := (rdata === BPEntry.t) || (rdata === BPEntry.wt)
+    when(pipeHit) {
+      toFetch.taken := VecInit(dataReadouts.map(_.predict()).toList)
     }.otherwise {
-      val victim = rand(ASSOC_IDX_WIDTH-1, 0)
-      val mask = (0 until ASSOC).map(_.U === victim)
-      val written = Wire(new BPTag(coredef, SIZE))
-      written.tag := getTag(pipePC)
-      written.valid := true.B
-      writerAddr := getIndex(pipePC)
-      writerDir := written
-      writerMask := mask
-      writerData := BPEntry.wt
+      val writtenTag = Wire(new BPTag(ADDR_WIDTH, SIZE))
+      writtenTag.tag := getTag(pipePC)
+      writtenTag.valid := true.B
 
-      toFetch.taken := false.B
+      val mask = VecInit(Seq.fill(FETCH_NUM)(true.B))
+      writerAddr := getIndex(pipePC)
+      writerDir := writtenTag
+      writerMask := mask
+      val emptyEntry = Wire(new BPEntry(BIT))
+      emptyEntry.entry := 1.U ## 0.U((BIT-1).W)
+      writerData := emptyEntry
     }
   }
 
   // Update part
-  val updReads = directories.read(getIndex(toCtrl.actpc))
-  val updDataReads = stores.read(getIndex(toCtrl.actpc))
-  val updHitMap = VecInit(updReads.map(r => r.valid && r.tag === getTag(toCtrl.actpc)))
-  val updRdata = Mux1H(dataReadouts.zipWithIndex.map({ case (line, idx) => pipeHitMap(idx) -> line }))
-  val pipeUpdHit = RegNext(updHitMap)
+  val updAlignedPC = toAligned(toCtrl.updPC)
+  val updReadout = directories.read(updAlignedPC)
+  val updDataReadouts = stores.read(updAlignedPC)
+  val updHit = updReadout.valid && updReadout.tag === getTag(updAlignedPC)
   val pipeUpd = RegNext(toCtrl.upd)
-  val pipeUpdPC = RegNext(toCtrl.actpc)
+  val pipeUpdHit = RegNext(updHit)
+  val pipeUpdPC = RegNext(updAlignedPC)
   val pipeFired = RegNext(toCtrl.fired)
+  val pipeOffset = RegNext(getOffset(updAlignedPC))
 
   when(pipeUpd) {
-    val victim = rand(ASSOC_IDX_WIDTH-1, 0)
-    val mask = (0 until ASSOC).map(_.U === victim)
-    val written = Wire(new BPTag(coredef, SIZE))
-    written.tag := getTag(pipeUpdPC)
-    written.valid := true.B
-    writerAddr := getIndex(pipeUpdPC)
-    writerDir := written
-    writerMask := mask
-
-    when(pipeFired) {
-      switch(updRdata) {
-        is(BPEntry.t) {
-          writerData := BPEntry.t
-        }
-        is(BPEntry.wt) {
-          writerData := BPEntry.t
-        }
-        is(BPEntry.wnt) {
-          writerData := BPEntry.wt
-        }
-        is(BPEntry.nt) {
-          writerData := BPEntry.wnt
-        }
+    when(pipeUpdHit) {
+      val mask = (0 until FETCH_NUM).map(_.U === pipeOffset)
+      writerAddr := getIndex(pipeUpdPC)
+      writerMask := mask
+      when(pipeFired) {
+        writerData := updDataReadouts(pipeOffset).taken()
+      }.otherwise {
+        writerData := updDataReadouts(pipeOffset).notaken()
       }
     }.otherwise {
-      switch(updRdata) {
-        is(BPEntry.t) {
-          writerData := BPEntry.wt
-        }
-        is(BPEntry.wt) {
-          writerData := BPEntry.wnt
-        }
-        is(BPEntry.wnt) {
-          writerData := BPEntry.nt
-        }
-        is(BPEntry.nt) {
-          writerData := BPEntry.nt
-        }
-      }
+      val writtenTag = Wire(new BPTag(ADDR_WIDTH, SIZE))
+      writtenTag.tag := getTag(pipePC)
+      writtenTag.valid := true.B
+      writerAddr := getIndex(pipePC)
+      writerDir := writtenTag
+
+      val mask = VecInit(Seq.fill(FETCH_NUM)(true.B))
+      writerMask := mask
+      val emptyEntry = Wire(new BPEntry(BIT))
+      emptyEntry.entry := 1.U ## 0.U((BIT-1).W)
+      writerData := emptyEntry
+      toFetch.taken := VecInit(Seq.fill(FETCH_NUM)(false.B))
     }
   }
 }

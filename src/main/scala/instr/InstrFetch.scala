@@ -15,6 +15,7 @@ class InstrExt(val XLEN: Int = 64) extends Bundle {
   val instr = new Instr
   val vacant = Bool()
   val invalAddr = Bool()
+  val branchPred = Bool()
 
   override def toPrintable: Printable = {
     p"Address: 0x${Hexadecimal(addr)}\n" +
@@ -22,8 +23,14 @@ class InstrExt(val XLEN: Int = 64) extends Bundle {
     p"${instr}"
   }
 
-  // TODO: perdiction
-  def npc: UInt = Mux(instr.base === InstrType.toInt(InstrType.C), addr + 2.U, addr + 4.U)
+  def npc: UInt = {
+    val npc = Wire(UInt(XLEN.W))
+    npc := Mux(instr.base === InstrType.toInt(InstrType.C), addr + 2.U, addr + 4.U)
+    when(branchPred && instr.op === Decoder.Op("BRANCH").ident) {
+      npc := (instr.imm.asSInt +% addr.asSInt).asUInt
+    }
+    npc
+  }
 }
 
 object InstrExt {
@@ -33,6 +40,7 @@ object InstrExt {
     ret.addr := DontCare
     ret.instr := DontCare
     ret.vacant := true.B
+    ret.branchPred := DontCare
     ret.invalAddr := DontCare
 
     ret
@@ -57,6 +65,12 @@ class InstrFetch(coredef: CoreDef) extends MultiIOModule {
 
   val toIC = IO(Flipped(new ICPort(coredef.L1I)))
   val toExec = IO(Flipped(new InstrFifoReader(coredef)))
+
+  val bpu = IO(new Bundle {
+                 val pc = Output(UInt(coredef.XLEN.W))
+                 val query = Output(Bool())
+                 val predict = Input(Vec(coredef.FETCH_NUM, Bool()))
+               })
 
   val decoded = Wire(Vec(coredef.FETCH_NUM, new InstrExt(coredef.XLEN)))
 
@@ -98,6 +112,10 @@ class InstrFetch(coredef: CoreDef) extends MultiIOModule {
 
   val pipePc = RegInit(0.U(coredef.XLEN.W))
   val pipeSkip = RegInit(0.U)
+  val bpuResult = Wire(Vec(coredef.FETCH_NUM, Bool()))
+
+  bpu.query := false.B
+  bpu.pc := DontCare
 
   when(!toCtrl.ctrl.stall) {
     pipePc := toCtrl.pc
@@ -110,8 +128,12 @@ class InstrFetch(coredef: CoreDef) extends MultiIOModule {
     for(instr <- decoded) {
       printf(p"${instr}\n\n")
     }
-    */
+     */
+
+    bpu.pc := toCtrl.pc
+    bpu.query := true.B
   }
+  bpuResult := bpu.predict
 
   val vecView = toIC.data.asTypeOf(Vec(coredef.FETCH_NUM, UInt(Const.INSTR_MIN_WIDTH.W)))
 
@@ -122,6 +144,7 @@ class InstrFetch(coredef: CoreDef) extends MultiIOModule {
     val fetchVacant = toIC.vacant || i.U < pipeSkip || flushed
     decoded(i).vacant := fetchVacant
     decoded(i).invalAddr := addr(coredef.XLEN-1, coredef.ADDR_WIDTH).orR()
+    decoded(i).branchPred := bpuResult(i)
 
     if(i == coredef.FETCH_NUM-1) {
       val (parsed, success) = vecView(i).tryAsInstr16

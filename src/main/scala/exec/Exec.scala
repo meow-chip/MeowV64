@@ -43,6 +43,12 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
     val intAck = Output(Bool())
   })
 
+  val toBPU = IO(new Bundle {
+                   val isBranch = Output(Bool())
+                   val branchPC = Output(UInt(coredef.XLEN.W))
+                   val branchTaken = Output(Bool())
+                 })
+
   val csrWriter = IO(new CSRWriter(coredef.XLEN))
 
   // We don't stall now
@@ -205,7 +211,7 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
   val canIssue = Wire(Vec(coredef.ISSUE_NUM, Bool()))
   var taken = 0.U(coredef.UNIT_COUNT.W)
   issueNum := 0.U
-  
+
   for(idx <- (0 until coredef.ISSUE_NUM)) {
     val selfCanIssue = Wire(Bool()).suggestName(s"selfCanIssue_$idx")
     val sending = Wire(UInt(coredef.UNIT_COUNT.W)).suggestName(s"sending_$idx")
@@ -311,6 +317,9 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
   }
 
   // Commit
+  toBPU.isBranch := false.B
+  toBPU.branchPC := DontCare
+  toBPU.branchTaken := DontCare
 
   retireNum := 0.U
 
@@ -361,7 +370,7 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
     // Compute if we can retire a certain instruction
     for(idx <- (0 until coredef.RETIRE_NUM)) {
       val info = rob(retirePtr +% idx.U)
-      isBranch(idx) := info.retirement.info.branch.branched()
+      isBranch(idx) := info.retirement.info.branch.branched() || info.retirement.instr.instr.instr.op === Decoder.Op("BRANCH").ident
 
       if(idx == 0) {
         canRetire(idx) := info.valid
@@ -377,6 +386,12 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
         // Branching. canRetire(idx) -> \forall i < idx, !isBranch(i)
         // So we can safely sets toCtrl.branch to the last valid branch info
         toCtrl.branch := info.retirement.info.branch
+        // Update BPU accordingly
+        when(info.retirement.info.branch.ex === ExReq.none) {
+          toBPU.isBranch := true.B
+          toBPU.branchPC := info.retirement.instr.instr.addr
+          toBPU.branchTaken := info.retirement.info.branch.branched()
+        }
 
         when(info.retirement.info.branch.ex =/= ExReq.none) {
           // Don't write-back exceptioned instr
