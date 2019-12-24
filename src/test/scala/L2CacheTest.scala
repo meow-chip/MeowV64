@@ -16,7 +16,7 @@ class WrappedL2(coredef: CoreDef) extends Module {
     val writer = Flipped(new DCWriter(coredef.L1D))
   })
 
-  val mem = Module(new AXIMem(None, CacheTest.RAM_SIZE, coredef.ADDR_WIDTH))
+  val mem = Module(new AXIMem(None, L2CacheTest.RAM_SIZE, coredef.ADDR_WIDTH))
 
   val l2 = Module(new L2Cache(coredef.L2))
   val l1d = Module(new L1DC(coredef.L1D))
@@ -31,7 +31,7 @@ class WrappedL2(coredef: CoreDef) extends Module {
   l2.axi <> mem.io.axi
 }
 
-class CacheTest(dut: WrappedL2, seed: Long, len: Int) extends PeekPokeTester(dut) {
+class L2CacheTest(dut: WrappedL2, seed: Long, len: Int) extends PeekPokeTester(dut) {
   println(s"Testing cache with seed: ${seed} for ${len} cycles")
 
   val rng = new Random(seed)
@@ -46,8 +46,8 @@ class CacheTest(dut: WrappedL2, seed: Long, len: Int) extends PeekPokeTester(dut
   def align(input: Long): Long = (input >> 3) << 3
 
   def genReq(rng: Random): Req = new Req(
-    rng.nextFloat() > CacheTest.W_RATIO,
-    align(Math.abs(rng.nextLong()) % CacheTest.RAM_SIZE),
+    rng.nextFloat() > L2CacheTest.W_RATIO,
+    align(Math.abs(rng.nextLong()) % L2CacheTest.RAM_SIZE),
     Math.abs(rng.nextLong()),
     Math.abs(rng.nextInt()) % 256 // 8-bit write-enable
   )
@@ -135,7 +135,7 @@ class CacheTest(dut: WrappedL2, seed: Long, len: Int) extends PeekPokeTester(dut
   println(s"Cycle count: ${len}, total ops: ${cnt}")
 }
 
-object CacheTest {
+object L2CacheTest {
   val RAM_SIZE = 65536
   val W_RATIO = 0.1
 
@@ -144,30 +144,30 @@ object CacheTest {
       case None => chisel3.iotesters.Driver(
         () => new WrappedL2(CacheTestDef),
         "verilator"
-      ) { new CacheTest(_, seed, len) }
+      ) { new L2CacheTest(_, seed, len) }
 
       case Some(args) => chisel3.iotesters.Driver.execute(
         args,
         () => new WrappedL2(CacheTestDef)
-      ) { new CacheTest(_, seed, len) }
+      ) { new L2CacheTest(_, seed, len) }
     }
   }
 }
 
-object CacheSpec {
+object L2CacheSpec {
   val DEFAULT_SEED = 0L
   val DEFAULT_LENGTH = 100000
 }
 
-class CacheSpec extends FlatSpec with Matchers {
+class L2CacheSpec extends FlatSpec with Matchers {
   behavior of "CacheSpec"
 
-  it should s"run successfully" in { CacheTest.run(CacheSpec.DEFAULT_SEED, CacheSpec.DEFAULT_LENGTH) should be(true) }
+  it should s"run successfully" in { L2CacheTest.run(L2CacheSpec.DEFAULT_SEED, L2CacheSpec.DEFAULT_LENGTH) should be(true) }
 }
 
-object CacheTestMain extends App {
-  var seed = CacheSpec.DEFAULT_SEED
-  var length = CacheSpec.DEFAULT_LENGTH
+object L2CacheTestMain extends App {
+  var seed = L2CacheSpec.DEFAULT_SEED
+  var length = L2CacheSpec.DEFAULT_LENGTH
 
   if(args.length > 2) {
     seed = java.lang.Long.parseLong(args(args.length-2))
@@ -177,5 +177,5 @@ object CacheTestMain extends App {
   }
 
   println(s"Running with seed ${seed} for ${length} cycles...")
-  CacheTest.run(seed, length, if(args.length > 0) { Some(args) } else { None })
+  L2CacheTest.run(seed, length, if(args.length > 0) { Some(args) } else { None })
 }
