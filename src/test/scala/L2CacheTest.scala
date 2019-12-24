@@ -10,19 +10,41 @@ import scala.collection.mutable.HashMap
 
 object CacheTestDef extends CoreDef {}
 
-class WrappedL2(coredef: CoreDef) extends Module {
+object L1DCacheTestDef extends {
+  val ADDR_WIDTH: Int = 48
+  val ASSOC: Int = 2
+  val LINE_WIDTH: Int = 16
+  val SIZE: Int = 128
+  val TRANSFER_SIZE: Int = 64
+  val XLEN: Int = 64
+
+  val WRITE_BUF_DEPTH = 2
+} with L1DOpts;
+
+object L2CacheTestDef extends {
+  val ADDR_WIDTH: Int = 48
+  val ASSOC: Int = 4
+  val CORE_COUNT: Int = 1
+  val LINE_WIDTH: Int = 16
+  val TRANSFER_SIZE: Int = 0 // Actually ignored
+  val SIZE: Int = 256
+  val WB_DEPTH: Int = 4
+  val XLEN: Int = 64
+} with L2Opts
+
+class WrappedL2(l1do: L1DOpts, l2o: L2Opts) extends Module {
   val io = IO(new Bundle {
-    val reader = Flipped(new DCReader(coredef.L1D))
-    val writer = Flipped(new DCWriter(coredef.L1D))
+    val reader = Flipped(new DCReader(l1do))
+    val writer = Flipped(new DCWriter(l1do))
   })
 
-  val mem = Module(new AXIMem(None, L2CacheTest.RAM_SIZE, coredef.ADDR_WIDTH))
+  val mem = Module(new AXIMem(None, L2CacheTest.RAM_SIZE, 48))
 
-  val l2 = Module(new L2Cache(coredef.L2))
-  val l1d = Module(new L1DC(coredef.L1D))
+  val l2 = Module(new L2Cache(l2o))
+  val l1d = Module(new L1DC(l1do))
 
-  l2.directs(0) <> L1UCPort.empty(coredef.L1D)
-  l2.ic(0) <> L1ICPort.empty(coredef.L1I)
+  l2.directs(0) <> L1UCPort.empty(l1do)
+  l2.ic(0) <> L1ICPort.empty(l1do)
   l2.dc(0) <> l1d.toL2
 
   io.reader <> l1d.r
@@ -142,13 +164,13 @@ object L2CacheTest {
   def run(seed: Long, len: Int, args: Option[Array[String]] = None): Boolean = {
     args match {
       case None => chisel3.iotesters.Driver(
-        () => new WrappedL2(CacheTestDef),
+        () => new WrappedL2(L1DCacheTestDef, L2CacheTestDef),
         "verilator"
       ) { new L2CacheTest(_, seed, len) }
 
       case Some(args) => chisel3.iotesters.Driver.execute(
         args,
-        () => new WrappedL2(CacheTestDef)
+        () => new WrappedL2(L1DCacheTestDef, L2CacheTestDef)
       ) { new L2CacheTest(_, seed, len) }
     }
   }

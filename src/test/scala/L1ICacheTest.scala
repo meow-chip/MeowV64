@@ -12,7 +12,7 @@ object L1CacheTestDef extends {
   val ADDR_WIDTH: Int = 48
   val ASSOC: Int = 2
   val LINE_WIDTH: Int = 16
-  val SIZE: Int = 2048 // 4K L1 I
+  val SIZE: Int = 128 // 4K L1 I
   val TRANSFER_SIZE: Int = 2 * 16
   val XLEN: Int = 64
 } with L1Opts;
@@ -26,7 +26,7 @@ class L1ICacheTest(dut: L1IC, seed: Long, len: Int) extends PeekPokeTester(dut) 
 
   val addrs: Seq[Option[Int]] = Seq.fill(len)({
     val en = rng.nextBoolean()
-    val addr = (rng.nextInt() % L1ICacheTest.RAM_SIZE >> 2) << 2
+    val addr = ((math.abs(rng.nextInt()) % L1ICacheTest.RAM_SIZE) >> 2) << 2
 
     if(en) {
       Some(addr)
@@ -34,12 +34,12 @@ class L1ICacheTest(dut: L1IC, seed: Long, len: Int) extends PeekPokeTester(dut) 
       None
     }
   })
-  val ref = new HashMap[Int, Int]()
+  val ref = new HashMap[Int, BigInt]()
 
   // Populate ref
   for(addr <- addrs) {
     if(addr.isDefined && !ref.keySet.contains(addr.get)) {
-      ref.put(addr.get, rng.nextInt())
+      ref.put(addr.get, BigInt(math.abs(rng.nextLong())) & 0xFFFF)
     }
   }
 
@@ -70,7 +70,7 @@ class L1ICacheTest(dut: L1IC, seed: Long, len: Int) extends PeekPokeTester(dut) 
 
           if(!expect(dut.toCPU.data, ref(addrs(cnt-1).get))) {
             if(failed < 10) {
-              println(s"[${i}] 0x${addrs(cnt-1).get.toHexString}, Expected 0x${ref(addrs(cnt-1).get).toHexString}, got ${peek(dut.toCPU.data).toString(16)}")
+              println(s"[${i}] ${cnt-1}: 0x${addrs(cnt-1).get.toHexString}, Expected 0x${ref(addrs(cnt-1).get).toString(16)}, got 0x${peek(dut.toCPU.data).toString(16)}")
               failed += 1;
             }
           }
@@ -91,7 +91,16 @@ class L1ICacheTest(dut: L1IC, seed: Long, len: Int) extends PeekPokeTester(dut) 
 
         if(heldCycles == Some(0)) {
           poke(dut.toL2.stall, false)
-          poke(dut.toL2.data, ref(peek(dut.toL2.addr).toInt))
+
+          val addr = peek(dut.toL2.addr).toInt
+          var data = BigInt(0)
+          for(i <- (0 until 4)) {
+            val added = addr + i * 4;
+            val v = ref.get(added).getOrElse(BigInt(0))
+            data = data | (v << (i*32))
+          }
+
+          poke(dut.toL2.data, data)
         } else {
           poke(dut.toL2.stall, true)
         }
