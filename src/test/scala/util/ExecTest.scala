@@ -101,6 +101,13 @@ class ExecTest(dut: Core, file: String) extends PeekPokeTester(dut) {
           val muxed = ExecTest.longMux(mem.get(ptr).getOrElse(0), wdata.longValue(), wstrb.byteValue())
           mem.put(ptr, muxed)
 
+          writing match {
+            case Some((addr, _)) if addr == 0xFFFF10000000L => {
+              // Print to serial
+              print((wdata & 0xFF).toChar)
+            }
+          }
+
           writing = Some(ptr + 8, left - 1)
           if(peek(dut.io.axi.WLAST) == 1) {
             assume(left == 0)
