@@ -44,6 +44,13 @@ class ExecTest(dut: Core, file: String) extends PeekPokeTester(dut) {
 
       if(peek(dut.io.pc) == 0x100000) {
         println(s"> Process ended at cycle ${i}")
+
+        val mcycle = peek(dut.io.mcycle)
+        val minstret = peek(dut.io.minstret)
+
+        println(s"> mcycle: ${mcycle}")
+        println(s"> minstret: ${minstret}")
+
         return
       }
 

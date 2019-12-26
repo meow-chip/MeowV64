@@ -13,7 +13,9 @@ class Core(val coredef: CoreDef = DefaultDef) extends Module {
     val eint = Input(Bool())
 
     // Debug
-    val pc = Output(UInt(coredef.ADDR_WIDTH.W))
+    val pc = Output(UInt(coredef.XLEN.W))
+    val minstret = Output(UInt(coredef.XLEN.W))
+    val mcycle = Output(UInt(coredef.XLEN.W))
   })
 
   assert(coredef.FETCH_NUM % 2 == 0, "issue num can only be multiples of two, because we need to support compressed instructions")
@@ -69,6 +71,7 @@ class Core(val coredef: CoreDef = DefaultDef) extends Module {
   CSRHelper.defaults(csr)
   csr.const("mhartid") := coredef.HART_ID.U
   csr.attach("mcycle").connect(ctrl.csr.mcycle)
+  csr.attach("minstret").connect(ctrl.csr.minstret)
   csr.attach("mstatus").connect(ctrl.csr.mstatus)
   csr.attach("mtvec").connect(ctrl.csr.mtvec)
   csr.attach("mcause").connect(ctrl.csr.mcause)
@@ -85,4 +88,7 @@ class Core(val coredef: CoreDef = DefaultDef) extends Module {
 
   val mscratch = RegInit(0.U(coredef.XLEN.W))
   csr.attach("mscratch").connect(CSRPort.fromReg(coredef.XLEN, mscratch))
+
+  io.mcycle := ctrl.csr.mcycle.rdata
+  io.minstret := ctrl.csr.minstret.rdata
 }

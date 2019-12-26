@@ -63,6 +63,7 @@ class Ctrl(coredef: CoreDef) extends MultiIOModule {
 
   val csr = IO(new Bundle {
     val mcycle = new CSRPort(coredef.XLEN)
+    val minstret = new CSRPort(coredef.XLEN)
     val mstatus = new CSRPort(coredef.XLEN)
     val mtvec = new CSRPort(coredef.XLEN)
     val mie = new CSRPort(coredef.XLEN)
@@ -150,11 +151,19 @@ class Ctrl(coredef: CoreDef) extends MultiIOModule {
   */
 
   val mcycle = RegInit(0.U(coredef.XLEN.W))
+  val minstret = RegInit(0.U(coredef.XLEN.W))
   val mcountinhibit = RegInit(0.U(coredef.XLEN.W))
+
   when(!mcountinhibit(0)) {
     mcycle := mcycle + 1.U
   }
+
+  when(!mcountinhibit(1)) {
+    minstret := minstret + toExec.retCnt
+  }
+
   csr.mcycle <> CSRPort.fromReg(coredef.XLEN, mcycle)
+  csr.minstret <> CSRPort.fromReg(coredef.XLEN, minstret)
   csr.mcountinhibit <> CSRPort.fromReg(coredef.XLEN, mcountinhibit)
 
   // mstatus

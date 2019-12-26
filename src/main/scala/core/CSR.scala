@@ -114,7 +114,8 @@ object CSR {
     0x342 -> ("mcause", true),
     0x343 -> ("mtval", true),
     0x344 -> ("mip", true),
-    0xB00 -> ("mcycle", true)
+    0xB00 -> ("mcycle", true),
+    0xB02 -> ("minstret", true)
   )
 
   /*
