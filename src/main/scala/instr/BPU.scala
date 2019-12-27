@@ -68,14 +68,18 @@ class BPU(val XLEN: Int, val ADDR_WIDTH: Int, val SIZE: Int, val FETCH_NUM: Int,
   val writerDir = Wire(new BPTag(ADDR_WIDTH, SIZE))
   val writerData = Wire(new BPEntry(BIT))
   val writerMask = Wire(Vec(FETCH_NUM, Bool()))
+  val writerTagEn = Wire(Bool())
 
-  directories.write(writerAddr, writerDir)
+  when(writerTagEn) {
+    directories.write(writerAddr, writerDir)
+  }
   stores.write(writerAddr, VecInit(Seq.fill(FETCH_NUM)(writerData)), writerMask)
 
   writerAddr := DontCare
   writerDir := DontCare
   writerData := DontCare
   writerMask := VecInit(Seq.fill(FETCH_NUM)(false.B))
+  writerTagEn := false.B
 
   assume(INDEX_WIDTH == log2Ceil(LINE_PER_ASSOC))
 
@@ -120,7 +124,7 @@ class BPU(val XLEN: Int, val ADDR_WIDTH: Int, val SIZE: Int, val FETCH_NUM: Int,
   val pipeUpdHit = RegNext(updHit)
   val pipeUpdPC = RegNext(updAlignedPC)
   val pipeFired = RegNext(toCtrl.fired)
-  val pipeOffset = RegNext(getOffset(updAlignedPC))
+  val pipeOffset = RegNext(getOffset(toCtrl.updPC))
 
   when(pipeUpd) {
     when(pipeUpdHit) {
@@ -138,11 +142,12 @@ class BPU(val XLEN: Int, val ADDR_WIDTH: Int, val SIZE: Int, val FETCH_NUM: Int,
       writtenTag.valid := true.B
       writerAddr := getIndex(pipePC)
       writerDir := writtenTag
+      writerTagEn := true.B
 
       val mask = VecInit(Seq.fill(FETCH_NUM)(true.B))
       writerMask := mask
       val emptyEntry = Wire(new BPEntry(BIT))
-      emptyEntry.entry := 1.U ## 0.U((BIT-1).W)
+      emptyEntry.entry := 1.U(BIT.W)
       writerData := emptyEntry
       toFetch.taken := VecInit(Seq.fill(FETCH_NUM)(false.B))
     }

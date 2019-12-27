@@ -51,6 +51,8 @@ class Ctrl(coredef: CoreDef) extends MultiIOModule {
     val tval = Input(UInt(coredef.XLEN.W))
   })
 
+  val perdicted = IO(Input(UInt(coredef.XLEN.W)))
+
   val toExec = IO(new Bundle {
     val retCnt = Input(UInt(log2Ceil(coredef.RETIRE_NUM + 1).W))
     val nepc = Input(UInt(coredef.XLEN.W))
@@ -75,15 +77,18 @@ class Ctrl(coredef: CoreDef) extends MultiIOModule {
     val mcountinhibit = new CSRPort(coredef.XLEN)
   });
 
-  val pc = RegInit(coredef.INIT_VEC.U(coredef.XLEN.W))
   val snepc = RegInit(coredef.INIT_VEC.U(coredef.XLEN.W))
-  io.pc := pc
 
   io.fetch.flush := false.B
   io.exec.flush := false.B
   io.irst := false.B
 
-  io.skip := 0.U
+  val instrOffset = log2Ceil(Const.INSTR_MIN_WIDTH / 8)
+  val issueOffset = log2Ceil(coredef.FETCH_NUM)
+  val pcAlign = instrOffset + issueOffset
+
+  io.pc := perdicted(coredef.XLEN-1, pcAlign) ## 0.U(pcAlign.W)
+  io.skip := perdicted(pcAlign, instrOffset)
 
   val branch = Wire(Bool())
   val baddr = Wire(UInt(coredef.XLEN.W))
@@ -120,21 +125,18 @@ class Ctrl(coredef: CoreDef) extends MultiIOModule {
     assert(!io.fetch.stall)
     assert(!io.exec.stall)
 
-    val instrOffset = log2Ceil(Const.INSTR_MIN_WIDTH / 8)
-    val issueOffset = log2Ceil(coredef.FETCH_NUM)
-    val pcAlign = instrOffset + issueOffset
-    val alignedPC = baddr(coredef.XLEN-1, pcAlign) ## 0.U(pcAlign.W)
-
-    pc := alignedPC + (Const.INSTR_MIN_WIDTH / 8 * coredef.FETCH_NUM).U
-    io.pc := alignedPC
-    io.skip := baddr(pcAlign, 0) >> instrOffset
+    // pc := alignedPC + (Const.INSTR_MIN_WIDTH / 8 * coredef.FETCH_NUM).U
+    io.pc := baddr(coredef.XLEN-1, pcAlign) ## 0.U(pcAlign.W)
+    io.skip := baddr(pcAlign, instrOffset)
     io.irst := br.req.irst
 
     snepc := baddr
-  }.elsewhen(!io.fetch.stall) {
+  }
+  /*
     // printf(p"PC: ${Hexadecimal(io.pc)}\n")
     pc := pc + (Const.INSTR_MIN_WIDTH / 8 * coredef.FETCH_NUM).U
   }
+  */
 
   /*
   printf("Ctrl status:\n")

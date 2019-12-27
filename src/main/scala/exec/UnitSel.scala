@@ -12,6 +12,10 @@ import scala.collection.mutable
 import units.WithCSRWriter
 import exec.units.WithLSUPort
 import cache.DCReader
+import _root_.core.ExType
+import _root_.core.ExReq
+import _root_.instr.Decoder
+import _root_.core.Const
 
 /**
  * Read instructions from reservation stations, and send them into (probably one of multiple) exec unit
@@ -204,6 +208,29 @@ object UnitSel {
   class Retirement(implicit val coredef: CoreDef)  extends Bundle {
     val instr = new PipeInstr
     val info = new RetireInfo
+
+    def normalizedBranch(): BranchResult = {
+      val b = info.branch
+      val result = Wire(new BranchResult)
+
+      when(b.ex =/= ExReq.none) {
+        result := b
+      }.elsewhen(instr.instr.instr.op === Decoder.Op("JAL").ident) {
+        result.nofire()
+      }.elsewhen(instr.instr.instr.op =/= Decoder.Op("BRANCH").ident) {
+        result := b
+      }.otherwise {
+        when(b.branch === instr.instr.branchPred) {
+          result.nofire()
+        }.elsewhen(b.branch) {
+          result := b
+        }.otherwise {
+          result.fire(instr.instr.npc)
+        }
+      }
+
+      result
+    }
   }
 
   object Retirement {

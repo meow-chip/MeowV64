@@ -19,6 +19,7 @@ import cache.L1UCPort
 import _root_.core.ExReq
 import Chisel.experimental.chiselName
 import cache.DCFenceStatus
+import _root_.core.Const
 
 /**
  * Out-of-order exection (Tomasulo's algorithm)
@@ -370,7 +371,10 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
     // Compute if we can retire a certain instruction
     for(idx <- (0 until coredef.RETIRE_NUM)) {
       val info = rob(retirePtr +% idx.U)
-      isBranch(idx) := info.retirement.info.branch.branched() || info.retirement.instr.instr.instr.op === Decoder.Op("BRANCH").ident
+      isBranch(idx) := (
+        info.retirement.normalizedBranch().branched()
+        || info.retirement.instr.instr.instr.op === Decoder.Op("BRANCH").ident
+      )
 
       if(idx == 0) {
         canRetire(idx) := info.valid
@@ -385,11 +389,22 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
 
         // Branching. canRetire(idx) -> \forall i < idx, !isBranch(i)
         // So we can safely sets toCtrl.branch to the last valid branch info
-        toCtrl.branch := info.retirement.info.branch
+        toCtrl.branch := info.retirement.normalizedBranch()
         // Update BPU accordingly
-        when(info.retirement.info.branch.ex === ExReq.none) {
+        when(
+          info.retirement.instr.instr.instr.op === Decoder.Op("BRANCH").ident
+          && info.retirement.info.branch.ex === ExReq.none
+        ) {
           toBPU.isBranch := true.B
           toBPU.branchPC := info.retirement.instr.instr.addr
+
+          val instrOffset = log2Ceil(Const.INSTR_MIN_WIDTH / 8 * coredef.FETCH_NUM)
+          when(
+            info.retirement.instr.instr.instr.base =/= InstrType.toInt(InstrType.C)
+            && info.retirement.instr.instr.addr(instrOffset-1, 0) =/= 0.U // First slot, full width
+          ) {
+            toBPU.branchPC := info.retirement.instr.instr.addr + (Const.INSTR_MIN_WIDTH/8).U
+          }
           toBPU.branchTaken := info.retirement.info.branch.branched()
         }
 
@@ -407,9 +422,6 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
         info.valid := false.B
 
         retireNum := (1+idx).U
-
-        if(idx == 0) {
-        }
       }.otherwise {
         rw(idx).addr := 0.U
         rw(idx).data := DontCare

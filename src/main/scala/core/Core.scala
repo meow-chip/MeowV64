@@ -44,6 +44,7 @@ class Core(val coredef: CoreDef = DefaultDef) extends Module {
   fetch.toCtrl.skip <> ctrl.io.skip
   fetch.toCtrl.ctrl <> ctrl.io.fetch
   fetch.toCtrl.irst <> ctrl.io.irst
+  fetch.toCtrl.perdicted <> ctrl.perdicted
 
   bpu.toCtrl.upd <> exec.toBPU.isBranch
   bpu.toCtrl.updPC <> exec.toBPU.branchPC

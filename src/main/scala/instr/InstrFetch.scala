@@ -23,14 +23,7 @@ class InstrExt(val XLEN: Int = 64) extends Bundle {
     p"${instr}"
   }
 
-  def npc: UInt = {
-    val npc = Wire(UInt(XLEN.W))
-    npc := Mux(instr.base === InstrType.toInt(InstrType.C), addr + 2.U, addr + 4.U)
-    when(branchPred && instr.op === Decoder.Op("BRANCH").ident) {
-      npc := (instr.imm.asSInt +% addr.asSInt).asUInt
-    }
-    npc
-  }
+  def npc: UInt = Mux(instr.base === InstrType.toInt(InstrType.C), addr + 2.U, addr + 4.U)
 }
 
 object InstrExt {
@@ -61,6 +54,8 @@ class InstrFetch(coredef: CoreDef) extends MultiIOModule {
 
     val ctrl = StageCtrl.stage()
     val irst = Input(Bool())
+
+    val perdicted = Output(UInt(coredef.XLEN.W))
   })
 
   val toIC = IO(Flipped(new ICPort(coredef.L1I)))
@@ -88,7 +83,6 @@ class InstrFetch(coredef: CoreDef) extends MultiIOModule {
   val flushedRst = RegInit(false.B)
   val flushedJmpTo = RegInit(0.U(coredef.ADDR_WIDTH.W))
 
-
   toIC.addr := Mux(flushed, flushedJmpTo, toCtrl.pc)
   toIC.rst := Mux(flushed, flushedRst, toCtrl.irst)
   toIC.read := (!issueFifoNearlyFull) || toCtrl.ctrl.flush
@@ -112,7 +106,6 @@ class InstrFetch(coredef: CoreDef) extends MultiIOModule {
 
   val pipePc = RegInit(0.U(coredef.XLEN.W))
   val pipeSkip = RegInit(0.U)
-  val bpuResult = Wire(Vec(coredef.FETCH_NUM, Bool()))
 
   bpu.query := false.B
   bpu.pc := DontCare
@@ -133,9 +126,18 @@ class InstrFetch(coredef: CoreDef) extends MultiIOModule {
     bpu.pc := toCtrl.pc
     bpu.query := true.B
   }
-  bpuResult := bpu.predict
 
   val vecView = toIC.data.asTypeOf(Vec(coredef.FETCH_NUM, UInt(Const.INSTR_MIN_WIDTH.W)))
+
+  // Compute perdicted PC
+  toCtrl.perdicted := MuxCase(
+    pipePc + (Const.INSTR_MIN_WIDTH / 8 * coredef.FETCH_NUM).U,
+    decoded.zipWithIndex.map({ case (instr, idx) => {
+      val iaddr = pipePc + (Const.INSTR_MIN_WIDTH / 8 * idx).U
+
+      (instr.branchPred && idx.U >= pipeSkip, (iaddr.asSInt +% instr.instr.imm).asUInt) // B-type instr
+    }})
+  )
 
   for(i <- (0 until coredef.FETCH_NUM)) {
     val addr = pipePc + (i*Const.INSTR_MIN_WIDTH/8).U
@@ -144,7 +146,7 @@ class InstrFetch(coredef: CoreDef) extends MultiIOModule {
     val fetchVacant = toIC.vacant || i.U < pipeSkip || flushed
     decoded(i).vacant := fetchVacant
     decoded(i).invalAddr := addr(coredef.XLEN-1, coredef.ADDR_WIDTH).orR()
-    decoded(i).branchPred := bpuResult(i)
+    decoded(i).branchPred := bpu.predict(i) || decoded(i).instr.op === Decoder.Op("JAL").ident
 
     if(i == coredef.FETCH_NUM-1) {
       val (parsed, success) = vecView(i).tryAsInstr16
@@ -191,6 +193,20 @@ class InstrFetch(coredef: CoreDef) extends MultiIOModule {
         }
       }
     }
+  }
+
+  var branched = false.B
+  for(instr <- decoded) {
+    when(branched) {
+      instr.vacant := true.B
+    }
+
+    // TODO: optimize timing
+    branched = branched || (!instr.vacant) && instr.branchPred
+  }
+
+  when(branched) {
+    tailFailed := false.B
   }
 
   // FIFO interface
