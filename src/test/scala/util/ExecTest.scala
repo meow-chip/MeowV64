@@ -113,6 +113,7 @@ class ExecTest(dut: Core, file: String) extends PeekPokeTester(dut) {
               // Print to serial
               print((wdata & 0xFF).toChar)
             }
+            case _ => {}
           }
 
           writing = Some(ptr + 8, left - 1)

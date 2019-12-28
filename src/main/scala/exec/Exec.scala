@@ -45,10 +45,10 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
   })
 
   val toBPU = IO(new Bundle {
-                   val isBranch = Output(Bool())
-                   val branchPC = Output(UInt(coredef.XLEN.W))
-                   val branchTaken = Output(Bool())
-                 })
+    val valid = Output(Bool())
+    val pc = Output(UInt(coredef.XLEN.W))
+    val taken = Output(Bool())
+  })
 
   val csrWriter = IO(new CSRWriter(coredef.XLEN))
 
@@ -318,9 +318,9 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
   }
 
   // Commit
-  toBPU.isBranch := false.B
-  toBPU.branchPC := DontCare
-  toBPU.branchTaken := DontCare
+  toBPU.valid := false.B
+  toBPU.pc := DontCare
+  toBPU.taken := DontCare
 
   retireNum := 0.U
 
@@ -395,17 +395,17 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
           info.retirement.instr.instr.instr.op === Decoder.Op("BRANCH").ident
           && info.retirement.info.branch.ex === ExReq.none
         ) {
-          toBPU.isBranch := true.B
-          toBPU.branchPC := info.retirement.instr.instr.addr
+          toBPU.valid := true.B
+          toBPU.pc := info.retirement.instr.instr.addr
+          toBPU.taken := info.retirement.info.branch.branched()
 
           val instrOffset = log2Ceil(Const.INSTR_MIN_WIDTH / 8 * coredef.FETCH_NUM)
           when(
             info.retirement.instr.instr.instr.base =/= InstrType.toInt(InstrType.C)
             && info.retirement.instr.instr.addr(instrOffset-1, 0) =/= 0.U // First slot, full width
           ) {
-            toBPU.branchPC := info.retirement.instr.instr.addr + (Const.INSTR_MIN_WIDTH/8).U
+            toBPU.pc := info.retirement.instr.instr.addr + (Const.INSTR_MIN_WIDTH/8).U
           }
-          toBPU.branchTaken := info.retirement.info.branch.branched()
         }
 
         when(info.retirement.info.branch.ex =/= ExReq.none) {
@@ -518,7 +518,7 @@ object Exec {
     ret := 0.U
 
     switch(instr.op) {
-      is(Decoder.Op("LUI").ident, Decoder.Op("AUIPC").ident) {
+      is(Decoder.Op("LUI").ident, Decoder.Op("AUIPC").ident, Decoder.Op("JAL").ident) {
         ret := "b001".U(coredef.UNIT_COUNT.W)
       }
 

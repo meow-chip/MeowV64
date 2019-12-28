@@ -32,7 +32,7 @@ class Core(val coredef: CoreDef = DefaultDef) extends Module {
   l2.dc(0) <> l1d.toL2
 
   val fetch = Module(new InstrFetch(coredef))
-  val bpu = Module(new BPU(coredef.XLEN, coredef.ADDR_WIDTH, 32, coredef.FETCH_NUM, 2))
+  val bpu = Module(new BPU()(coredef))
   val exec = Module(new Exec()(coredef))
   val reg = Module(new RegFile(coredef.XLEN, 32, coredef.ISSUE_NUM * 2, coredef.RETIRE_NUM))
 
@@ -46,12 +46,8 @@ class Core(val coredef: CoreDef = DefaultDef) extends Module {
   fetch.toCtrl.irst <> ctrl.io.irst
   fetch.toCtrl.perdicted <> ctrl.perdicted
 
-  bpu.toCtrl.upd <> exec.toBPU.isBranch
-  bpu.toCtrl.updPC <> exec.toBPU.branchPC
-  bpu.toCtrl.fired <> exec.toBPU.branchTaken
-  bpu.toFetch.query <> fetch.bpu.query
-  bpu.toFetch.pc <> fetch.bpu.pc
-  bpu.toFetch.taken <> fetch.bpu.predict
+  bpu.toExec <> exec.toBPU
+  bpu.toFetch <> fetch.toBPU
 
   exec.toIF <> fetch.toExec
   exec.rr <> reg.io.reads

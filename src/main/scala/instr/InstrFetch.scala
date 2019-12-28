@@ -5,17 +5,14 @@ import _root_.cache._
 import Decoder._
 import _root_.core._
 import _root_.data._
-import chisel3.util.log2Ceil
-import chisel3.util.Queue
-import chisel3.util.MuxLookup
-import chisel3.util.MuxCase
+import chisel3.util._
 
 class InstrExt(val XLEN: Int = 64) extends Bundle {
   val addr = UInt(XLEN.W)
   val instr = new Instr
   val vacant = Bool()
   val invalAddr = Bool()
-  val branchPred = Bool()
+  val pred = Bool()
 
   override def toPrintable: Printable = {
     p"Address: 0x${Hexadecimal(addr)}\n" +
@@ -33,7 +30,7 @@ object InstrExt {
     ret.addr := DontCare
     ret.instr := DontCare
     ret.vacant := true.B
-    ret.branchPred := DontCare
+    ret.pred := DontCare
     ret.invalAddr := DontCare
 
     ret
@@ -61,11 +58,10 @@ class InstrFetch(coredef: CoreDef) extends MultiIOModule {
   val toIC = IO(Flipped(new ICPort(coredef.L1I)))
   val toExec = IO(Flipped(new InstrFifoReader(coredef)))
 
-  val bpu = IO(new Bundle {
-                 val pc = Output(UInt(coredef.XLEN.W))
-                 val query = Output(Bool())
-                 val predict = Input(Vec(coredef.FETCH_NUM, Bool()))
-               })
+  val toBPU = IO(new Bundle {
+    val pc = Output(UInt(coredef.XLEN.W))
+    val taken = Input(Vec(coredef.FETCH_NUM, BHTPerdiction()))
+  })
 
   val decoded = Wire(Vec(coredef.FETCH_NUM, new InstrExt(coredef.XLEN)))
 
@@ -104,15 +100,14 @@ class InstrFetch(coredef: CoreDef) extends MultiIOModule {
   val tailFailed = RegInit(false.B)
   val tail = RegInit(0.U(Const.INSTR_MIN_WIDTH.W))
 
-  val pipePc = RegInit(0.U(coredef.XLEN.W))
-  val pipeSkip = RegInit(0.U)
-
-  bpu.query := false.B
-  bpu.pc := DontCare
+  val pipePc = RegInit(coredef.INIT_VEC.U(coredef.XLEN.W))
+  val pipeNpc = RegInit(coredef.INIT_VEC.U(coredef.XLEN.W))
+  val pipeSkip = RegInit(0.U(coredef.XLEN.W))
 
   when(!toCtrl.ctrl.stall) {
     pipePc := toCtrl.pc
     pipeSkip := toCtrl.skip
+    pipeNpc := toCtrl.pc + (Const.INSTR_MIN_WIDTH / 8 * coredef.FETCH_NUM).U
 
     /*
     printf(p"IF:\n================\n")
@@ -122,22 +117,47 @@ class InstrFetch(coredef: CoreDef) extends MultiIOModule {
       printf(p"${instr}\n\n")
     }
      */
-
-    bpu.pc := toCtrl.pc
-    bpu.query := true.B
   }
+
+  // Sync BPU and IC
+  toBPU.pc := Mux(toCtrl.ctrl.stall, pipePc, toCtrl.pc)
 
   val vecView = toIC.data.asTypeOf(Vec(coredef.FETCH_NUM, UInt(Const.INSTR_MIN_WIDTH.W)))
 
   // Compute perdicted PC
-  toCtrl.perdicted := MuxCase(
-    pipePc + (Const.INSTR_MIN_WIDTH / 8 * coredef.FETCH_NUM).U,
-    decoded.zipWithIndex.map({ case (instr, idx) => {
-      val iaddr = pipePc + (Const.INSTR_MIN_WIDTH / 8 * idx).U
+  for((instr, pred) <- decoded.zip(toBPU.taken)) {
+    instr.pred := DontCare
 
-      (instr.branchPred && idx.U >= pipeSkip, (iaddr.asSInt +% instr.instr.imm).asUInt) // B-type instr
+    switch(pred) {
+      is(BHTPerdiction.taken) {
+        instr.pred := true.B
+      }
+
+      is(BHTPerdiction.notTaken) {
+        instr.pred := false.B
+      }
+
+      is(BHTPerdiction.missed) {
+        instr.pred := instr.instr.op === Decoder.Op("BRANCH").ident && instr.instr.imm < 0.S
+      }
+    }
+
+    // If is JAL, then force perdicted
+    when(instr.instr.op === Decoder.Op("JAL").ident) {
+      instr.pred := true.B
+    }
+  }
+
+  toCtrl.perdicted := MuxCase(
+    pipeNpc,
+    decoded.zipWithIndex.map({ case (instr, idx) => {
+      (instr.pred && !instr.vacant, (instr.addr.asSInt +% instr.instr.imm).asUInt) // B-type instr
     }})
   )
+
+  when(RegNext(issueFifoNearlyFull) && !RegNext(flushed) && !RegNext(toCtrl.ctrl.flush)) {
+    toCtrl.perdicted := RegNext(toCtrl.perdicted)
+  }
 
   for(i <- (0 until coredef.FETCH_NUM)) {
     val addr = pipePc + (i*Const.INSTR_MIN_WIDTH/8).U
@@ -146,7 +166,6 @@ class InstrFetch(coredef: CoreDef) extends MultiIOModule {
     val fetchVacant = toIC.vacant || i.U < pipeSkip || flushed
     decoded(i).vacant := fetchVacant
     decoded(i).invalAddr := addr(coredef.XLEN-1, coredef.ADDR_WIDTH).orR()
-    decoded(i).branchPred := bpu.predict(i) || decoded(i).instr.op === Decoder.Op("JAL").ident
 
     if(i == coredef.FETCH_NUM-1) {
       val (parsed, success) = vecView(i).tryAsInstr16
@@ -202,7 +221,7 @@ class InstrFetch(coredef: CoreDef) extends MultiIOModule {
     }
 
     // TODO: optimize timing
-    branched = branched || (!instr.vacant) && instr.branchPred
+    branched = branched || (!instr.vacant) && instr.pred
   }
 
   when(branched) {

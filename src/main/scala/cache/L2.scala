@@ -262,7 +262,7 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
   val pipeTargetAddr = RegNext(targetAddr)
 
   val sameAddrRefilling = (0 until opts.CORE_COUNT * 2).foldLeft(false.B)(
-    (acc, idx) => acc || misses(idx) && addrs(idx) === targetAddr
+    (acc, idx) => acc || (misses(idx) && !refilled(idx) && addrs(idx) === targetAddr)
   )
 
   // Compute directory lookups & delayed data fetch
@@ -377,7 +377,7 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
               refilled(target) := true.B
               nstate := L2MainState.refilled
             }.elsewhen(sameAddrRefilling) {
-              collided(target) := true.B
+              // collided(target) := true.B
             }.otherwise {
               misses(target) := true.B
               missesAddr(target) := addrs(target)

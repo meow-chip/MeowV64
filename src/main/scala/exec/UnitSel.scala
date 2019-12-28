@@ -217,10 +217,8 @@ object UnitSel {
         result := b
       }.elsewhen(instr.instr.instr.op === Decoder.Op("JAL").ident) {
         result.nofire()
-      }.elsewhen(instr.instr.instr.op =/= Decoder.Op("BRANCH").ident) {
-        result := b
       }.otherwise {
-        when(b.branch === instr.instr.branchPred) {
+        when(b.branch === instr.instr.pred) {
           result.nofire()
         }.elsewhen(b.branch) {
           result := b

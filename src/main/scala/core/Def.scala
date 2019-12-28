@@ -11,6 +11,9 @@ abstract class CoreDef {
   val ISSUE_FIFO_DEPTH: Int = FETCH_NUM * 4
   val INIT_VEC: BigInt = BigInt("FFFF20000000", 16)
 
+  val BHT_SIZE: Int = 64
+  val BHT_WIDTH: Int = 2
+
   val HART_ID: Int = 0
 
 /**
