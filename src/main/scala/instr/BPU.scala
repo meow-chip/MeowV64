@@ -85,12 +85,18 @@ class BPU(implicit val coredef: CoreDef) extends MultiIOModule {
 
   val store = Mem(coredef.BHT_SIZE, Vec(coredef.ISSUE_NUM, new BHTSlot))
 
+  val reseting = RegInit(true.B)
+  val resetCnt = RegInit(0.U(log2Ceil(coredef.BHT_SIZE)))
+
   // Prediction part
   val readout = store.read(getIndex(toFetch.pc))
   val tag = getTag(toFetch.pc)
   val pipeReadout = RegNext(readout)
   val pipeTag = RegNext(tag)
   toFetch.taken := VecInit(pipeReadout.map(_.taken(pipeTag)))
+  when(reseting) {
+    toFetch.taken := VecInit(Seq.fill(coredef.ISSUE_NUM)(BHTPerdiction.missed))
+  }
 
   // Update part
   val updateTag = getTag(toExec.pc)
@@ -102,7 +108,20 @@ class BPU(implicit val coredef: CoreDef) extends MultiIOModule {
   })
   val updateMask = VecInit(Seq.tabulate(coredef.ISSUE_NUM)(idx => idx.U === updateOffset))
 
-  when(toExec.valid) {
+  when(reseting) {
+    store.write(resetCnt, VecInit(Seq.fill(coredef.ISSUE_NUM)({
+      val init = Wire(new BHTSlot)
+      init := DontCare
+      init.valid := false.B
+
+      init
+    })))
+
+    resetCnt := resetCnt +% 1.U
+    when(resetCnt.andR()) {
+      reseting := false.B
+    }
+  }.elsewhen(toExec.valid) {
     store.write(getIndex(toExec.pc), VecInit(updated), updateMask)
   }
 }
