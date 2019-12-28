@@ -86,7 +86,7 @@ class BPU(implicit val coredef: CoreDef) extends MultiIOModule {
   val store = Mem(coredef.BHT_SIZE, Vec(coredef.ISSUE_NUM, new BHTSlot))
 
   val reseting = RegInit(true.B)
-  val resetCnt = RegInit(0.U(log2Ceil(coredef.BHT_SIZE)))
+  val resetCnt = RegInit(0.U(log2Ceil(coredef.BHT_SIZE).W))
 
   // Prediction part
   val readout = store.read(getIndex(toFetch.pc))
