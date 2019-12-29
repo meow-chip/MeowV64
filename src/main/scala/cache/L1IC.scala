@@ -23,7 +23,7 @@ object S2State extends ChiselEnum {
 }
 
 class ILine(val opts: L1Opts) extends Bundle {
-  val INDEX_OFFSET_WIDTH = log2Ceil(opts.SIZE)
+  val INDEX_OFFSET_WIDTH = log2Ceil(opts.SIZE / opts.ASSOC)
   val TAG_WIDTH = opts.ADDR_WIDTH - INDEX_OFFSET_WIDTH
   val TRANSFER_COUNT = opts.LINE_WIDTH * 8 / opts.TRANSFER_SIZE
 
