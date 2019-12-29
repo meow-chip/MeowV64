@@ -155,8 +155,18 @@ class InstrFetch(coredef: CoreDef) extends MultiIOModule {
     }})
   )
 
-  when(RegNext(issueFifoNearlyFull) && !RegNext(flushed) && !RegNext(toCtrl.ctrl.flush)) {
-    toCtrl.perdicted := RegNext(toCtrl.perdicted)
+  val arrived = RegInit(false.B)
+  val arrivedStash = RegInit(0.U(coredef.XLEN.W))
+
+  when((!toCtrl.ctrl.stall) || toIC.read && !toIC.stall) {
+    arrived := false.B
+  }.elsewhen(!toIC.stall && !toIC.vacant && toCtrl.ctrl.stall) {
+    arrived := true.B
+    arrivedStash := toCtrl.perdicted
+  }
+
+  when(arrived) {
+    toCtrl.perdicted := arrivedStash
   }
 
   for(i <- (0 until coredef.FETCH_NUM)) {
