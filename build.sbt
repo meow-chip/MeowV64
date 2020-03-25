@@ -30,9 +30,9 @@ name := "meow-v64"
 
 version := "0.0.1"
 
-scalaVersion := "2.11.12"
+scalaVersion := "2.12.10"
 
-crossScalaVersions := Seq("2.11.12", "2.12.4")
+crossScalaVersions := Seq("2.12.10", "2.11.12")
 
 resolvers ++= Seq(
   Resolver.sonatypeRepo("snapshots"),
