@@ -20,8 +20,10 @@ import _root_.core.Const
 /**
  * Read instructions from reservation stations, and send them into (probably one of multiple) exec unit
  * 
- * All units are buffered into the same delay cycle count, so that we can assert only one
- * of them may retire an instr at within one cycle
+ * <del> All units are buffered into the same delay cycle count, so that we can assert only one
+ *  of them may retire an instr at within one cycle</del>
+ * 
+ * That is not true anymore. Now we use a MPSC FIFO to consume outputs of individual execution units.
  */
 @chiselName
 class UnitSel(

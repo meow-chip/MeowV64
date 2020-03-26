@@ -4,22 +4,50 @@ import chisel3._
 import chisel3.experimental.ChiselEnum
 import chisel3.util.log2Ceil
 
+/**
+ * Cache definations and interfaces
+ * 
+ * Unless explicitly stated, size/width numbers are in bits
+ */
+
+
+/**
+  * Trait of L1 cache's external interface
+  * 
+  * This is used in L2 to generate polymorphic interfaces
+  * L1 can never actively stalls L2
+  */
 trait L1Port extends Bundle {
+  // Address
   def getAddr: UInt
+  // L1 -> L2 request
   def getReq: L1DCPort.L1Req.Type
 
+  // L2 -> L1 stall
   def getStall: Bool
+  // L2 -> L1 read data
   def getRdata: UInt
+  // L1 -> L2 write data
   def getWdata: UInt
 }
 
 trait L1Opts {
+  // Word width
   val XLEN: Int
+  // Address width
   val ADDR_WIDTH: Int
 
+  /**
+   * L1 <-> L2 transfer size.
+   *  
+   * Currently, it's only possible that
+   * TRANSFER_SIZE = L1 LINE_WIDTH = L2 LINE_WIDTH
+   */
   val TRANSFER_SIZE: Int
 
+  // Line width
   val LINE_WIDTH: Int
+  // Cache size (in bytes)
   val SIZE: Int
   val ASSOC: Int
 
@@ -28,6 +56,7 @@ trait L1Opts {
 }
 
 trait L1DOpts extends L1Opts {
+  // Write buffer depth in L1DC
   val WRITE_BUF_DEPTH: Int
 }
 

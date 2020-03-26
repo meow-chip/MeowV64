@@ -15,6 +15,20 @@ import _root_.core.CSRWriter
 import chisel3.util.MuxLookup
 import instr.Decoder.InstrType
 
+/**
+  * Branch result
+  * 
+  * Branch are used to state an interrupt in pipelined execution, which comes from
+  * the execution of an instruction. Following conditions are considered as a branch:
+  * - Jumps and branches that don't match branch perdiction results
+  * - Instructions caused an exceptions
+  * - Instructions have side-effects on previous stages, so that we need to flush the pipeline.
+  *   This includes:
+  *   - CSR writes (may alter instr fetch)
+  *   - FENCE.I
+  *
+  * @param coredef: Core defination
+  */
 class BranchResult(implicit val coredef: CoreDef) extends Bundle {
   val branch = Bool()
   val irst = Bool()
@@ -79,14 +93,42 @@ object BranchResult {
   }
 }
 
+/**
+ * MemSeqAcc = Sequential memory access, memory accesses that have side-effects and thus
+ * needs to be preformed in-order.
+ * 
+ * All possible access types are stated in the MemSeqAccOp enum
+ * - no: No memory access
+ * - s: store
+ * - ul: uncached load
+ * - us: uncached store
+ */
 object MemSeqAccOp extends ChiselEnum {
   val no, s, ul, us = Value
 }
 
+/**
+ * Bit length of the MemSeqAcc
+ * 
+ * Has the same defination as in the RISC-V unprivileged specification
+ */
 object MemSeqAccLen extends ChiselEnum {
   val B, H, W, D = Value
 }
 
+/**
+  * A (maybe-empty) sequential memory access
+  * 
+  * op: operation
+  * addr: address, this is always aligned in log_2(coredef.XLEN)
+  * offset: in-line offset
+  * len: Bit length
+  * sext: Sign extension?
+  * 
+  * Data are stored in the wb field alongside the MemSeqAcc bundle in execution results
+  *
+  * @param coredef: Core defination
+  */
 class MemSeqAcc(implicit val coredef: CoreDef) extends Bundle {
   self =>
   val op = MemSeqAccOp()
@@ -169,6 +211,15 @@ class MemSeqAcc(implicit val coredef: CoreDef) extends Bundle {
   }
 }
 
+/**
+  * Execution result of an retiring instruction
+  * 
+  * wb: writeback data
+  * branch: branch info
+  * mem: sequential memory access info
+  *
+  * @param coredef
+  */
 class RetireInfo(implicit val coredef: CoreDef) extends Bundle {
   val wb = UInt(coredef.XLEN.W)
   val branch = new BranchResult
@@ -187,12 +238,19 @@ object RetireInfo {
   }
 }
 
-class RenamedInstr(implicit val coredef: CoreDef) extends Bundle {
-  val name = UInt(log2Ceil(coredef.INFLIGHT_INSTR_LIMIT).W)
-  val data = UInt(coredef.XLEN.W)
-  val ready = Bool()
-}
-
+/**
+  * Instruction in execution pipeline, after both operands are ready
+  * 
+  * Besides the instruction from decoding, we have the following additional fields
+  * - rs1val: value of the rs1 operand
+  * - rs2val: value of the rs2 operand
+  * - rdname: Name of the rd register. This comes from renaming
+  * - tag: tag of this instruction. Tags are self-incrementing based on issue order, and wraps
+  *   around at length(rob) = 2^length(name) = MAX_INFLIGHT_INSTR.
+  *   When its execution finishes, this instruction is always put into rob[tag]
+  *
+  * @param coredef
+  */
 class PipeInstr(implicit val coredef: CoreDef) extends Bundle {
   val instr = new InstrExt(coredef.XLEN)
 
@@ -203,6 +261,17 @@ class PipeInstr(implicit val coredef: CoreDef) extends Bundle {
   val tag = UInt(log2Ceil(coredef.INFLIGHT_INSTR_LIMIT).W)
 }
 
+/**
+  * Instruction in reservation station
+  * 
+  * Besides the fields in PipeStr, we have the following additional fields
+  * - rs1name: name of the rs1 operand
+  * - rs2name: name of the rs2 operand
+  * - rs1ready: is rs1 ready?
+  * - rs2ready: is rs2 ready?
+  *
+  * @param coredef
+  */
 class ReservedInstr(override implicit val coredef: CoreDef) extends PipeInstr {
   val rs1name = UInt(log2Ceil(coredef.INFLIGHT_INSTR_LIMIT).W)
   val rs2name = UInt(log2Ceil(coredef.INFLIGHT_INSTR_LIMIT).W)
@@ -243,6 +312,18 @@ object ReservedInstr {
   }
 }
 
+/**
+  * IO port of an execution unit
+  * 
+  * - next: next instruction
+  * - stall: unit -> pipeline stall signal
+  * - pause: pipeline -> unit stall signal
+  * - flush: Flush signal
+  * - retired: The instruction that just finished executing
+  * - retirement: Result of execution
+  *
+  * @param coredef
+  */
 class ExecUnitPort(implicit val coredef: CoreDef) extends Bundle {
   val next = Input(new PipeInstr)
 
@@ -254,11 +335,33 @@ class ExecUnitPort(implicit val coredef: CoreDef) extends Bundle {
   val retired = Output(new PipeInstr)
 }
 
+/**
+  * Trait repersenting an execution unit
+  * 
+  * DEPTH is the pipeline delay of this unit. For example, ALU, which works in and asynchronous manner,
+  * have DEPTH = 0. LSU have a DEPTH of 1, and Div's DEPTH depends on its configuration
+  */
 trait ExecUnitInt {
   val DEPTH: Int
   val io: ExecUnitPort
 }
 
+/**
+  * Base class of and execution unit
+  *
+  * This class automatically generates stage registers, which contains the instruction and an custom
+  * bundle specified by the implementation.
+  * 
+  * Implementations are required to implement two methods:
+  * - def map(stage: Int, pipe: PipeInstr, ext: Option[T]): (T, Bool)
+  *   Mapping of one stage
+  * - def finalize(pipe: PipeInstr, ext: T): RetireInfo 
+  *   Mapping from the last stage's output into RetireInfo
+  *
+  * @param DEPTH: pipeline delay
+  * @param ExtData: extra data's type
+  * @param coredef: core defination
+  */
 abstract class ExecUnit[T <: Data](
   val DEPTH: Int,
   val ExtData: T
@@ -363,12 +466,26 @@ abstract class ExecUnit[T <: Data](
   }
 }
 
+/**
+  * Entry of common data bus
+  * 
+  * - valid: does this entry have any data in it?
+  * - name: name of the broadcasted virtual register
+  * - data: value to be broadcasted
+  *
+  * @param coredef core defination
+  */
 class CDBEntry(implicit val coredef: CoreDef) extends Bundle {
   val valid = Bool()
   val name = UInt(log2Ceil(coredef.INFLIGHT_INSTR_LIMIT).W)
   val data = UInt(coredef.XLEN.W)
 }
 
+/**
+  * Common data bus
+  *
+  * @param coredef core defination
+  */
 class CDB(implicit val coredef: CoreDef) extends Bundle {
   val entries = Vec(coredef.UNIT_COUNT+1, new CDBEntry)
 }
