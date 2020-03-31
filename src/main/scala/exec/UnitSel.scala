@@ -9,13 +9,12 @@ import exec.UnitSel.Retirement
 import chisel3.util.log2Ceil
 import _root_.core.CSRWriter
 import scala.collection.mutable
-import units.WithCSRWriter
-import exec.units.WithLSUPort
 import cache.DCReader
 import _root_.core.ExType
 import _root_.core.ExReq
 import _root_.instr.Decoder
 import _root_.core.Const
+import _root_.core.PrivLevel
 
 /**
  * Read instructions from reservation stations, and send them into (probably one of multiple) exec unit
@@ -62,6 +61,14 @@ class UnitSel(
       saUp := u.asInstanceOf[WithLSUPort].saUp
       extras.put("LSU", dcReader)
       extras.put("saUp", saUp)
+    }
+
+    if(u.isInstanceOf[WithPrivPort]) {
+      // TODO: reuse
+      println("Found extra port: priv")
+      val priv = IO(Input(PrivLevel()))
+      u.asInstanceOf[WithPrivPort].priv := priv
+      extras.put("priv", priv)
     }
   }
 

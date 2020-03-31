@@ -74,7 +74,3 @@ class CSR(override implicit val coredef: CoreDef)
 
   init()
 }
-
-trait WithCSRWriter {
-  val writer: CSRWriter
-}

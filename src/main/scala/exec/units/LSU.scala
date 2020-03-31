@@ -19,7 +19,7 @@ class LSUExt(implicit val coredef: CoreDef) extends Bundle {
   val sUnaligned = Bool()
 }
 
-class LSU(override implicit val coredef: CoreDef) extends ExecUnit(1, new LSUExt) with WithLSUPort {
+class LSU(override implicit val coredef: CoreDef) extends ExecUnit(1, new LSUExt) with exec.WithLSUPort {
   val reader = IO(new DCReader(coredef.L1D))
   val saUp = IO(Output(Bool()))
   val flushed = RegInit(false.B)
@@ -206,9 +206,4 @@ class LSU(override implicit val coredef: CoreDef) extends ExecUnit(1, new LSUExt
   }
 
   init()
-}
-
-trait WithLSUPort {
-  val reader: DCReader
-  val saUp: Bool
 }

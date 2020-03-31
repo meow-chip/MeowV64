@@ -67,6 +67,7 @@ class Core(val coredef: CoreDef = DefaultDef) extends Module {
   ctrl.toExec.nepc := exec.toCtrl.nepc
   ctrl.toExec.int <> exec.toCtrl.int
   ctrl.toExec.intAck := exec.toCtrl.intAck
+  ctrl.toExec.priv <> exec.toCtrl.priv
 
   ctrl.eint := io.eint
 

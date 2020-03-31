@@ -8,6 +8,7 @@ import _root_.core.ExType
 import _root_.core.ExReq
 import exec._
 import _root_.core.CoreDef
+import _root_.core.PrivLevel
 
 class BranchExt extends Bundle {
   val branched = Bool()
@@ -16,7 +17,9 @@ class BranchExt extends Bundle {
   val extype = ExType()
 }
 
-class Branch(override implicit val coredef: CoreDef) extends ExecUnit(0, new BranchExt) {
+class Branch(override implicit val coredef: CoreDef) extends ExecUnit(0, new BranchExt) with WithPrivPort {
+  val priv = IO(Input(PrivLevel()))
+
   def map(stage: Int, pipe: PipeInstr, ext: Option[BranchExt]): (BranchExt, Bool) = {
     val ext = Wire(new BranchExt)
     ext.branched := false.B
@@ -65,7 +68,13 @@ class Branch(override implicit val coredef: CoreDef) extends ExecUnit(0, new Bra
         }
 
         is(Decoder.PRIV_RS2("RET")) {
-          ext.ex := ExReq.ret
+          // TODO: check for funct7
+          ext.ex := ExReq.mret
+
+          when(priv === PrivLevel.U) {
+            ext.ex := ExReq.ex
+            ext.extype := ExType.ILLEGAL_INSTR
+          }
         }
       }
     }
@@ -77,10 +86,10 @@ class Branch(override implicit val coredef: CoreDef) extends ExecUnit(0, new Bra
     val info = Wire(new RetireInfo)
     info.mem.noop()
 
-    when(ext.ex === ExReq.ret) {
+    when(ext.ex === ExReq.mret) {
       // info.regWaddr := 0.U
       info.wb := DontCare
-      info.branch.eret()
+      info.branch.mret()
     }.elsewhen(ext.ex === ExReq.ex) {
       // info.regWaddr := 0.U
       info.wb := DontCare

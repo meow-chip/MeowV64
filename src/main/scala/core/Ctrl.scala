@@ -33,7 +33,11 @@ object ExType extends ChiselEnum {
 }
 
 object ExReq extends ChiselEnum {
-  val none, ex, ret = Value
+  val none, ex, mret = Value
+}
+
+object PrivLevel extends ChiselEnum {
+  val M, S, U = Value
 }
 
 class Ctrl(coredef: CoreDef) extends MultiIOModule {
@@ -59,6 +63,8 @@ class Ctrl(coredef: CoreDef) extends MultiIOModule {
     
     val int = Output(Bool())
     val intAck = Input(Bool())
+
+    val priv = Output(PrivLevel())
   })
 
   val eint = IO(Input(Bool()))
@@ -96,12 +102,16 @@ class Ctrl(coredef: CoreDef) extends MultiIOModule {
   // MEPC in the front!
   val mepc = RegInit(0.U(coredef.XLEN.W))
 
+  // Privilege level
+  val priv = RegInit(PrivLevel.M);
+  toExec.priv := priv;
+
   // Next retired instruction
   val nepc = Wire(UInt(coredef.XLEN.W))
   when(toExec.retCnt =/= 0.U) {
     val recv = Wire(UInt(coredef.XLEN.W))
     recv := toExec.nepc
-    when(br.req.ex === ExReq.ret) {
+    when(br.req.ex === ExReq.mret) {
       recv := mepc
     }.elsewhen(br.req.branch) {
       recv:= toExec.nepc
@@ -244,12 +254,16 @@ class Ctrl(coredef: CoreDef) extends MultiIOModule {
 
     mpie := mie
     mie := false.B
-  }.elsewhen(br.req.ex === ExReq.ret) {
+
+    priv := PrivLevel.M
+  }.elsewhen(br.req.ex === ExReq.mret) {
     branch := true.B
     baddr := mepc
 
     mie := mpie
     mpie := true.B
+
+    priv := PrivLevel.U
   }
 
   // Avoid Vivado naming collision. Com'on, Xilinx, write *CORRECT* code plz

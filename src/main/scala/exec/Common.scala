@@ -14,6 +14,8 @@ import _root_.core.ExType
 import _root_.core.CSRWriter
 import chisel3.util.MuxLookup
 import instr.Decoder.InstrType
+import cache.DCReader
+import _root_.core.PrivLevel
 
 /**
   * Branch result
@@ -73,12 +75,12 @@ class BranchResult(implicit val coredef: CoreDef) extends Bundle {
     extype := et
   }
 
-  def eret() {
+  def mret() {
     branch := false.B
     target := DontCare
     irst := false.B
 
-    ex := ExReq.ret
+    ex := ExReq.mret
     extype := DontCare
   }
 
@@ -488,4 +490,21 @@ class CDBEntry(implicit val coredef: CoreDef) extends Bundle {
   */
 class CDB(implicit val coredef: CoreDef) extends Bundle {
   val entries = Vec(coredef.UNIT_COUNT+1, new CDBEntry)
+}
+
+/**
+  * Additional ports
+  */
+
+trait WithLSUPort {
+  val reader: DCReader
+  val saUp: Bool
+}
+
+trait WithCSRWriter {
+  val writer: CSRWriter
+}
+
+trait WithPrivPort {
+  val priv: PrivLevel.Type
 }
