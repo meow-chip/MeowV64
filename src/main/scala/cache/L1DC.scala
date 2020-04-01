@@ -88,8 +88,8 @@ class L1DC(val opts: L1DOpts)(implicit coredef: CoreDef) extends MultiIOModule {
   val fs = IO(Flipped(new DCFenceStatus(opts)))
   val toL2 = IO(new L1DCPort(opts))
 
-  // Convert mr + ptw to r, with higher priority given to ptw
-  val rarbiter = Module(new Arbiter(UInt(coredef.ADDR_WIDTH.W), 2))
+  // Convert mr + ptw to r
+  val rarbiter = Module(new RRArbiter(UInt(coredef.ADDR_WIDTH.W), 2))
   val r = Wire(new DCReader(opts))
   r.read := rarbiter.io.out.valid
   rarbiter.io.out.ready := !r.stall
