@@ -7,6 +7,8 @@ import chisel3.experimental.ChiselEnum
 import _root_.core.CoreDef
 
 class TLB(implicit coredef: CoreDef) extends MultiIOModule {
+  val ignored = IO(Input(Bool()))
+
   val ptw = IO(new TLBExt)
 
   val query = IO(new Bundle {
@@ -25,11 +27,17 @@ class TLB(implicit coredef: CoreDef) extends MultiIOModule {
   val hitResult = Mux1H(hitMap, storage.map(_.ppn))
 
   val inStore = VecInit(hitMap).asUInt().orR()
-  query.ready := inStore && query.query
-  query.ppn := hitResult
+
+  when(ignored) {
+    query.ready := query.query
+    query.ppn := query.vpn
+  } otherwise {
+    query.ready := inStore && query.query
+    query.ppn := hitResult
+  }
 
   // Refilling
-  when(query.query && !inStore) {
+  when(!ignored && query.query && !inStore) {
     ptw.req.enq(query.vpn)
   } otherwise {
     ptw.req.noenq()

@@ -47,7 +47,7 @@ class PTW(implicit coredef: CoreDef) extends MultiIOModule {
 
       when(arbiter.io.out.valid) {
         level := 0.U
-        raddr := (satp +% segs(0)) << 3 // PTE are aligned in 64-bits
+        raddr := satp(43, 0) ## segs(0) ## 0.U(3.W) // PTE are aligned in 64-bits
         state := PTWState.reading
       }
     }
@@ -69,7 +69,8 @@ class PTW(implicit coredef: CoreDef) extends MultiIOModule {
               arbiter.io.out.deq()
             } otherwise {
               // Continue searching
-              raddr := pte.ppn << 12 // PAGE_SIZE
+              level := level + 1.U
+              raddr := pte.ppn ## segs(level + 1.U) ## 0.U(3.W)
             }
           } otherwise {
             state := PTWState.idle
