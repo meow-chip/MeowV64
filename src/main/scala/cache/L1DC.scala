@@ -8,6 +8,8 @@ import chisel3.util._
 import Chisel.experimental.chiselName
 import cache.L1DCPort.L2Req
 import cache.L1DCPort.L1Req
+import paging.PTWExt
+import _root_.core.CoreDef
 
 class DCReader(val opts: L1DOpts) extends Bundle {
   val addr = Output(UInt(opts.ADDR_WIDTH.W))
@@ -51,7 +53,7 @@ object DLine {
 }
 
 @chiselName
-class L1DC(val opts: L1DOpts) extends MultiIOModule {
+class L1DC(val opts: L1DOpts)(implicit coredef: CoreDef) extends MultiIOModule {
   // Constants and helpers
   val IGNORED_WIDTH = log2Ceil(opts.TRANSFER_SIZE / 8)
   val OFFSET_WIDTH = log2Ceil(opts.LINE_WIDTH)
@@ -79,12 +81,28 @@ class L1DC(val opts: L1DOpts) extends MultiIOModule {
 
   val stores = SyncReadMem(LINE_PER_ASSOC, Vec(opts.ASSOC, new DLine(opts)))
 
-  // Ports
-  val r = IO(Flipped(new DCReader(opts)))
+  // Ports, mr = Memory read, ptw = Page table walker
+  val mr = IO(Flipped(new DCReader(opts)))
+  val ptw = IO(Flipped(new PTWExt))
   val w = IO(Flipped(new DCWriter(opts)))
   val fs = IO(Flipped(new DCFenceStatus(opts)))
   val toL2 = IO(new L1DCPort(opts))
 
+  // Convert mr + ptw to r, with higher priority given to ptw
+  val rarbiter = Module(new Arbiter(UInt(coredef.ADDR_WIDTH.W), 2))
+  val r = Wire(new DCReader(opts))
+  r.read := rarbiter.io.out.valid
+  rarbiter.io.out.ready := !r.stall
+  r.addr := rarbiter.io.out.bits
+
+  rarbiter.io.in(0) <> ptw.req
+  rarbiter.io.in(1).valid := mr.read
+  rarbiter.io.in(1).bits := mr.data
+  mr.stall := !rarbiter.io.in(1).ready
+  ptw.resp := r.data
+  mr.data := r.data
+
+  // Asserting that in-line offset is 0
   assert(r.addr(IGNORED_WIDTH-1, 0) === 0.U)
   assert(w.addr(IGNORED_WIDTH-1, 0) === 0.U)
 

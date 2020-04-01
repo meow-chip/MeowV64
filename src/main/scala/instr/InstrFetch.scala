@@ -44,7 +44,7 @@ class InstrFifoReader(val coredef: CoreDef) extends Bundle {
   val pop = Output(UInt(log2Ceil(coredef.ISSUE_NUM + 1).W))
 }
 
-class InstrFetch(coredef: CoreDef) extends MultiIOModule {
+class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
   val toCtrl = IO(new Bundle {
     val pc = Input(UInt(coredef.XLEN.W))
     val skip = Input(UInt(log2Ceil(coredef.FETCH_NUM).W))

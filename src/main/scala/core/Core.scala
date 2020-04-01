@@ -7,7 +7,7 @@ import _root_.cache._
 import _root_.reg._
 import exec.Exec
 
-class Core(val coredef: CoreDef = DefaultDef) extends Module {
+class Core(implicit val coredef: CoreDef = DefaultDef) extends Module {
   val io = IO(new Bundle {
     val axi = new AXI(coredef.XLEN, coredef.ADDR_WIDTH)
     val eint = Input(Bool())
@@ -31,9 +31,9 @@ class Core(val coredef: CoreDef = DefaultDef) extends Module {
   l2.ic(0) <> l1i.toL2
   l2.dc(0) <> l1d.toL2
 
-  val fetch = Module(new InstrFetch(coredef))
-  val bpu = Module(new BPU()(coredef))
-  val exec = Module(new Exec()(coredef))
+  val fetch = Module(new InstrFetch)
+  val bpu = Module(new BPU)
+  val exec = Module(new Exec)
   val reg = Module(new RegFile(coredef.XLEN, 32, coredef.ISSUE_NUM * 2, coredef.RETIRE_NUM))
 
   val (csrWriter, csr) = CSR.gen(coredef.XLEN, coredef.HART_ID)
@@ -55,7 +55,7 @@ class Core(val coredef: CoreDef = DefaultDef) extends Module {
   exec.toCtrl.ctrl <> ctrl.io.exec
   exec.csrWriter <> csrWriter
 
-  exec.toDC.r <> l1d.r
+  exec.toDC.r <> l1d.mr
   exec.toDC.w <> l1d.w
   exec.toDC.fs <> l1d.fs
   exec.toDC.u <> l2.directs(0)
