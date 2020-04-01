@@ -1,10 +1,11 @@
 package core
 import cache._
+import chisel3.util.log2Ceil
 
 abstract class CoreDef {
   outer =>
   val XLEN: Int = 64
-  val ADDR_WIDTH: Int = 48
+  val ADDR_WIDTH: Int = 64 // TODO: change to PADDR_WIDTH
   val FETCH_NUM: Int = 2
   val ISSUE_NUM: Int = 2
   val RETIRE_NUM: Int = 2
@@ -62,6 +63,13 @@ abstract class CoreDef {
 
     val WRITE_BUF_DEPTH: Int = 4
   } with L1DOpts
+
+  val TLB_SIZE: Int = 32
+  val VADDR_WIDTH: Int = 48
+
+  def tlbIdxWidth = log2Ceil(TLB_SIZE)
+  def vpnWidth = VADDR_WIDTH - 12
+  def ppnWidth = ADDR_WIDTH - 12
 }
 
 object DefaultDef extends CoreDef
