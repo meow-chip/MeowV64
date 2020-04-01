@@ -79,8 +79,17 @@ class Ctrl(coredef: CoreDef) extends MultiIOModule {
     val mepc = new CSRPort(coredef.XLEN)
     val mcause = new CSRPort(coredef.XLEN)
     val mtval = new CSRPort(coredef.XLEN)
-
     val mcountinhibit = new CSRPort(coredef.XLEN)
+    val mideleg = new CSRPort(coredef.XLEN)
+    val medeleg = new CSRPort(coredef.XLEN)
+
+    val sstatus = new CSRPort(coredef.XLEN)
+    val stvec = new CSRPort(coredef.XLEN)
+    val sie = new CSRPort(coredef.XLEN)
+    val sip = new CSRPort(coredef.XLEN)
+    val scause = new CSRPort(coredef.XLEN)
+    val sepc = new CSRPort(coredef.XLEN)
+    val stval = new CSRPort(coredef.XLEN)
   });
 
   val snepc = RegInit(coredef.INIT_VEC.U(coredef.XLEN.W))

@@ -23,6 +23,7 @@ object CSRHelper {
     csr.readers("mimpid") := 0.U(csr.XLEN.W)
     csr.readers("misa") := 2.U(2.W) ## 0.U((csr.XLEN-2-26).W) ## CSRHelper.buildExt("IMAC").U(26.W)
     csr.readers("mcounteren") := 0.U(csr.XLEN.W)
+    csr.readers("scounteren") := 0.U(csr.XLEN.W)
   }
 }
 
@@ -97,6 +98,7 @@ class CSRWriter(val XLEN: Int) extends Bundle {
 object CSR {
   // Is mutable on the second parameter
   val addrMap = Map(
+    // Machine
     0xF11 -> ("mvendorid", false),
     0xF12 -> ("marchid", false),
     0xF13 -> ("mimpid", false),
@@ -107,7 +109,7 @@ object CSR {
     0x303 -> ("mideleg", true),
     0x304 -> ("mie", true),
     0x305 -> ("mtvec", true),
-    0x306 -> ("mcounteren", false),
+    0x306 -> ("mcounteren", false), // TODO: impl counter
     0x320 -> ("mcountinhibit", true),
     0x340 -> ("mscratch", true),
     0x341 -> ("mepc", true),
@@ -115,7 +117,22 @@ object CSR {
     0x343 -> ("mtval", true),
     0x344 -> ("mip", true),
     0xB00 -> ("mcycle", true),
-    0xB02 -> ("minstret", true)
+    0xB02 -> ("minstret", true),
+
+    // Supervisor
+    0x100 -> ("sstatus", true),
+    // No N extension
+    // 0x102 -> ("sedeleg", true),
+    // 0x103 -> ("sideleg", true),
+    0x104 -> ("sie", true),
+    0x105 -> ("stvec", true),
+    0x106 -> ("scounteren", false),
+    0x140 -> ("sscratch", true),
+    0x141 -> ("sepc", true),
+    0x142 -> ("scause", true),
+    0x143 -> ("stval", true),
+    0x144 -> ("sip", true),
+    0x180 -> ("satp", true)
   )
 
   /*

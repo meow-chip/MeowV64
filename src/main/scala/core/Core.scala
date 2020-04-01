@@ -86,14 +86,24 @@ class Core(implicit val coredef: CoreDef = DefaultDef) extends Module {
   csr.attach("mie").connect(ctrl.csr.mie)
   csr.attach("mip").connect(ctrl.csr.mip)
   csr.attach("mcountinhibit").connect(ctrl.csr.mcountinhibit)
+  csr.attach("mideleg").connect(ctrl.csr.mideleg)
+  csr.attach("medeleg").connect(ctrl.csr.medeleg)
 
-  val medeleg = RegInit(0.U(coredef.XLEN.W))
-  csr.attach("medeleg").connect(CSRPort.fromReg(coredef.XLEN, medeleg))
-  val mideleg = RegInit(0.U(coredef.XLEN.W))
-  csr.attach("mideleg").connect(CSRPort.fromReg(coredef.XLEN, mideleg))
+  csr.attach("sstatus").connect(ctrl.csr.sstatus)
+  csr.attach("stvec").connect(ctrl.csr.stvec)
+  csr.attach("sie").connect(ctrl.csr.sie)
+  csr.attach("sip").connect(ctrl.csr.sip)
+  csr.attach("scause").connect(ctrl.csr.scause)
+  csr.attach("sepc").connect(ctrl.csr.sepc)
+  csr.attach("stval").connect(ctrl.csr.stval)
 
   val mscratch = RegInit(0.U(coredef.XLEN.W))
   csr.attach("mscratch").connect(CSRPort.fromReg(coredef.XLEN, mscratch))
+  val sscratch = RegInit(0.U(coredef.XLEN.W))
+  csr.attach("sscratch").connect(CSRPort.fromReg(coredef.XLEN, sscratch))
+
+  val satp = RegInit(0.U(coredef.XLEN.W))
+  csr.attach("satp").connect(CSRPort.fromReg(coredef.XLEN, satp))
 
   io.mcycle := ctrl.csr.mcycle.rdata
   io.minstret := ctrl.csr.minstret.rdata
