@@ -16,6 +16,7 @@ import chisel3.util.MuxLookup
 import instr.Decoder.InstrType
 import cache.DCReader
 import _root_.core.PrivLevel
+import _root_.core.Status
 
 /**
   * Branch result
@@ -507,4 +508,8 @@ trait WithCSRWriter {
 
 trait WithPrivPort {
   val priv: PrivLevel.Type
+}
+
+trait WithStatus {
+  val status: Status
 }

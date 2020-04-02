@@ -68,6 +68,7 @@ class Ctrl(implicit coredef: CoreDef) extends MultiIOModule {
     val intAck = Input(Bool())
 
     val priv = Output(PrivLevel())
+    val status = Output(new Status)
   })
 
   val eint = IO(Input(Bool()))
@@ -197,6 +198,7 @@ class Ctrl(implicit coredef: CoreDef) extends MultiIOModule {
   val status = RegInit(Status.empty)
   val mwpri = RegInit(0.U(coredef.XLEN.W))
   val swpri = RegInit(0.U(coredef.XLEN.W))
+  toExec.status := status
 
   csr.mstatus.rdata := (
     status.asUInt & Status.mmask
@@ -225,8 +227,8 @@ class Ctrl(implicit coredef: CoreDef) extends MultiIOModule {
   }
 
   // MxDELEG
-  val medeleg = RegInit(0.U(coredef.XLEN))
-  val mideleg = RegInit(0.U(coredef.XLEN))
+  val medeleg = RegInit(0.U(coredef.XLEN.W))
+  val mideleg = RegInit(0.U(coredef.XLEN.W))
   csr.medeleg <> CSRPort.fromReg(coredef.XLEN, medeleg)
   csr.mideleg <> CSRPort.fromReg(coredef.XLEN, mideleg)
 
@@ -311,33 +313,54 @@ class Ctrl(implicit coredef: CoreDef) extends MultiIOModule {
   branch := br.req.branch
   baddr := br.req.target
 
-  // Exceptions
-  // FIXME: support vercotized mtvec
-  toExec.int := eint
-  val ex = (br.req.ex === ExReq.ex) || (toExec.intAck && status.mie)
+  // Interrupts
+  val intMask: UInt = (ie.asUInt & ip.asUInt())
+  val intCause: UInt = MuxLookup(
+    true.B,
+    0.U,
+    intMask.asBools().zipWithIndex.map({ case (bit, idx) => (bit, idx.U)})
+  )
+  val intDeleg = mideleg(intCause)
+  val intEnabled = Mux(
+    intDeleg,
+    priv < PrivLevel.S || status.sie,
+    priv < PrivLevel.M || status.mie
+  )
+  val intFired = intEnabled && intMask.asUInt().orR()
+  toExec.int := intFired
+
+  // Exceptions + Interrupts
+  val ex = (br.req.ex === ExReq.ex) || (toExec.intAck && intFired)
   val cause = Wire(UInt(coredef.XLEN.W))
-  when(toExec.intAck && status.mie) {
-    cause := (true.B << (coredef.XLEN-1)) | 8.U
+  when(intFired) {
+    cause := (true.B << (coredef.XLEN-1)) | intCause
   }.otherwise {
     cause := (false.B << (coredef.XLEN-1)) | br.req.extype.asUInt()
   }
 
   // Exception delegated to S-mode
   val delegs = Mux(
-    cause(63),
-    mideleg(cause(62, 0)),
+    intFired,
+    intDeleg,
     medeleg(cause(62, 0))
   )
+
+  val tvecBase = Mux(delegs, stvec, mtvec)
+  val tvec = Wire(UInt(coredef.XLEN.W))
+  tvec := tvecBase(coredef.XLEN-1, 2) ## 0.U(2.W)
+  when(intFired && tvecBase(1, 0) === 1.U) {
+    // Vectored trap
+    tvec := (tvecBase(coredef.XLEN-1, 2) + intCause) ## 0.U(2.W)
+  }
 
   // FIXME: interrupt at MRET
   when(ex) {
     // Branch into mtvec
 
     branch := true.B
+    baddr := tvec
 
     when(delegs) {
-      baddr := stvec(coredef.XLEN-1, 2) ## 0.U(2.W)
-
       sepc := nepc
       scause := cause
       stval := br.tval
@@ -347,8 +370,6 @@ class Ctrl(implicit coredef: CoreDef) extends MultiIOModule {
 
       priv := PrivLevel.S
     } otherwise {
-      baddr := mtvec(coredef.XLEN-1, 2) ## 0.U(2.W)
-
       mepc := nepc
       mcause := cause
       mtval := br.tval

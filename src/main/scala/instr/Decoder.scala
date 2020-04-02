@@ -110,6 +110,10 @@ object Decoder {
     "CSRRCI" -> "111"
   ).mapValues(Integer.parseInt(_, 2).U(3.W))
 
+  val PRIV_FUNCT7: Map[String, UInt] = Map(
+    "SFENCE.VMA" -> "0001001"
+  ).mapValues(Integer.parseInt(_, 2).U(7.W))
+
   val PRIV_RS2: Map[String, UInt] = Map(
     "ECALL" -> "00000",
     "EBREAK" -> "00001",

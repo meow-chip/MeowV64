@@ -15,6 +15,7 @@ import _root_.core.ExReq
 import _root_.instr.Decoder
 import _root_.core.Const
 import _root_.core.PrivLevel
+import _root_.core.Status
 
 /**
  * Read instructions from reservation stations, and send them into (probably one of multiple) exec unit
@@ -64,19 +65,33 @@ class UnitSel(
     }
 
     if(u.isInstanceOf[WithPrivPort]) {
-      // TODO: reuse
       println("Found extra port: priv")
 
       val priv = extras.get("priv") match {
         case Some(port) => port
         case None => {
-          val port = IO(Input(PrivLevel()))
-          extras.put("priv", port)
-          port
+          val priv = IO(Input(PrivLevel()))
+          extras.put("priv", priv)
+          priv
         }
       }
 
       u.asInstanceOf[WithPrivPort].priv := priv
+    }
+
+    if(u.isInstanceOf[WithStatus]) {
+      println("Found extra port: status")
+
+      val status = extras.get("status") match {
+        case Some(port) => port
+        case None => {
+          val status = IO(Input(new Status))
+          extras.put("status", status)
+          status
+        }
+      }
+
+      u.asInstanceOf[WithStatus].status := status
     }
   }
 

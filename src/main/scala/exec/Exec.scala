@@ -21,6 +21,7 @@ import Chisel.experimental.chiselName
 import cache.DCFenceStatus
 import _root_.core.Const
 import _root_.core.PrivLevel
+import _root_.core.Status
 
 /**
  * Out-of-order exection (Tomasulo's algorithm)
@@ -45,6 +46,7 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
     val intAck = Output(Bool())
 
     val priv = Input(PrivLevel())
+    val status = Input(new Status)
   })
 
   val toBPU = IO(new Bundle {
@@ -156,7 +158,8 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
   // Connect extra ports
   units(0).extras("CSR") <> csrWriter
   units(2).extras("LSU") <> toDC.r
-  units(0).extras("priv") <> toCtrl.priv
+  units(0).extras("priv") := toCtrl.priv
+  units(0).extras("status") := toCtrl.status
 
   assume(units.length == coredef.UNIT_COUNT)
   // TODO: asserts Bypass is in unit 0
@@ -330,7 +333,7 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
 
   // Default: no branch if nothing is retired
   toCtrl.branch.nofire()
-  toCtrl.tval := DontCare
+  toCtrl.tval := DontCare // TODO: just set tval = 0 for all exceptions
   toCtrl.nepc := DontCare
 
   memAccSucc := false.B

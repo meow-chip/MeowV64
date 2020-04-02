@@ -9,12 +9,14 @@ import exec._
 class CSRExt(implicit val coredef: CoreDef) extends Bundle {
   val rdata = UInt(coredef.XLEN.W)
   val fault = Bool()
+  var written = Bool()
 }
 
 class CSR(override implicit val coredef: CoreDef)
-  extends ExecUnit(0, new CSRExt) with WithCSRWriter with WithPrivPort
+  extends ExecUnit(0, new CSRExt) with WithCSRWriter with WithPrivPort with WithStatus
 {
   val priv = IO(Input(PrivLevel()))
+  val status = IO(Input(new Status))
   val writer = IO(new CSRWriter(coredef.XLEN))
   writer.op := CSROp.rs
   writer.addr := 0.U
@@ -33,6 +35,8 @@ class CSR(override implicit val coredef: CoreDef)
 
     val op = Wire(CSROp())
     val wdata = Wire(UInt(coredef.XLEN.W))
+    op := CSROp.rs
+    wdata := 0.U
 
     switch(pipe.instr.instr.funct3) {
       is(Decoder.SYSTEM_FUNC("CSRRW")) {
@@ -66,10 +70,14 @@ class CSR(override implicit val coredef: CoreDef)
       }
     }
 
-    when(op === CSROp.rw || wdata =/= 0.U || priv < minPriv) {
+    ext.written := op === CSROp.rw || wdata =/= 0.U
+    when((ro && ext.written) || priv < minPriv) {
       ext.fault := true.B
       ext.rdata := DontCare
-    } otherwise {
+    }.elsewhen((addr === 0x180.U) && status.tvm) { // SATP trap
+      ext.fault := true.B
+      ext.rdata := DontCare
+    }.otherwise {
       ext.fault := false.B
       writer.wdata := wdata
       writer.op := op
@@ -86,6 +94,10 @@ class CSR(override implicit val coredef: CoreDef)
       info.branch.ex(ExType.ILLEGAL_INSTR)
       info.mem.noop()
       info.wb := DontCare
+    }.elsewhen(ext.written) {
+      info.branch.fire(pipe.instr.addr + 4.U)
+      info.mem.noop()
+      info.wb := ext.rdata
     } otherwise {
       info.branch.nofire()
       info.mem.noop()
