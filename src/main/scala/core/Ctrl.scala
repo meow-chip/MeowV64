@@ -223,39 +223,83 @@ class Ctrl(implicit coredef: CoreDef) extends MultiIOModule {
     swpri := csr.sstatus.wdata
   }
 
-  // mie
-  val meie = RegInit(false.B)
-  val mtie = RegInit(false.B)
-  val msie = RegInit(false.B)
+  // xIE, xIP
+  val ip = RegInit(IntConf.empty)
+  val ie = RegInit(IntConf.empty)
+  val miewpri = RegInit(UInt(coredef.XLEN.W))
+  val mipwpri = RegInit(UInt(coredef.XLEN.W))
+  val siewpri = RegInit(UInt(coredef.XLEN.W))
+  val sipwpri = RegInit(UInt(coredef.XLEN.W))
+
   csr.mie.rdata := (
-    0.U
-    | meie << 11
-    | mtie << 7
-    | msie << 3
+    ie.asUInt & IntConf.mmask(false)
+    | mwpri & IntConf.mwpri
+    | IntConf.hardwired.asUInt & ~(Status.mmask | Status.mwpri)
+  )
+
+  csr.sie.rdata := (
+    ie.asUInt & IntConf.smask(false)
+    | swpri & IntConf.swpri
+    | IntConf.hardwired.asUInt & ~(Status.smask | Status.swpri)
   )
 
   when(csr.mie.write) {
-    meie := csr.mie.wdata(11)
-    mtie := csr.mie.wdata(7)
-    msie := csr.mie.wdata(3)
+    ie := (
+      csr.mie.wdata & IntConf.mmask(false) | ie.asUInt & ~Status.mmask
+    ).asTypeOf(ie)
+    mwpri := csr.mie.wdata
   }
 
-  // TODO: wire mip
-  csr.mip.rdata := eint
-  csr.mip.wdata := DontCare
-  csr.mip.write := DontCare
+  when(csr.sie.write) {
+    ie := (
+      csr.sie.wdata & IntConf.smask(false) | ie.asUInt & ~Status.smask
+    ).asTypeOf(ie)
+    swpri := csr.sie.wdata
+  }
+
+  csr.mip.rdata := (
+    ip.asUInt & IntConf.mmask(false)
+    | mwpri & IntConf.mwpri
+    | IntConf.hardwired.asUInt & ~(Status.mmask | Status.mwpri)
+  )
+
+  csr.sip.rdata := (
+    ip.asUInt & IntConf.smask(false)
+    | swpri & IntConf.swpri
+    | IntConf.hardwired.asUInt & ~(Status.smask | Status.swpri)
+  )
+
+  when(csr.mip.write) {
+    ip := (
+      csr.mip.wdata & IntConf.mmask(false) | ip.asUInt & ~Status.mmask
+    ).asTypeOf(ip)
+    mwpri := csr.mip.wdata
+  }
+
+  when(csr.sip.write) {
+    ip := (
+      csr.sip.wdata & IntConf.smask(false) | ip.asUInt & ~Status.smask
+    ).asTypeOf(ip)
+    swpri := csr.sip.wdata
+  }
 
   // xEPC
   csr.mepc <> CSRPort.fromReg(coredef.XLEN, mepc)
   csr.sepc <> CSRPort.fromReg(coredef.XLEN, sepc)
 
-  // mtvec, mtval, mcause
+  // xtvec, xtval, xcause
   val mtvec = RegInit(0.U(coredef.XLEN.W))
   val mtval = RegInit(0.U(coredef.XLEN.W))
   val mcause = RegInit(0.U(coredef.XLEN.W))
+  val stvec = RegInit(0.U(coredef.XLEN.W))
+  val stval = RegInit(0.U(coredef.XLEN.W))
+  val scause = RegInit(0.U(coredef.XLEN.W))
   csr.mtvec <> CSRPort.fromReg(coredef.XLEN, mtvec)
   csr.mtval <> CSRPort.fromReg(coredef.XLEN, mtval)
   csr.mcause <> CSRPort.fromReg(coredef.XLEN, mcause)
+  csr.stvec <> CSRPort.fromReg(coredef.XLEN, stvec)
+  csr.stval <> CSRPort.fromReg(coredef.XLEN, stval)
+  csr.scause <> CSRPort.fromReg(coredef.XLEN, scause)
 
   branch := br.req.branch
   baddr := br.req.target

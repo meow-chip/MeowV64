@@ -288,3 +288,89 @@ object Status {
     "00110011" // xP?IE
     , 2).U
 }
+
+class IntConfGroup extends Bundle {
+  val m = Bool()
+  val h = Bool() // Not supported
+  val s = Bool()
+  val u = Bool() // Not supported
+}
+
+object IntConfGroup {
+  def mwpri = Integer.parseInt("0100", 2).U(4.W)
+  def mmask(pending: Boolean) = if(pending) {
+    Integer.parseInt("0010", 2).U(4.W) // Cannot set MxIP in MIP
+  } else {
+    Integer.parseInt("1010", 2).U(4.W)
+  }
+  def swpri = Integer.parseInt("1100", 2).U(4.W)
+  def smask(pending: Boolean) = if(pending) {
+    Integer.parseInt("0000", 2).U(4.W) // Cannot set SxIP in SIP
+  } else {
+    Integer.parseInt("0010", 2).U(4.W)
+  }
+
+  def hardwired = {
+    val result = Wire(new IntConfGroup)
+    result := DontCare
+    result.u := false.B
+    result
+  }
+
+  def empty = 0.U.asTypeOf(new IntConfGroup)
+}
+
+class IntConf(implicit coredef: CoreDef) extends Bundle {
+  val WPRI1 = UInt((coredef.XLEN - 12).W)
+  val external = new IntConfGroup
+  val timer = new IntConfGroup
+  val software = new IntConfGroup
+}
+
+object IntConf{
+  def mwpri(implicit coredef: CoreDef) = (
+    Integer.parseInt("1" * (coredef.XLEN - 12)).U((coredef.XLEN - 12).W)
+      ## IntConfGroup.mwpri
+      ## IntConfGroup.mwpri
+      ## IntConfGroup.mwpri
+  )
+
+  def swpri(implicit coredef: CoreDef) = (
+    Integer.parseInt("1" * (coredef.XLEN - 12)).U((coredef.XLEN - 12).W)
+      ## IntConfGroup.swpri
+      ## IntConfGroup.swpri
+      ## IntConfGroup.swpri
+  )
+
+  def mmask(pending: Boolean)(implicit coredef: CoreDef) = (
+    Integer.parseInt("0" * (coredef.XLEN - 12)).U((coredef.XLEN - 12).W)
+      ## IntConfGroup.mmask(pending)
+      ## IntConfGroup.mmask(pending)
+      ## IntConfGroup.mmask(pending)
+  )
+
+  def smask(pending: Boolean)(implicit coredef: CoreDef) = (
+    Integer.parseInt("0" * (coredef.XLEN - 12)).U((coredef.XLEN - 12).W)
+      ## IntConfGroup.smask(pending)
+      ## IntConfGroup.smask(pending)
+      ## IntConfGroup.smask(pending)
+  )
+
+  def empty(implicit coredef: CoreDef) = {
+    val result = Wire(new IntConf)
+    result.WPRI1 := 0.U
+    result.external := IntConfGroup.empty
+    result.timer := IntConfGroup.empty
+    result.software:= IntConfGroup.empty
+    result
+  }
+
+  def hardwired(implicit coredef: CoreDef) = {
+    val result = Wire(new IntConf)
+    result.WPRI1 := DontCare
+    result.external := IntConfGroup.hardwired
+    result.timer := IntConfGroup.hardwired
+    result.software:= IntConfGroup.hardwired
+    result
+  }
+}
