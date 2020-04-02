@@ -1,0 +1,47 @@
+name: Test + Elaboration
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Set up JDK 1.8
+      uses: actions/setup-java@v1
+      with:
+        java-version: 1.8
+    - name: Checkout submodules
+      run: |
+        git submodule sync --recursive
+        git submodule update --init --recursive --force --depth=1
+    - name: Install dependencies
+      run: |
+        sudo DEBIAN_FRONTEND=noninteractive apt update
+        sudo DEBIAN_FRONTEND=noninteractive apt install -yq wget verilator
+        wget --quiet https://static.dev.sifive.com/dev-tools/riscv64-unknown-elf-gcc-8.3.0-2019.08.0-x86_64-linux-ubuntu14.tar.gz -O toolchain.tgz
+        tar -xzf toolchain.tgz
+        sudo cp -r riscv64-unknown-elf-gcc-8.3.0-2019.08.0-x86_64-linux-ubuntu14/* /usr/local
+    - name: Build tests
+      run: |
+        cd testcases/riscv-tests 
+        autoconf 
+        ./configure --target=riscv64-unknown-elf
+        make 
+        cd ../meow 
+        make PREFIX=riscv64-unknown-elf-
+        cd ../..
+    - name: Test
+      run: sbt test
+    - name: Elaborate
+      run: sbt run
+    - uses: actions/upload-artifact@v1
+      with:
+        name: RTL
+        path: Core.v
