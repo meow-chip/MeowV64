@@ -20,7 +20,7 @@ class Core(implicit val coredef: CoreDef = DefaultDef) extends Module {
 
   assert(coredef.FETCH_NUM % 2 == 0, "issue num can only be multiples of two, because we need to support compressed instructions")
 
-  val ctrl = Module(new Ctrl(coredef))
+  val ctrl = Module(new Ctrl)
   
   // Caches
   val l2 = Module(new L2Cache(coredef.L2))

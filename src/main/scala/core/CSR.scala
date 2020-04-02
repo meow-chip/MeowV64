@@ -198,3 +198,93 @@ object CSR {
     (endpoint, csr)
   }
 }
+
+class Status(implicit coredef: CoreDef) extends Bundle {
+  val sd = Bool()
+  val WPRI1 = UInt((coredef.XLEN - 37).W)
+  
+  // These bits are not supported, so they are effectively WPRI bits
+  val sxl = UInt(2.W)
+  val uxl = UInt(2.W)
+  val WPRI2 = UInt(9.W)
+  val tsr = Bool()
+  val tw = Bool()
+  val tvm = Bool()
+  val mxr = Bool()
+  val sum = Bool()
+  val mprv = Bool()
+
+  val xs = UInt(2.W)
+  val fs = UInt(2.W)
+
+  val mpp = UInt(2.W)
+  val WPRI3 = UInt(2.W)
+  val spp = Bool()
+
+  val mpie = Bool()
+  val WPRI4 = Bool()
+  val spie = Bool()
+  val upie = Bool()
+
+  val mie = Bool()
+  val WPRI5 = Bool()
+  val sie = Bool()
+  val uie = Bool()
+}
+
+object Status {
+  def hardwired(implicit coredef: CoreDef) = {
+    val result = Wire(new Status)
+    result := DontCare
+
+    // No SD & XS & FS
+    result.sd := 0.B
+    result.xs := 0.U
+    result.fs := 0.U
+
+    // Cannot change XLEN
+    result.sxl := 2.U
+    result.uxl := 2.U
+
+    result
+  }
+
+  def empty(implicit coredef: CoreDef) = 0.U.asTypeOf(new Status)
+
+  def mwpri(implicit coredef: CoreDef) = Integer.parseInt(
+    "0" +
+    "1" * (coredef.XLEN - 37) +
+    "0000" +
+    "1" * 9 +
+    "0" * 12 +
+    "11001000100", 2).U
+
+  def mmask(implicit coredef: CoreDef) = Integer.parseInt(
+    "0" + // SD not supported
+    "0" * (coredef.XLEN - 37) + // WPRI
+    "0" * 4 + // SXL and UXL not supported
+    "0" * 9 + // WPRI
+    "1" * 6 + // TSR - MPRV
+    "0000" + // XS & FS
+    "11001" + // xPP
+    "10111011" // xP?IE
+    , 2).U
+
+  def swpri(implicit coredef: CoreDef) = Integer.parseInt(
+    "0" +
+    "1" * (coredef.XLEN - 35) +
+    "00" +
+    "1" * 12 +
+    "00100001111011001100", 2).U
+
+  def smask(implicit coredef: CoreDef) = Integer.parseInt(
+    "0" + // SD not supported
+    "0" * (coredef.XLEN - 35) + // WPRI
+    "0" * 2 + // SXL and UXL not supported
+    "0" * 12 + // WPRI
+    "11" + // MXR, SUM
+    "00000" + // WPRI, XS & FS
+    "00001" + // xPP
+    "00110011" // xP?IE
+    , 2).U
+}

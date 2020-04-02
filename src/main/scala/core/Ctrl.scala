@@ -33,14 +33,14 @@ object ExType extends ChiselEnum {
 }
 
 object ExReq extends ChiselEnum {
-  val none, ex, mret = Value
+  val none, ex, mret, sret = Value
 }
 
 object PrivLevel extends ChiselEnum {
   val M, S, U = Value
 }
 
-class Ctrl(coredef: CoreDef) extends MultiIOModule {
+class Ctrl(implicit coredef: CoreDef) extends MultiIOModule {
   val io = IO(new Bundle{
     val pc = Output(UInt(coredef.XLEN.W))
     val skip = Output(UInt(log2Ceil(coredef.FETCH_NUM).W))
@@ -187,22 +187,35 @@ class Ctrl(coredef: CoreDef) extends MultiIOModule {
   csr.minstret <> CSRPort.fromReg(coredef.XLEN, minstret)
   csr.mcountinhibit <> CSRPort.fromReg(coredef.XLEN, mcountinhibit)
 
-  // mstatus
-  val mie = RegInit(false.B)
-  val mpie = RegInit(false.B)
+  // xstatus
+  val status = RegInit(Status.empty)
+  val mwpri = RegInit(UInt(coredef.XLEN.W))
+  val swpri = RegInit(UInt(coredef.XLEN.W))
 
-  // TODO: WPRI?
   csr.mstatus.rdata := (
-    0.U(coredef.XLEN)
-    | mpie << 7
-    | mie << 3
-    | 2.U(2.W) << 32 // UXL
+    status.asUInt & Status.mmask
+    | mwpri & Status.mwpri
+    | Status.hardwired.asUInt & ~(Status.mmask | Status.mwpri)
+  )
+
+  csr.sstatus.rdata := (
+    status.asUInt & Status.smask
+    | swpri & Status.swpri
+    | Status.hardwired.asUInt & ~(Status.smask | Status.swpri)
   )
 
   when(csr.mstatus.write) {
-    csr.mstatus.wdata := DontCare
-    mpie := csr.mstatus.wdata(7)
-    mie := csr.mstatus.wdata(3)
+    status := (
+      csr.mstatus.wdata & Status.mmask | status.asUInt & ~Status.mmask
+    ).asTypeOf(status)
+    mwpri := csr.mstatus.wdata
+  }
+
+  when(csr.sstatus.write) {
+    status := (
+      csr.sstatus.wdata & Status.smask | status.asUInt & ~Status.smask
+    ).asTypeOf(status)
+    swpri := csr.sstatus.wdata
   }
 
   // mie
@@ -242,9 +255,9 @@ class Ctrl(coredef: CoreDef) extends MultiIOModule {
   // Exceptions
   // FIXME: support vercotized mtvec
   toExec.int := eint
-  val ex = (br.req.ex === ExReq.ex) || (toExec.intAck && mie)
+  val ex = (br.req.ex === ExReq.ex) || (toExec.intAck && status.mie)
   val cause = Wire(UInt(coredef.XLEN.W))
-  when(toExec.intAck && mie) {
+  when(toExec.intAck && status.mie) {
     cause := (true.B << (coredef.XLEN-1)) | 8.U
   }.otherwise {
     cause := (false.B << (coredef.XLEN-1)) | br.req.extype.asUInt()
@@ -261,18 +274,20 @@ class Ctrl(coredef: CoreDef) extends MultiIOModule {
     mcause := cause
     mtval := br.tval
 
-    mpie := mie
-    mie := false.B
+    status.mpie := status.mie
+    status.mie := false.B
 
     priv := PrivLevel.M
   }.elsewhen(br.req.ex === ExReq.mret) {
     branch := true.B
     baddr := mepc
 
-    mie := mpie
-    mpie := true.B
+    status.mie := status.mpie
+    status.mpie := true.B
 
+    // FIXME: MPP
     priv := PrivLevel.U
+  }.elsewhen(br.req.ex === ExReq.sret) {
   }
 
   // Avoid Vivado naming collision. Com'on, Xilinx, write *CORRECT* code plz
