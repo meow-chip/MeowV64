@@ -66,9 +66,17 @@ class UnitSel(
     if(u.isInstanceOf[WithPrivPort]) {
       // TODO: reuse
       println("Found extra port: priv")
-      val priv = IO(Input(PrivLevel()))
+
+      val priv = extras.get("priv") match {
+        case Some(port) => port
+        case None => {
+          val port = IO(Input(PrivLevel()))
+          extras.put("priv", port)
+          port
+        }
+      }
+
       u.asInstanceOf[WithPrivPort].priv := priv
-      extras.put("priv", priv)
     }
   }
 

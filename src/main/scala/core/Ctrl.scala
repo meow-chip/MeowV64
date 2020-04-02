@@ -39,6 +39,7 @@ object ExReq extends ChiselEnum {
 object PrivLevel extends ChiselEnum {
   val U = Value(0.U)
   val S = Value(1.U)
+  val H = Value(2.U) // Although we don't support H...
   val M = Value(3.U)
 }
 

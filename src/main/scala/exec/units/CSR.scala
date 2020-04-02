@@ -8,11 +8,13 @@ import exec._
 
 class CSRExt(implicit val coredef: CoreDef) extends Bundle {
   val rdata = UInt(coredef.XLEN.W)
+  val fault = Bool()
 }
 
 class CSR(override implicit val coredef: CoreDef)
-  extends ExecUnit(0, new CSRExt) with WithCSRWriter
+  extends ExecUnit(0, new CSRExt) with WithCSRWriter with WithPrivPort
 {
+  val priv = IO(Input(PrivLevel()))
   val writer = IO(new CSRWriter(coredef.XLEN))
   writer.op := CSROp.rs
   writer.addr := 0.U
@@ -22,54 +24,75 @@ class CSR(override implicit val coredef: CoreDef)
     // Asserts pipe.op === SYSTEM
 
     val ext = Wire(new CSRExt)
-    writer.addr := pipe.instr.instr.funct7 ## pipe.instr.instr.rs2
+    val addr = pipe.instr.instr.funct7 ## pipe.instr.instr.rs2
+    writer.addr := addr
+
+    // Check privileges
+    val ro = addr(11, 10) === 3.U
+    val minPriv = addr(9, 8).asTypeOf(PrivLevel())
+
+    val op = Wire(CSROp())
+    val wdata = Wire(UInt(coredef.XLEN.W))
 
     switch(pipe.instr.instr.funct3) {
       is(Decoder.SYSTEM_FUNC("CSRRW")) {
-        writer.op := CSROp.rw
-        writer.wdata := pipe.rs1val
+        op := CSROp.rw
+        wdata := pipe.rs1val
       }
 
       is(Decoder.SYSTEM_FUNC("CSRRWI")) {
-        writer.op := CSROp.rw
-        writer.wdata := pipe.instr.instr.rs1
+        op := CSROp.rw
+        wdata := pipe.instr.instr.rs1
       }
 
       is(Decoder.SYSTEM_FUNC("CSRRS")) {
-        writer.op := CSROp.rs
-        writer.wdata := pipe.rs1val
+        op := CSROp.rs
+        wdata := pipe.rs1val
       }
 
       is(Decoder.SYSTEM_FUNC("CSRRSI")) {
-        writer.op := CSROp.rs
-        writer.wdata := pipe.instr.instr.rs1
+        op := CSROp.rs
+        wdata := pipe.instr.instr.rs1
       }
 
       is(Decoder.SYSTEM_FUNC("CSRRC")) {
-        writer.op := CSROp.rc
-        writer.wdata := pipe.rs1val
+        op := CSROp.rc
+        wdata := pipe.rs1val
       }
 
       is(Decoder.SYSTEM_FUNC("CSRRCI")) {
-        writer.op := CSROp.rc
-        writer.wdata := pipe.instr.instr.rs1
+        op := CSROp.rc
+        wdata := pipe.instr.instr.rs1
       }
     }
 
-    ext.rdata := writer.rdata
+    when(op === CSROp.rw || wdata =/= 0.U || priv < minPriv) {
+      ext.fault := true.B
+      ext.rdata := DontCare
+    } otherwise {
+      ext.fault := false.B
+      writer.wdata := wdata
+      writer.op := op
+      ext.rdata := writer.rdata
+    }
 
     (ext, false.B)
   }
 
   override def finalize(pipe: PipeInstr, ext: CSRExt): RetireInfo = {
     val info = Wire(new RetireInfo)
-    info.branch.nofire()
-    info.mem.noop()
-    // info.regWaddr := pipe.instr.instr.rd
 
-    info.wb := ext.rdata
+    when(ext.fault) {
+      info.branch.ex(ExType.ILLEGAL_INSTR)
+      info.mem.noop()
+      info.wb := DontCare
+    } otherwise {
+      info.branch.nofire()
+      info.mem.noop()
+      info.wb := ext.rdata
+    }
 
-    info
+      info
   }
 
   init()
