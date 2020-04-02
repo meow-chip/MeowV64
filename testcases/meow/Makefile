@@ -6,7 +6,7 @@ HEXS:=$(patsubst src/%.S,hex/%.hex,$(SRCS))
 CSRCS:=$(wildcard c/*.c)
 REFS:=$(patsubst c/%.c,ref/%.S,$(CSRCS))
 
-PREFIX ?= "riscv64-unknown-elf-"
+PREFIX ?= "riscv64-linux-gnu-"
 
 .PHONY: list all clean ref
 
