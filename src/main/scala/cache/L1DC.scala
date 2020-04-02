@@ -97,14 +97,14 @@ class L1DC(val opts: L1DOpts)(implicit coredef: CoreDef) extends MultiIOModule {
 
   rarbiter.io.in(0) <> ptw.req
   rarbiter.io.in(1).valid := mr.read
-  rarbiter.io.in(1).bits := mr.data
+  rarbiter.io.in(1).bits := mr.addr
   mr.stall := !rarbiter.io.in(1).ready
   ptw.resp := r.data
   mr.data := r.data
 
   // Asserting that in-line offset is 0
-  assert(r.addr(IGNORED_WIDTH-1, 0) === 0.U)
-  assert(w.addr(IGNORED_WIDTH-1, 0) === 0.U)
+  assert((!r.read) || r.addr(IGNORED_WIDTH-1, 0) === 0.U)
+  assert((!w.write) || w.addr(IGNORED_WIDTH-1, 0) === 0.U)
 
   toL2.wdata := DontCare
   toL2.l1addr := DontCare

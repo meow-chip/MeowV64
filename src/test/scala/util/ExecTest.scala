@@ -75,6 +75,7 @@ class ExecTest(dut: Core, file: String) extends PeekPokeTester(dut) {
         poke(dut.io.axi.RID, id)
         poke(dut.io.axi.RDATA, mem.get(ptr).getOrElse(0L))
         poke(dut.io.axi.RLAST, left == 0)
+        // println(s"Returning: 0x${mem.get(ptr).getOrElse(0L).toHexString}")
 
         if(peek(dut.io.axi.RREADY) == 1) {
           if(left == 0) reading = None
@@ -153,7 +154,7 @@ object ExecTest {
   def runFile(file: String, args: Option[Array[String]] = None): Boolean = {
     if(elaborated) {
       return chisel3.iotesters.Driver.run(
-        () => new Core,
+        () => new Core()(ExecDef),
         "./tests/VCore"
       ) {
         new ExecTest(_, file)
@@ -182,7 +183,7 @@ object ExecTest {
 
     elaborated = true
 
-    chisel3.iotesters.Driver.execute(() => new Core, manager) { new ExecTest(_, file) }
+    chisel3.iotesters.Driver.execute(() => new Core()(ExecDef), manager) { new ExecTest(_, file) }
   }
 
   def longMux(base: Long, input: Long, be: Byte): Long = {
