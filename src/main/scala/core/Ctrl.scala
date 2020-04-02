@@ -337,7 +337,6 @@ class Ctrl(implicit coredef: CoreDef) extends MultiIOModule {
     when(delegs) {
       baddr := stvec(coredef.XLEN-1, 2) ## 0.U(2.W)
 
-      // Save related stuffs
       sepc := nepc
       scause := cause
       stval := br.tval
@@ -349,7 +348,6 @@ class Ctrl(implicit coredef: CoreDef) extends MultiIOModule {
     } otherwise {
       baddr := mtvec(coredef.XLEN-1, 2) ## 0.U(2.W)
 
-      // Save related stuffs
       mepc := nepc
       mcause := cause
       mtval := br.tval

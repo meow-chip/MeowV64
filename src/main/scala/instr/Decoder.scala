@@ -113,7 +113,8 @@ object Decoder {
   val PRIV_RS2: Map[String, UInt] = Map(
     "ECALL" -> "00000",
     "EBREAK" -> "00001",
-    "RET" -> "00010"
+    "RET" -> "00010",
+    "WFI" -> "00101",
   ).mapValues(Integer.parseInt(_, 2).U(5.W))
 
   val MULDIV_FUNCT7: UInt = Integer.parseInt("0000001", 2).U(7.W)

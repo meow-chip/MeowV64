@@ -57,6 +57,10 @@ class Branch(override implicit val coredef: CoreDef) extends ExecUnit(0, new Bra
       }
     }.elsewhen(pipe.instr.instr.op === Decoder.Op("SYSTEM").ident) { // ECALL...
       switch(pipe.instr.instr.rs2) {
+        is(Decoder.PRIV_RS2("WFI")) {
+          // No-op
+        }
+
         is(Decoder.PRIV_RS2("ECALL")) {
           ext.ex := ExReq.ex
           ext.extype := ExType.M_CALL
