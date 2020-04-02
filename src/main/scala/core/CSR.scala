@@ -199,7 +199,7 @@ object CSR {
   }
 }
 
-class Status(implicit coredef: CoreDef) extends Bundle {
+class Status(implicit val coredef: CoreDef) extends Bundle {
   val sd = Bool()
   val WPRI1 = UInt((coredef.XLEN - 37).W)
   
@@ -251,7 +251,7 @@ object Status {
 
   def empty(implicit coredef: CoreDef) = 0.U.asTypeOf(new Status)
 
-  def mwpri(implicit coredef: CoreDef) = Integer.parseInt(
+  def mwpri(implicit coredef: CoreDef) = BigInt(
     "0" +
     "1" * (coredef.XLEN - 37) +
     "0000" +
@@ -259,7 +259,7 @@ object Status {
     "0" * 12 +
     "11001000100", 2).U
 
-  def mmask(implicit coredef: CoreDef) = Integer.parseInt(
+  def mmask(implicit coredef: CoreDef) = BigInt(
     "0" + // SD not supported
     "0" * (coredef.XLEN - 37) + // WPRI
     "0" * 4 + // SXL and UXL not supported
@@ -270,14 +270,14 @@ object Status {
     "10111011" // xP?IE
     , 2).U
 
-  def swpri(implicit coredef: CoreDef) = Integer.parseInt(
+  def swpri(implicit coredef: CoreDef) = BigInt(
     "0" +
     "1" * (coredef.XLEN - 35) +
     "00" +
     "1" * 12 +
     "00100001111011001100", 2).U
 
-  def smask(implicit coredef: CoreDef) = Integer.parseInt(
+  def smask(implicit coredef: CoreDef) = BigInt(
     "0" + // SD not supported
     "0" * (coredef.XLEN - 35) + // WPRI
     "0" * 2 + // SXL and UXL not supported
@@ -297,17 +297,17 @@ class IntConfGroup extends Bundle {
 }
 
 object IntConfGroup {
-  def mwpri = Integer.parseInt("0100", 2).U(4.W)
+  def mwpri = BigInt("0100", 2).U(4.W)
   def mmask(pending: Boolean) = if(pending) {
-    Integer.parseInt("0010", 2).U(4.W) // Cannot set MxIP in MIP
+    BigInt("0010", 2).U(4.W) // Cannot set MxIP in MIP
   } else {
-    Integer.parseInt("1010", 2).U(4.W)
+    BigInt("1010", 2).U(4.W)
   }
-  def swpri = Integer.parseInt("1100", 2).U(4.W)
+  def swpri = BigInt("1100", 2).U(4.W)
   def smask(pending: Boolean) = if(pending) {
-    Integer.parseInt("0000", 2).U(4.W) // Cannot set SxIP in SIP
+    BigInt("0000", 2).U(4.W) // Cannot set SxIP in SIP
   } else {
-    Integer.parseInt("0010", 2).U(4.W)
+    BigInt("0010", 2).U(4.W)
   }
 
   def hardwired = {
@@ -320,7 +320,7 @@ object IntConfGroup {
   def empty = 0.U.asTypeOf(new IntConfGroup)
 }
 
-class IntConf(implicit coredef: CoreDef) extends Bundle {
+class IntConf(implicit val coredef: CoreDef) extends Bundle {
   val WPRI1 = UInt((coredef.XLEN - 12).W)
   val external = new IntConfGroup
   val timer = new IntConfGroup
@@ -329,28 +329,28 @@ class IntConf(implicit coredef: CoreDef) extends Bundle {
 
 object IntConf{
   def mwpri(implicit coredef: CoreDef) = (
-    Integer.parseInt("1" * (coredef.XLEN - 12)).U((coredef.XLEN - 12).W)
+    BigInt("1" * (coredef.XLEN - 12), 2).U((coredef.XLEN - 12).W)
       ## IntConfGroup.mwpri
       ## IntConfGroup.mwpri
       ## IntConfGroup.mwpri
   )
 
   def swpri(implicit coredef: CoreDef) = (
-    Integer.parseInt("1" * (coredef.XLEN - 12)).U((coredef.XLEN - 12).W)
+    BigInt("1" * (coredef.XLEN - 12), 2).U((coredef.XLEN - 12).W)
       ## IntConfGroup.swpri
       ## IntConfGroup.swpri
       ## IntConfGroup.swpri
   )
 
   def mmask(pending: Boolean)(implicit coredef: CoreDef) = (
-    Integer.parseInt("0" * (coredef.XLEN - 12)).U((coredef.XLEN - 12).W)
+    BigInt("0" * (coredef.XLEN - 12), 2).U((coredef.XLEN - 12).W)
       ## IntConfGroup.mmask(pending)
       ## IntConfGroup.mmask(pending)
       ## IntConfGroup.mmask(pending)
   )
 
   def smask(pending: Boolean)(implicit coredef: CoreDef) = (
-    Integer.parseInt("0" * (coredef.XLEN - 12)).U((coredef.XLEN - 12).W)
+    BigInt("0" * (coredef.XLEN - 12), 2).U((coredef.XLEN - 12).W)
       ## IntConfGroup.smask(pending)
       ## IntConfGroup.smask(pending)
       ## IntConfGroup.smask(pending)

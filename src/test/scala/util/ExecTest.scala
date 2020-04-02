@@ -153,7 +153,7 @@ object ExecTest {
   def runFile(file: String, args: Option[Array[String]] = None): Boolean = {
     if(elaborated) {
       return chisel3.iotesters.Driver.run(
-        () => new Core(ExecDef),
+        () => new Core,
         "./tests/VCore"
       ) {
         new ExecTest(_, file)
@@ -182,7 +182,7 @@ object ExecTest {
 
     elaborated = true
 
-    chisel3.iotesters.Driver.execute(() => new Core(ExecDef), manager) { new ExecTest(_, file) }
+    chisel3.iotesters.Driver.execute(() => new Core, manager) { new ExecTest(_, file) }
   }
 
   def longMux(base: Long, input: Long, be: Byte): Long = {

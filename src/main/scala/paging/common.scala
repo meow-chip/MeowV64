@@ -4,7 +4,7 @@ import chisel3._
 import chisel3.util._
 import _root_.core.CoreDef
 
-class PTE(implicit coredef: CoreDef) extends Bundle {
+class PTE(implicit val coredef: CoreDef) extends Bundle {
   val ppn = UInt(54.W)
   val RESERVED1 = UInt(2.W)
   val d = Bool()
@@ -29,7 +29,7 @@ object PTE {
   }
 }
 
-class TLBEntry(implicit coredef: CoreDef) extends Bundle {
+class TLBEntry(implicit val coredef: CoreDef) extends Bundle {
   // We have at most 4 vpn segments (Sv48)
   val MAX_VPN_SEG = 4
 
@@ -93,13 +93,13 @@ object TLBEntry {
   }
 }
 
-class TLBExt(implicit coredef: CoreDef) extends Bundle {
+class TLBExt(implicit val coredef: CoreDef) extends Bundle {
   val req = DecoupledIO(UInt(coredef.vpnWidth.W))
   val resp = Input(new PTE)
   val level = Input(UInt(2.W)) // TODO: change into config
 }
 
-class PTWExt(implicit coredef: CoreDef) extends Bundle {
+class PTWExt(implicit val coredef: CoreDef) extends Bundle {
   val req = DecoupledIO(UInt(coredef.ADDR_WIDTH.W))
   val resp = Input(UInt(coredef.XLEN.W))
 }

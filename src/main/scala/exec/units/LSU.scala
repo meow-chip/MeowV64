@@ -42,7 +42,11 @@ class LSU(override implicit val coredef: CoreDef) extends ExecUnit(1, new LSUExt
     val isCachedWrite = isWrite && !isUncached
     val isUncachedRead = isRead && isUncached
     val isUncachedWrite = isWrite && isUncached
-    val isInvalAddr = addr(coredef.XLEN-1, coredef.ADDR_WIDTH).orR
+    val isInvalAddr = if(coredef.XLEN == coredef.ADDR_WIDTH) {
+      false.B
+    } else {
+      addr(coredef.XLEN-1, coredef.ADDR_WIDTH).orR
+    }
 
     // Is unaligned?
     val isUnaligned = Wire(Bool())

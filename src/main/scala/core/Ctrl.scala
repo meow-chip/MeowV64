@@ -194,8 +194,8 @@ class Ctrl(implicit coredef: CoreDef) extends MultiIOModule {
 
   // xstatus
   val status = RegInit(Status.empty)
-  val mwpri = RegInit(UInt(coredef.XLEN.W))
-  val swpri = RegInit(UInt(coredef.XLEN.W))
+  val mwpri = RegInit(0.U(coredef.XLEN.W))
+  val swpri = RegInit(0.U(coredef.XLEN.W))
 
   csr.mstatus.rdata := (
     status.asUInt & Status.mmask
@@ -223,13 +223,19 @@ class Ctrl(implicit coredef: CoreDef) extends MultiIOModule {
     swpri := csr.sstatus.wdata
   }
 
+  // MxDELEG
+  val medeleg = RegInit(0.U(coredef.XLEN))
+  val mideleg = RegInit(0.U(coredef.XLEN))
+  csr.medeleg <> CSRPort.fromReg(coredef.XLEN, medeleg)
+  csr.mideleg <> CSRPort.fromReg(coredef.XLEN, mideleg)
+
   // xIE, xIP
   val ip = RegInit(IntConf.empty)
   val ie = RegInit(IntConf.empty)
-  val miewpri = RegInit(UInt(coredef.XLEN.W))
-  val mipwpri = RegInit(UInt(coredef.XLEN.W))
-  val siewpri = RegInit(UInt(coredef.XLEN.W))
-  val sipwpri = RegInit(UInt(coredef.XLEN.W))
+  val miewpri = RegInit(0.U(coredef.XLEN.W))
+  val mipwpri = RegInit(0.U(coredef.XLEN.W))
+  val siewpri = RegInit(0.U(coredef.XLEN.W))
+  val sipwpri = RegInit(0.U(coredef.XLEN.W))
 
   csr.mie.rdata := (
     ie.asUInt & IntConf.mmask(false)

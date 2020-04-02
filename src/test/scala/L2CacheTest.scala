@@ -1,3 +1,5 @@
+
+/*
 import core._
 import util._
 import cache._
@@ -32,7 +34,7 @@ object L2CacheTestDef extends {
   val XLEN: Int = 64
 } with L2Opts
 
-class WrappedL2(l1do: L1DOpts, l2o: L2Opts) extends Module {
+class WrappedL2(l1do: L1DOpts, l2o: L2Opts, implicit val coredef: CoreDef) extends Module {
   val io = IO(new Bundle {
     val reader = Flipped(new DCReader(l1do))
     val writer = Flipped(new DCWriter(l1do))
@@ -201,3 +203,4 @@ object L2CacheTestMain extends App {
   println(s"Running with seed ${seed} for ${length} cycles...")
   L2CacheTest.run(seed, length, if(args.length > 0) { Some(args) } else { None })
 }
+*/

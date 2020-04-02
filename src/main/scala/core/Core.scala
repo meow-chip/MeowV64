@@ -31,6 +31,9 @@ class Core(implicit val coredef: CoreDef = DefaultDef) extends Module {
   l2.ic(0) <> l1i.toL2
   l2.dc(0) <> l1d.toL2
 
+  // TODO: attach TLB/PTW
+  l1d.ptw.req.noenq()
+
   val fetch = Module(new InstrFetch)
   val bpu = Module(new BPU)
   val exec = Module(new Exec)

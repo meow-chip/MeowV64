@@ -175,7 +175,12 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
     // Instr skipped because of fetch pipeline events
     val fetchVacant = toIC.vacant || i.U < pipeSkip || flushed
     decoded(i).vacant := fetchVacant
-    decoded(i).invalAddr := addr(coredef.XLEN-1, coredef.ADDR_WIDTH).orR()
+    val invalAddr = if(coredef.XLEN == coredef.ADDR_WIDTH) {
+      false.B
+    } else {
+      addr(coredef.XLEN-1, coredef.ADDR_WIDTH).orR()
+    }
+    decoded(i).invalAddr := invalAddr
 
     if(i == coredef.FETCH_NUM-1) {
       val (parsed, success) = vecView(i).tryAsInstr16
