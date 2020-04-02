@@ -321,24 +321,44 @@ class Ctrl(implicit coredef: CoreDef) extends MultiIOModule {
     cause := (false.B << (coredef.XLEN-1)) | br.req.extype.asUInt()
   }
 
+  // Exception delegated to S-mode
+  val delegs = Mux(
+    cause(63),
+    mideleg(cause(62, 0)),
+    medeleg(cause(62, 0))
+  )
+
   // FIXME: interrupt at MRET
   when(ex) {
     // Branch into mtvec
 
-    // TODO: delegate
-
     branch := true.B
-    baddr := mtvec(coredef.XLEN-1, 2) ## 0.U(2.W)
 
-    // Save related stuffs
-    mepc := nepc
-    mcause := cause
-    mtval := br.tval
+    when(delegs) {
+      baddr := stvec(coredef.XLEN-1, 2) ## 0.U(2.W)
 
-    status.mpie := status.mie
-    status.mie := false.B
+      // Save related stuffs
+      sepc := nepc
+      scause := cause
+      stval := br.tval
 
-    priv := PrivLevel.M
+      status.spie := status.sie
+      status.sie := false.B
+
+      priv := PrivLevel.S
+    } otherwise {
+      baddr := mtvec(coredef.XLEN-1, 2) ## 0.U(2.W)
+
+      // Save related stuffs
+      mepc := nepc
+      mcause := cause
+      mtval := br.tval
+
+      status.mpie := status.mie
+      status.mie := false.B
+
+      priv := PrivLevel.M
+    }
   }.elsewhen(br.req.ex === ExReq.mret) {
     branch := true.B
     baddr := mepc
