@@ -68,12 +68,23 @@ class Branch(override implicit val coredef: CoreDef) extends ExecUnit(0, new Bra
         }
 
         is(Decoder.PRIV_RS2("RET")) {
-          // TODO: check for funct7
-          ext.ex := ExReq.mret
+          val t = MuxLookup(
+            pipe.instr.instr.funct7,
+            ExReq.ex,
+            Seq(
+              Integer.parseInt("0011000", 2).U -> ExReq.mret,
+              Integer.parseInt("0001000", 2).U -> ExReq.sret
+            )
+          )
 
           when(priv === PrivLevel.U) {
             ext.ex := ExReq.ex
             ext.extype := ExType.ILLEGAL_INSTR
+          }.elsewhen(priv === PrivLevel.S && t === ExReq.mret) {
+            ext.ex := ExReq.ex
+            ext.extype := ExType.ILLEGAL_INSTR
+          }.otherwise {
+            ext.ex := t
           }
         }
       }

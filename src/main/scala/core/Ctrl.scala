@@ -37,7 +37,9 @@ object ExReq extends ChiselEnum {
 }
 
 object PrivLevel extends ChiselEnum {
-  val M, S, U = Value
+  val U = Value(0.U)
+  val S = Value(1.U)
+  val M = Value(3.U)
 }
 
 class Ctrl(implicit coredef: CoreDef) extends MultiIOModule {
@@ -108,8 +110,9 @@ class Ctrl(implicit coredef: CoreDef) extends MultiIOModule {
   val branch = Wire(Bool())
   val baddr = Wire(UInt(coredef.XLEN.W))
 
-  // MEPC in the front!
+  // xEPC in the front!
   val mepc = RegInit(0.U(coredef.XLEN.W))
+  val sepc = RegInit(0.U(coredef.XLEN.W))
 
   // Privilege level
   val priv = RegInit(PrivLevel.M);
@@ -122,6 +125,8 @@ class Ctrl(implicit coredef: CoreDef) extends MultiIOModule {
     recv := toExec.nepc
     when(br.req.ex === ExReq.mret) {
       recv := mepc
+    }.elsewhen(br.req.ex === ExReq.sret) {
+      recv := sepc
     }.elsewhen(br.req.branch) {
       recv:= toExec.nepc
     }
@@ -240,13 +245,16 @@ class Ctrl(implicit coredef: CoreDef) extends MultiIOModule {
   csr.mip.wdata := DontCare
   csr.mip.write := DontCare
 
-  // mtvec, mtval, mepc, mcause
+  // xEPC
+  csr.mepc <> CSRPort.fromReg(coredef.XLEN, mepc)
+  csr.sepc <> CSRPort.fromReg(coredef.XLEN, sepc)
+
+  // mtvec, mtval, mcause
   val mtvec = RegInit(0.U(coredef.XLEN.W))
   val mtval = RegInit(0.U(coredef.XLEN.W))
   val mcause = RegInit(0.U(coredef.XLEN.W))
   csr.mtvec <> CSRPort.fromReg(coredef.XLEN, mtvec)
   csr.mtval <> CSRPort.fromReg(coredef.XLEN, mtval)
-  csr.mepc <> CSRPort.fromReg(coredef.XLEN, mepc)
   csr.mcause <> CSRPort.fromReg(coredef.XLEN, mcause)
 
   branch := br.req.branch
@@ -266,6 +274,9 @@ class Ctrl(implicit coredef: CoreDef) extends MultiIOModule {
   // FIXME: interrupt at MRET
   when(ex) {
     // Branch into mtvec
+
+    // TODO: delegate
+
     branch := true.B
     baddr := mtvec(coredef.XLEN-1, 2) ## 0.U(2.W)
 
@@ -285,9 +296,15 @@ class Ctrl(implicit coredef: CoreDef) extends MultiIOModule {
     status.mie := status.mpie
     status.mpie := true.B
 
-    // FIXME: MPP
-    priv := PrivLevel.U
+    priv := status.mpp.asTypeOf(PrivLevel.Type())
   }.elsewhen(br.req.ex === ExReq.sret) {
+    branch := true.B
+    baddr := sepc
+
+    status.sie := status.spie
+    status.spie := true.B
+
+    priv := status.spp.asTypeOf(PrivLevel.Type())
   }
 
   // Avoid Vivado naming collision. Com'on, Xilinx, write *CORRECT* code plz
