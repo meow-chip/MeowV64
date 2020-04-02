@@ -15,7 +15,7 @@ class BHTSlot(implicit val coredef: CoreDef) extends Bundle {
   val OFFSET_WIDTH = log2Ceil(Const.INSTR_MIN_WIDTH / 8 * coredef.FETCH_NUM)
   val INDEX_WIDTH = log2Ceil(coredef.BHT_SIZE)
 
-  val TAG_WIDTH = coredef.ADDR_WIDTH - OFFSET_WIDTH - INDEX_WIDTH
+  val TAG_WIDTH = coredef.VADDR_WIDTH - OFFSET_WIDTH - INDEX_WIDTH
 
   val tag = UInt(TAG_WIDTH.W)
   val valid = Bool()
@@ -63,7 +63,7 @@ class BHTSlot(implicit val coredef: CoreDef) extends Bundle {
 
 class BPU(implicit val coredef: CoreDef) extends MultiIOModule {
   val toFetch = IO(new Bundle{
-    val pc = Input(UInt(coredef.ADDR_WIDTH.W)) // the address (pc) of the query branch
+    val pc = Input(UInt(coredef.VADDR_WIDTH.W)) // the address (pc) of the query branch
     val taken = Output(Vec(coredef.FETCH_NUM, BHTPerdiction())) // the query result: will the branch be taken
   })
 
@@ -76,10 +76,10 @@ class BPU(implicit val coredef: CoreDef) extends MultiIOModule {
   val OFFSET_WIDTH = log2Ceil(Const.INSTR_MIN_WIDTH / 8 * coredef.FETCH_NUM)
   val INDEX_WIDTH = log2Ceil(coredef.BHT_SIZE)
   val INDEX_OFFSET_WIDTH = OFFSET_WIDTH + INDEX_WIDTH
-  val TAG_WIDTH = coredef.ADDR_WIDTH - OFFSET_WIDTH - INDEX_WIDTH
+  val TAG_WIDTH = coredef.VADDR_WIDTH - OFFSET_WIDTH - INDEX_WIDTH
 
   def getIndex(addr: UInt) = addr(INDEX_OFFSET_WIDTH-1, OFFSET_WIDTH)
-  def getTag(addr: UInt) = addr(coredef.ADDR_WIDTH-1, INDEX_OFFSET_WIDTH)
+  def getTag(addr: UInt) = addr(coredef.VADDR_WIDTH-1, INDEX_OFFSET_WIDTH)
   def getOffset(addr: UInt) = addr(OFFSET_WIDTH-1, log2Ceil(Const.INSTR_MIN_WIDTH/8))
   def toAligned(addr: UInt) = getTag(addr) ## getIndex(addr) ## 0.U(OFFSET_WIDTH.W) // The input address should be aligned anyway
 

@@ -77,7 +77,7 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
 
   val flushed = RegInit(false.B)
   val flushedRst = RegInit(false.B)
-  val flushedJmpTo = RegInit(0.U(coredef.ADDR_WIDTH.W))
+  val flushedJmpTo = RegInit(0.U(coredef.VADDR_WIDTH.W))
 
   toIC.addr := Mux(flushed, flushedJmpTo, toCtrl.pc)
   toIC.rst := Mux(flushed, flushedRst, toCtrl.irst)
@@ -175,10 +175,10 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
     // Instr skipped because of fetch pipeline events
     val fetchVacant = toIC.vacant || i.U < pipeSkip || flushed
     decoded(i).vacant := fetchVacant
-    val invalAddr = if(coredef.XLEN == coredef.ADDR_WIDTH) {
+    val invalAddr = if(coredef.XLEN == coredef.VADDR_WIDTH) {
       false.B
     } else {
-      addr(coredef.XLEN-1, coredef.ADDR_WIDTH).orR()
+      addr(coredef.XLEN-1, coredef.VADDR_WIDTH).orR()
     }
     decoded(i).invalAddr := invalAddr
 

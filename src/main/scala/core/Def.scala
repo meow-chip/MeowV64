@@ -5,7 +5,8 @@ import chisel3.util.log2Ceil
 abstract class CoreDef {
   outer =>
   val XLEN: Int = 64
-  val ADDR_WIDTH: Int = 64 // TODO: change to PADDR_WIDTH
+  val VADDR_WIDTH: Int = 48
+  val PADDR_WIDTH: Int = 56
   val FETCH_NUM: Int = 2
   val ISSUE_NUM: Int = 2
   val RETIRE_NUM: Int = 2
@@ -14,6 +15,8 @@ abstract class CoreDef {
 
   val BHT_SIZE: Int = 64
   val BHT_WIDTH: Int = 2
+
+  val TLB_SIZE: Int = 32
 
   val HART_ID: Int = 0
 
@@ -34,7 +37,7 @@ abstract class CoreDef {
   val L12_LINE_WIDTH: Int = 16 // In bytes
 
   object L2 extends {
-    val ADDR_WIDTH: Int = outer.ADDR_WIDTH
+    val ADDR_WIDTH: Int = outer.PADDR_WIDTH
     val ASSOC: Int = 4
     val CORE_COUNT: Int = 1
     val LINE_WIDTH: Int = outer.L12_LINE_WIDTH
@@ -45,7 +48,7 @@ abstract class CoreDef {
   } with L2Opts
 
   object L1I extends {
-    val ADDR_WIDTH: Int = outer.ADDR_WIDTH
+    val ADDR_WIDTH: Int = outer.PADDR_WIDTH
     val ASSOC: Int = 2
     val LINE_WIDTH: Int = outer.L12_LINE_WIDTH
     val SIZE: Int = 2048 // 4K L1 I
@@ -54,7 +57,7 @@ abstract class CoreDef {
   } with L1Opts
 
   object L1D extends {
-    val ADDR_WIDTH: Int = outer.ADDR_WIDTH
+    val ADDR_WIDTH: Int = outer.PADDR_WIDTH
     val ASSOC: Int = 2
     val LINE_WIDTH: Int = outer.L12_LINE_WIDTH
     val SIZE: Int = 2048 // 4K L1 D
@@ -64,12 +67,9 @@ abstract class CoreDef {
     val WRITE_BUF_DEPTH: Int = 4
   } with L1DOpts
 
-  val TLB_SIZE: Int = 32
-  val VADDR_WIDTH: Int = 48
-
   def tlbIdxWidth = log2Ceil(TLB_SIZE)
   def vpnWidth = VADDR_WIDTH - 12
-  def ppnWidth = ADDR_WIDTH - 12
+  def ppnWidth = PADDR_WIDTH - 12
 }
 
 object DefaultDef extends CoreDef

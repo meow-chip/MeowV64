@@ -9,7 +9,7 @@ import exec.Exec
 
 class Core(implicit val coredef: CoreDef = DefaultDef) extends Module {
   val io = IO(new Bundle {
-    val axi = new AXI(coredef.XLEN, coredef.ADDR_WIDTH)
+    val axi = new AXI(coredef.XLEN, coredef.PADDR_WIDTH)
     val eint = Input(Bool())
 
     // Debug

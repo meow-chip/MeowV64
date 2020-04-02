@@ -32,7 +32,7 @@ class LSU(override implicit val coredef: CoreDef) extends ExecUnit(1, new LSUExt
     val ext = Wire(new LSUExt)
 
     val addr = (pipe.rs1val.asSInt + pipe.instr.instr.imm).asUInt
-    val aligned = addr(coredef.ADDR_WIDTH-1, 3) ## 0.U(3.W)
+    val aligned = addr(coredef.VADDR_WIDTH-1, 3) ## 0.U(3.W)
     val offset = addr(2, 0)
     val isUncached = addr(47)
     val isRead = pipe.instr.instr.op === Decoder.Op("LOAD").ident
@@ -42,10 +42,10 @@ class LSU(override implicit val coredef: CoreDef) extends ExecUnit(1, new LSUExt
     val isCachedWrite = isWrite && !isUncached
     val isUncachedRead = isRead && isUncached
     val isUncachedWrite = isWrite && isUncached
-    val isInvalAddr = if(coredef.XLEN == coredef.ADDR_WIDTH) {
+    val isInvalAddr = if(coredef.XLEN == coredef.VADDR_WIDTH) {
       false.B
     } else {
-      addr(coredef.XLEN-1, coredef.ADDR_WIDTH).orR
+      addr(coredef.XLEN-1, coredef.VADDR_WIDTH).orR
     }
 
     // Is unaligned?
@@ -197,11 +197,11 @@ class LSU(override implicit val coredef: CoreDef) extends ExecUnit(1, new LSUExt
       info.branch.nofire()
       info.mem := ext.mem
 
-      when(ext.mem.addr(coredef.ADDR_WIDTH-2) === false.B) {
+      when(ext.mem.addr(coredef.VADDR_WIDTH-2) === false.B) {
         val splashed = ext.mem.addr.asBools
         val edited = Wire(Vec(coredef.XLEN, Bool()))
         edited := splashed
-        edited(coredef.ADDR_WIDTH-1) := false.B
+        edited(coredef.VADDR_WIDTH-1) := false.B
         info.mem.addr := edited.asUInt()
       }
     }

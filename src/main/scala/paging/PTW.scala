@@ -14,7 +14,7 @@ class PTW(implicit coredef: CoreDef) extends MultiIOModule {
   val itlb = IO(Flipped(new TLBExt))
   val dtlb = IO(Flipped(new TLBExt))
 
-  val satp = IO(Input(UInt(coredef.ADDR_WIDTH.W)))
+  val satp = IO(Input(UInt(coredef.PADDR_WIDTH.W)))
   val dc = IO(new PTWExt)
 
   val arbiter = Module(new RRArbiter(UInt(coredef.vpnWidth.W), 2))
@@ -31,7 +31,7 @@ class PTW(implicit coredef: CoreDef) extends MultiIOModule {
   }}))
   val seg = segs(level)
 
-  val raddr = RegInit(UInt(coredef.ADDR_WIDTH.W))
+  val raddr = RegInit(UInt(coredef.PADDR_WIDTH.W))
 
   val resp = Wire(new TLBEntry)
   resp := DontCare

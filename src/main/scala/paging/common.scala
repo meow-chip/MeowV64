@@ -100,6 +100,6 @@ class TLBExt(implicit val coredef: CoreDef) extends Bundle {
 }
 
 class PTWExt(implicit val coredef: CoreDef) extends Bundle {
-  val req = DecoupledIO(UInt(coredef.ADDR_WIDTH.W))
+  val req = DecoupledIO(UInt(coredef.PADDR_WIDTH.W))
   val resp = Input(UInt(coredef.XLEN.W))
 }
