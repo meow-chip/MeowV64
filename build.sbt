@@ -55,3 +55,5 @@ scalacOptions ++= scalacOptionsVersion(scalaVersion.value)
 javacOptions ++= javacOptionsVersion(scalaVersion.value)
 
 testOptions in Test += Tests.Argument("-oT") 
+
+parallelExecution in ThisBuild := false
