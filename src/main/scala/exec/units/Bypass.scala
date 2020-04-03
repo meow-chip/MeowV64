@@ -37,7 +37,6 @@ class Bypass(override implicit val coredef: CoreDef) extends ExecUnit(0, new Byp
 
       is(Decoder.Op("JAL").ident) {
         ext.inval := false.B
-        // printf(p"AUIPC Written: ${Hexadecimal(result)}\n")
       }
     }
 

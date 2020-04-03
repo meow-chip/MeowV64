@@ -152,6 +152,7 @@ object ExecTest {
   var elaborated = false
 
   def runFile(file: String, args: Option[Array[String]] = None): Boolean = {
+    println(s"------------\nRunning file $file")
     if(elaborated) {
       return chisel3.iotesters.Driver.run(
         () => new Core()(ExecDef),

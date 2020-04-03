@@ -83,11 +83,12 @@ class FlushableQueue[T <: Data](gen: T,
                       entries.asUInt + ptr_diff, ptr_diff))
   }
 
-  if(entries != 1) {
-    when(io.flush) {
+  when(io.flush) {
+    if(entries != 1) {
       enq_ptr.value := 0.U
       deq_ptr.value := 0.U
     }
+    maybe_full := false.B
   }
 }
 

@@ -130,7 +130,6 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
   
   val pc = RegInit(coredef.INIT_VEC.U(coredef.XLEN.W)) // This should be aligned
   val pipePc = RegInit(0.U(coredef.XLEN.W))
-  debug.pc := pc
   when(!toIC.stall) {
     pipePc := pc
 
@@ -150,7 +149,7 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
   ICQueue.io.enq.bits.addr := pipePc
   ICQueue.io.enq.valid := !toIC.stall && !toIC.vacant
   
-  val haltIC = ICQueue.io.count > 1.U
+  val haltIC = ICQueue.io.count >= 1.U && !toCtrl.ctrl.flush
   toIC.read := !haltIC
   toIC.addr := pc
   toIC.rst := toCtrl.ctrl.flush && toCtrl.irst
@@ -180,7 +179,8 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
     when(!overflowed) {
       decodable(i) := ICHead.io.deq.valid
     }.otherwise {
-      decodable(i) := ICHead.io.deq.valid && ICQueue.io.deq.valid
+      // FIXME: break at page border, so we can handle access errors & inval addr more conviently
+      decodable(i) := ICHead.io.deq.valid && ICQueue.io.deq.valid && ICHead.io.count =/= 0.U
     }
 
     val instr = joinedVec(decodePtr(i)).asInstr()
@@ -192,7 +192,12 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
 
     decoded(i).instr := instr
     decoded(i).addr := ICHead.io.deq.bits.addr + (decodePtr(i) << log2Ceil((Const.INSTR_MIN_WIDTH / 8)))
-    decoded(i).invalAddr := false.B
+    decoded(i).invalAddr := (if(coredef.XLEN == coredef.VADDR_WIDTH) {
+      false.B
+    } else {
+      // TODO: check PADDR_WIDTH when SATP mode === no traslation
+      ICHead.io.deq.bits.addr(coredef.XLEN-1, coredef.VADDR_WIDTH).orR
+    })
     decoded(i).vacant := false.B
     decoded(i).pred := false.B
   }
@@ -226,19 +231,29 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
   issueFifo.flush := toCtrl.ctrl.flush
   ICQueue.io.flush := toCtrl.ctrl.flush
   ICHead.io.flush := toCtrl.ctrl.flush
-  toCtrl.ctrl.stall := haltIC || toIC.stall
+  toCtrl.ctrl.stall := (!toCtrl.ctrl.flush) && (haltIC || toIC.stall)
 
   val pendingIRST = RegInit(false.B)
   val pendingFlush = RegInit(false.B)
 
   when(toCtrl.ctrl.flush) {
     val ICAlign = log2Ceil(coredef.L1I.TRANSFER_SIZE / 8)
-    pc := toCtrl.pc(coredef.XLEN-1, ICAlign)
-    headPtr := toCtrl.pc(ICAlign-1, log2Ceil(Const.INSTR_MIN_WIDTH / 8))
+    val rawbpc = toCtrl.pc(coredef.XLEN-1, ICAlign) ## 0.U(ICAlign.W)
+    val bpc = WireDefault(rawbpc)
 
     when(toIC.stall) {
       pendingFlush := true.B
       pendingIRST := toCtrl.irst
+    }.otherwise {
+      bpc := rawbpc + (1.U << ICAlign)
+    }
+
+    pc := bpc
+    headPtr := toCtrl.pc(ICAlign-1, log2Ceil(Const.INSTR_MIN_WIDTH / 8))
+
+    toIC.addr := rawbpc
+    when(!toIC.stall) {
+      pipePc := rawbpc
     }
   }
 
@@ -488,4 +503,6 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
     issueFifoTail := 0.U
   }
   */
+
+  debug.pc := toIC.addr
 }

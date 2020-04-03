@@ -28,6 +28,14 @@ class LSU(override implicit val coredef: CoreDef) extends ExecUnit(1, new LSUExt
   reader.read := false.B
   saUp := false.B
 
+  when(io.flush && reader.stall) {
+    flushed := true.B
+  }
+
+  when(!reader.stall) {
+    flushed := false.B
+  }
+
   override def map(stage: Int, pipe: PipeInstr, pext: Option[LSUExt]): (LSUExt, Bool) =  {
     val ext = Wire(new LSUExt)
 
@@ -72,7 +80,7 @@ class LSU(override implicit val coredef: CoreDef) extends ExecUnit(1, new LSUExt
 
       // First stage, send LOAD addr
       reader.addr := aligned
-      reader.read := isCachedRead && !isInvalAddr &&  !isUnaligned
+      reader.read := isCachedRead && !isInvalAddr &&  !isUnaligned && !io.flush
 
       // Compute write be
       val tailMask = Wire(UInt((coredef.XLEN/8).W))
@@ -103,7 +111,7 @@ class LSU(override implicit val coredef: CoreDef) extends ExecUnit(1, new LSUExt
       ext.lUnaligned := isRead && isUnaligned
       ext.sUnaligned := isWrite && isUnaligned
 
-      (ext, false.B)
+      (ext, flushed)
     } else {
       val shifted = reader.data >> (offset << 3)
       val signedResult = Wire(SInt(coredef.XLEN.W)).suggestName("signedResult")

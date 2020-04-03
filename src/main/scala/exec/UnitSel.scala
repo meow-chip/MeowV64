@@ -248,7 +248,9 @@ object UnitSel {
       when(b.ex =/= ExReq.none) {
         result := b
       }.elsewhen(instr.instr.instr.op === Decoder.Op("JAL").ident) {
-        result.nofire()
+        // result.nofire()
+        // FXIME: readd BPU!
+        result := b
       }.otherwise {
         when(b.branch === instr.instr.pred) {
           result.nofire()
