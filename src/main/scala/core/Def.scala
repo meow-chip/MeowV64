@@ -52,7 +52,7 @@ abstract class CoreDef {
     val ASSOC: Int = 2
     val LINE_WIDTH: Int = outer.L12_LINE_WIDTH
     val SIZE: Int = 2048 // 4K L1 I
-    val TRANSFER_SIZE: Int = FETCH_NUM * 16
+    val TRANSFER_SIZE: Int = 64
     val XLEN: Int = outer.XLEN
   } with L1Opts
 

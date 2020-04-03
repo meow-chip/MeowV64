@@ -41,13 +41,8 @@ class Core(implicit val coredef: CoreDef = DefaultDef) extends Module {
 
   val (csrWriter, csr) = CSR.gen(coredef.XLEN, coredef.HART_ID)
 
-  fetch.toCtrl.irst := false.B // For FENCE.I
   fetch.toIC <> l1i.toCPU
-  fetch.toCtrl.pc <> ctrl.io.pc
-  fetch.toCtrl.skip <> ctrl.io.skip
-  fetch.toCtrl.ctrl <> ctrl.io.fetch
-  fetch.toCtrl.irst <> ctrl.io.irst
-  fetch.toCtrl.perdicted <> ctrl.perdicted
+  fetch.toCtrl <> ctrl.toIF
 
   bpu.toExec <> exec.toBPU
   bpu.toFetch <> fetch.toBPU
@@ -55,7 +50,6 @@ class Core(implicit val coredef: CoreDef = DefaultDef) extends Module {
   exec.toIF <> fetch.toExec
   exec.rr <> reg.io.reads
   exec.rw <> reg.io.writes
-  exec.toCtrl.ctrl <> ctrl.io.exec
   exec.csrWriter <> csrWriter
 
   exec.toDC.r <> l1d.mr
@@ -63,6 +57,8 @@ class Core(implicit val coredef: CoreDef = DefaultDef) extends Module {
   exec.toDC.fs <> l1d.fs
   exec.toDC.u <> l2.directs(0)
   
+  exec.toCtrl.ctrl <> ctrl.toExec.ctrl
+
   ctrl.br.req <> exec.toCtrl.branch
   ctrl.br.tval <> exec.toCtrl.tval
 
@@ -75,7 +71,7 @@ class Core(implicit val coredef: CoreDef = DefaultDef) extends Module {
 
   ctrl.eint := io.eint
 
-  io.pc := ctrl.io.pc
+  io.pc := fetch.debug.pc
 
   // CSR
   CSRHelper.defaults(csr)

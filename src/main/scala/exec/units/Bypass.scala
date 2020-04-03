@@ -56,7 +56,7 @@ class Bypass(override implicit val coredef: CoreDef) extends ExecUnit(0, new Byp
     }.elsewhen(pipe.instr.instr.op === Decoder.Op("JAL").ident) {
       val linked = Wire(UInt(coredef.VADDR_WIDTH.W))
       linked := pipe.instr.addr + 4.U
-      when(pipe.instr.instr.base === InstrType.toInt(InstrType.C)) {
+      when(pipe.instr.instr.base === InstrType.C) {
         linked := pipe.instr.addr + 2.U // This is an compressed instr
       }
 

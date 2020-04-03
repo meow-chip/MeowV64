@@ -2,7 +2,9 @@ package instr
 
 import chisel3._
 import chisel3.util._
+import chisel3.experimental._
 import chisel3.internal.firrtl.Width
+import instr.Decoder.InstrType
 
 /**
  * Instruction Decoder
@@ -10,26 +12,14 @@ import chisel3.internal.firrtl.Width
  */
 
 object Decoder {
-  object InstrType extends Enumeration {
-    type InstrType = Value
+  object InstrType extends ChiselEnum {
     val RESERVED, R, I, S, B, U, J, C = Value
-
-    def toInt(x: Value) = x match {
-      case RESERVED => 0.U(3.W)
-      case R => 1.U(3.W)
-      case I => 2.U(3.W)
-      case S => 3.U(3.W)
-      case B => 4.U(3.W)
-      case U => 5.U(3.W)
-      case J => 6.U(3.W)
-      case C => 7.U(3.W)
-    }
   }
 
-  case class OpSpec(ident: UInt, t: UInt)
+  case class OpSpec(ident: UInt, t: InstrType.Type)
 
   object spec {
-    def apply(s: String, t: InstrType.InstrType) = OpSpec(Integer.parseInt(s, 2).U(5.W), InstrType.toInt(t))
+    def apply(s: String, t: InstrType.Type) = OpSpec(Integer.parseInt(s, 2).U(5.W), t)
   }
 
   val Op: Map[String, OpSpec] = Map(
@@ -147,7 +137,7 @@ object Decoder {
       when(!ui.orR()) {
         // Defined invalid instr
         result := DontCare
-        result.base := InstrType.toInt(InstrType.RESERVED)
+        result.base := InstrType.RESERVED
       }.elsewhen(ui(1, 0) =/= "11".asBits(2.W)) {
         result := self.asInstr16()
       }.otherwise {
@@ -167,7 +157,7 @@ object Decoder {
         // Defined invalid instr
         result := DontCare
         success := true.B
-        result.base := InstrType.toInt(InstrType.RESERVED)
+        result.base := InstrType.RESERVED
       }.elsewhen(ui(1, 0) =/= "11".asBits(2.W)) {
         result := self.asInstr16
         success := true.B
@@ -182,7 +172,7 @@ object Decoder {
     def asInstr16(): Instr = {
       val result = Wire(new Instr)
       result := DontCare
-      result.base := InstrType.toInt(InstrType.C)
+      result.base := InstrType.C
 
       val ui = self.asUInt
 
@@ -200,7 +190,7 @@ object Decoder {
       // RD position will differ by instr
 
       def fail() = {
-        result.base := InstrType.toInt(InstrType.RESERVED)
+        result.base := InstrType.RESERVED
         result.rs1 := DontCare
         result.rs2 := DontCare
         result.rd := DontCare
@@ -492,7 +482,7 @@ object Decoder {
         })
       }
 
-      ctx.get.otherwise { result.base := InstrType.toInt(InstrType.RESERVED) }
+      ctx.get.otherwise { result.base := InstrType.RESERVED }
 
       // Really parse the instr
       result.funct3 := ui(14, 12)
@@ -503,16 +493,22 @@ object Decoder {
 
       // Parse immediate
       result.imm := 0.S
-      when(result.base === InstrType.toInt(InstrType.I)) {
-        result.imm := ui(31, 20).asSInt
-      }.elsewhen(result.base === InstrType.toInt(InstrType.S)) {
-        result.imm := (ui(31, 25) ## ui(11, 7)).asSInt
-      }.elsewhen(result.base === InstrType.toInt(InstrType.B)) {
-        result.imm := (ui(31) ## ui(7) ## ui(30, 25) ## ui(11, 8) ## 0.U(1.W)).asSInt
-      }.elsewhen(result.base === InstrType.toInt(InstrType.U)) {
-        result.imm := ui(31, 12).asSInt << 12
-      }.elsewhen(result.base === InstrType.toInt(InstrType.J)) {
-        result.imm := (ui(31) ## ui(19, 12) ## ui(20) ## ui(30, 21) ## 0.U(1.W)).asSInt
+      switch(result.base) {
+        is(InstrType.I) {
+          result.imm := ui(31, 20).asSInt
+        }
+        is(InstrType.S) {
+          result.imm := (ui(31, 25) ## ui(11, 7)).asSInt
+        }
+        is(InstrType.B) {
+          result.imm := (ui(31) ## ui(7) ## ui(30, 25) ## ui(11, 8) ## 0.U(1.W)).asSInt
+        }
+        is(InstrType.U) {
+          result.imm := ui(31, 12).asSInt << 12
+        }
+        is(InstrType.J) {
+          result.imm := (ui(31) ## ui(19, 12) ## ui(20) ## ui(30, 21) ## 0.U(1.W)).asSInt
+        }
       }
 
       result
@@ -523,7 +519,7 @@ object Decoder {
 class Instr extends Bundle {
   // Opcode
   val op = UInt(5.W)
-  val base = UInt(3.W)
+  val base = InstrType()
 
   // Immediates
   val imm = SInt(32.W)
@@ -540,7 +536,7 @@ class Instr extends Bundle {
   override def toPrintable: Printable = {
     // Reverse check op
     p"Instr: \n" +
-    p"  Base: ${Decimal(base)}\n" +
+    p"  Base: ${Decimal(base.asUInt())}\n" +
     p"  Op:   0b${Binary(op)}\n" +
     p"  Imm:  0x${Hexadecimal(imm)}\n" +
     p"  RS1:  x${Decimal(rs1)}\n" +

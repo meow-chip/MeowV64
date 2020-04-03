@@ -281,7 +281,7 @@ class ReservedInstr(override implicit val coredef: CoreDef) extends PipeInstr {
   val rs1ready = Bool()
   val rs2ready = Bool()
 
-  def inval = instr.invalAddr || instr.instr.base === InstrType.toInt(InstrType.RESERVED)
+  def inval = instr.invalAddr || instr.instr.base === InstrType.RESERVED
 
   def ready = (inval || rs1ready && rs2ready)
 

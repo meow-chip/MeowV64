@@ -149,7 +149,7 @@ class Branch(override implicit val coredef: CoreDef)
     }.otherwise { // JAL/JALR, JAL is now in Bypass, so this must be JALR
       val linked = Wire(UInt(coredef.XLEN.W))
       linked := pipe.instr.addr + 4.U
-      when(pipe.instr.instr.base === InstrType.toInt(InstrType.C)) {
+      when(pipe.instr.instr.base === InstrType.C) {
         linked := pipe.instr.addr + 2.U // This is an compressed instr instead
       }
 

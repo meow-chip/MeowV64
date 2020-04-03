@@ -63,7 +63,7 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
   val rr = IO(Vec(coredef.ISSUE_NUM*2, new RegReader))
   val rw = IO(Vec(coredef.RETIRE_NUM, new RegWriter))
 
-  val toIF = IO(new InstrFifoReader(coredef))
+  val toIF = IO(new InstrFifoReader)
 
   val toDC = IO(new Bundle {
     val r = new DCReader(coredef.L1D)
@@ -201,7 +201,7 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
   val retireNum = Wire(UInt(log2Ceil(coredef.RETIRE_NUM + 1).W))
   val issueNum = Wire(UInt(log2Ceil(coredef.ISSUE_NUM + 1).W))
 
-  toIF.pop := issueNum
+  toIF.accept := issueNum
   renamer.toExec.commit := issueNum
   renamer.toExec.input := toIF.view
   renamer.toExec.ntag := issuePtr
@@ -249,7 +249,7 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
 
       when(
         toIF.view(idx).invalAddr
-        || toIF.view(idx).instr.base === InstrType.toInt(InstrType.RESERVED)
+        || toIF.view(idx).instr.base === InstrType.RESERVED
         || !applicables.orR()
       ) {
         // Is an invalid instruction
@@ -408,7 +408,7 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
 
           val instrOffset = log2Ceil(Const.INSTR_MIN_WIDTH / 8 * coredef.FETCH_NUM)
           when(
-            info.retirement.instr.instr.instr.base =/= InstrType.toInt(InstrType.C)
+            info.retirement.instr.instr.instr.base =/= InstrType.C
             && info.retirement.instr.instr.addr(instrOffset-1, 0) =/= 0.U // First slot, full width
           ) {
             toBPU.pc := info.retirement.instr.instr.addr + (Const.INSTR_MIN_WIDTH/8).U

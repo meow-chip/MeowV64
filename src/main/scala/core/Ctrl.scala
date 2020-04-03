@@ -44,13 +44,11 @@ object PrivLevel extends ChiselEnum {
 }
 
 class Ctrl(implicit coredef: CoreDef) extends MultiIOModule {
-  val io = IO(new Bundle{
-    val pc = Output(UInt(coredef.XLEN.W))
-    val skip = Output(UInt(log2Ceil(coredef.FETCH_NUM).W))
-    val irst = Output(Bool())
+  val toIF = IO(new Bundle{
+    val ctrl = StageCtrl.ctrl()
 
-    val fetch = StageCtrl.ctrl()
-    val exec = StageCtrl.ctrl()
+    val pc = Output(UInt(coredef.XLEN.W))
+    val irst = Output(Bool())
   })
 
   val br = IO(new Bundle {
@@ -58,9 +56,9 @@ class Ctrl(implicit coredef: CoreDef) extends MultiIOModule {
     val tval = Input(UInt(coredef.XLEN.W))
   })
 
-  val perdicted = IO(Input(UInt(coredef.XLEN.W)))
-
   val toExec = IO(new Bundle {
+    val ctrl = StageCtrl.ctrl()
+
     val retCnt = Input(UInt(log2Ceil(coredef.RETIRE_NUM + 1).W))
     val nepc = Input(UInt(coredef.XLEN.W))
     
@@ -98,16 +96,10 @@ class Ctrl(implicit coredef: CoreDef) extends MultiIOModule {
 
   val snepc = RegInit(coredef.INIT_VEC.U(coredef.XLEN.W))
 
-  io.fetch.flush := false.B
-  io.exec.flush := false.B
-  io.irst := false.B
-
-  val instrOffset = log2Ceil(Const.INSTR_MIN_WIDTH / 8)
-  val issueOffset = log2Ceil(coredef.FETCH_NUM)
-  val pcAlign = instrOffset + issueOffset
-
-  io.pc := perdicted(coredef.XLEN-1, pcAlign) ## 0.U(pcAlign.W)
-  io.skip := perdicted(pcAlign, instrOffset)
+  toIF.ctrl.flush := false.B
+  toExec.ctrl.flush := false.B
+  toIF.irst := DontCare
+  toIF.pc := DontCare
 
   val branch = Wire(Bool())
   val baddr = Wire(UInt(coredef.XLEN.W))
@@ -145,16 +137,15 @@ class Ctrl(implicit coredef: CoreDef) extends MultiIOModule {
   // IF control && PC controllert
   when(branch) {
     // printf(p"Branched, baddr: ${Hexadecimal(io.baddr)}\n")
-    io.fetch.flush := true.B
-    io.exec.flush := true.B
+    toIF.ctrl.flush := true.B
+    toExec.ctrl.flush := true.B
 
-    assert(!io.fetch.stall)
-    assert(!io.exec.stall)
+    assert(!toIF.ctrl.stall)
+    assert(!toExec.ctrl.stall)
 
     // pc := alignedPC + (Const.INSTR_MIN_WIDTH / 8 * coredef.FETCH_NUM).U
-    io.pc := baddr(coredef.XLEN-1, pcAlign) ## 0.U(pcAlign.W)
-    io.skip := baddr(pcAlign, instrOffset)
-    io.irst := br.req.irst
+    toIF.pc := baddr
+    toIF.irst := br.req.irst
 
     snepc := baddr
   }
