@@ -85,7 +85,7 @@ class OoOResStation(val idx: Int)(implicit val coredef: CoreDef) extends MultiIO
   for(instr <- store) {
     // Later entries takes priority
     for(ent <- cdb.entries) {
-      when(ent.name =/= 0.U && ent.name === instr.rs1name && ent.valid) {
+      when(ent.name === instr.rs1name && ent.valid) {
         // > This cannot happen because we limit the inflight instr count,
         // > so that reg names should not wrap around for in-flight instrs
 
@@ -99,7 +99,7 @@ class OoOResStation(val idx: Int)(implicit val coredef: CoreDef) extends MultiIO
         }
       }
 
-      when(ent.name =/= 0.U && ent.name === instr.rs2name && ent.valid) {
+      when(ent.name === instr.rs2name && ent.valid) {
         // assert(!instr.rs2ready)
         when(!instr.rs2ready) {
           instr.rs2ready := true.B
@@ -201,7 +201,7 @@ class LSBuf(val idx: Int)(implicit val coredef: CoreDef) extends MultiIOModule w
   for(instr <- store) {
     // Later entries takes priority
     for(ent <- cdb.entries) {
-      when(ent.name =/= 0.U && ent.name === instr.rs1name && ent.valid) {
+      when(ent.name === instr.rs1name && ent.valid) {
         // > This cannot happen because we limit the inflight instr count,
         // > so that reg names should not wrap around for in-flight instrs
 
@@ -215,7 +215,7 @@ class LSBuf(val idx: Int)(implicit val coredef: CoreDef) extends MultiIOModule w
         }
       }
 
-      when(ent.name =/= 0.U && ent.name === instr.rs2name && ent.valid) {
+      when(ent.name === instr.rs2name && ent.valid) {
         // assert(!instr.rs2ready)
         when(!instr.rs2ready) {
           instr.rs2ready := true.B

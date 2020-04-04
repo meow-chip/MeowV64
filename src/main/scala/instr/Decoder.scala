@@ -144,6 +144,9 @@ object Decoder {
         result := self.asInstr32()
       }
 
+      result.normalizeRd()
+      result.normalizeRs1()
+      result.normalizeRs2()
       result
     }
 
@@ -546,43 +549,32 @@ class Instr extends Bundle {
     p"  F3:   0b${Binary(funct3)}"
   }
 
-  def getRd: UInt = {
+  def normalizeRd() = {
     // B-types and S-types don't have rd
-    val ret = Wire(rs1.cloneType)
-    ret := rd
-
     switch(this.op) {
       is(Decoder.Op("BRANCH").ident, Decoder.Op("STORE").ident) {
-        ret := 0.U
+        rd:= 0.U
       }
     }
-
-    ret
   }
 
-  def getRs1: UInt = {
+  def normalizeRs1() = {
     // The only instructions that don't have RS1 is AUIPC/LUI and JAL (U and J type)
-    val ret = Wire(rs1.cloneType)
-    ret := rs1
+
     // TODO: investigate if SYSTEM instrs can have a rs1 field containing non-zero values?
 
     switch(this.op) {
       is(Decoder.Op("LUI").ident, Decoder.Op("AUIPC").ident, Decoder.Op("JAL").ident) {
-        ret := 0.U
+        rs1 := 0.U
       }
     }
-
-    ret
   }
 
-  def getRs2: UInt = {
-    val ret = Wire(rs1.cloneType)
-    ret := rs2
-
+  def normalizeRs2() = {
     switch(this.op) {
       // U-type and J-type
       is(Decoder.Op("LUI").ident, Decoder.Op("AUIPC").ident, Decoder.Op("JAL").ident) {
-        ret := 0.U
+        rs2 := 0.U
       }
 
       // I-type
@@ -594,10 +586,8 @@ class Instr extends Bundle {
         Decoder.Op("JALR").ident,
         Decoder.Op("SYSTEM").ident
       ) {
-        ret := 0.U
+        rs2 := 0.U
       }
     }
-
-    ret
   }
 }

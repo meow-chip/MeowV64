@@ -168,12 +168,6 @@ class ReservedInstr(override implicit val coredef: CoreDef) extends PipeInstr {
   def inval = instr.invalAddr || instr.instr.base === InstrType.RESERVED
 
   def ready = (inval || rs1ready && rs2ready)
-
-  def validate() {
-    // Asserts that name === 0 -> ready
-    assert(rs1name =/= 0.U || rs1ready)
-    assert(rs2name =/= 0.U || rs2ready)
-  }
 }
 
 object PipeInstr {
