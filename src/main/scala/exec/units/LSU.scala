@@ -11,6 +11,125 @@ import _root_.core.ExType
 import _root_.core.ExReq
 import _root_.util.FlushableQueue
 
+/**
+ * DelayedMem = Delayed memory access, memory accesses that have side-effects and thus
+ * needs to be preformed in-order.
+ * 
+ * All possible access types are stated in the DelayedMemOp enum
+ * - no: No memory access
+ * - s: store
+ * - ul: uncached load
+ * - us: uncached store
+ */
+object DelayedMemOp extends ChiselEnum {
+  val no, s, ul, us = Value
+}
+
+/**
+ * Bit length of the DelayedMem
+ * 
+ * Has the same defination as in the RISC-V unprivileged specification
+ */
+object DelayedMemLen extends ChiselEnum {
+  val B, H, W, D = Value
+}
+
+/**
+  * A (maybe-empty) sequential memory access
+  * 
+  * op: operation
+  * addr: address, this is always aligned in log_2(coredef.XLEN)
+  * offset: in-line offset
+  * len: Bit length
+  * sext: Sign extension?
+  * 
+  * Data are stored in the wb field alongside the DelayedMem bundle in execution results
+  *
+  * @param coredef: Core defination
+  */
+class DelayedMem(implicit val coredef: CoreDef) extends Bundle {
+  self =>
+  val op = DelayedMemOp()
+  val addr = UInt(coredef.XLEN.W)
+  val offset = UInt(log2Ceil(coredef.XLEN/8).W)
+  val len = DelayedMemLen()
+  val sext = Bool()
+  val data = UInt(coredef.XLEN.W)
+
+  // Written data is shared with wb
+
+  def noop() {
+    self := DontCare
+    op := DelayedMemOp.no
+  }
+
+  def isNoop() = op === DelayedMemOp.no
+
+  def be: UInt = {
+    val raw = Wire(UInt((coredef.XLEN / 8).W))
+    raw := DontCare
+    switch(len) {
+      is(DelayedMemLen.B) {
+        raw := 0x1.U
+      }
+      is(DelayedMemLen.H) {
+        raw := 0x3.U
+      }
+      is(DelayedMemLen.W) {
+        raw := 0xf.U
+      }
+      is(DelayedMemLen.D) {
+        raw := 0xff.U
+      }
+    }
+
+    raw << offset
+  }
+
+  def getSlice(raw: UInt): UInt = {
+    val shifted = raw >> (offset << 3)
+    val ret = Wire(UInt(coredef.XLEN.W))
+    ret := DontCare
+    when(sext) {
+      val sret = Wire(SInt(coredef.XLEN.W))
+      sret := DontCare
+      switch(len) {
+        is(DelayedMemLen.B) {
+          sret := shifted(7, 0).asSInt()
+        }
+        is(DelayedMemLen.H) {
+          sret := shifted(15, 0).asSInt()
+        }
+        is(DelayedMemLen.W) {
+          sret := shifted(31, 0).asSInt()
+        }
+        is(DelayedMemLen.D) {
+          sret := shifted(63, 0).asSInt()
+        }
+      }
+
+      ret := sret.asUInt()
+    }.otherwise {
+      switch(len) {
+        is(DelayedMemLen.B) {
+          ret := shifted(7, 0)
+        }
+        is(DelayedMemLen.H) {
+          ret := shifted(15, 0)
+        }
+        is(DelayedMemLen.W) {
+          ret := shifted(31, 0)
+        }
+        is(DelayedMemLen.D) {
+          ret := shifted(63, 0)
+        }
+      }
+    }
+
+    ret
+  }
+}
+
 class LSU(implicit val coredef: CoreDef) extends MultiIOModule with ExecUnitInt with exec.WithLSUPort {
   val DEPTH = 1
 
@@ -27,7 +146,7 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with ExecUnitInt 
   val hasPending = IO(Output(Bool()))
   val release = IO(EnqIO(new DelayedMemResult))
 
-  val pendings = Module(new FlushableQueue(new MemSeqAcc, coredef.INFLIGHT_INSTR_LIMIT))
+  val pendings = Module(new FlushableQueue(new DelayedMem, coredef.INFLIGHT_INSTR_LIMIT))
   hasPending := pendings.io.count > 0.U || pendings.io.enq.fire()
 
   toMem.reader := DontCare
@@ -140,7 +259,7 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with ExecUnitInt 
   }
 
   // Retirement
-  val mem = Wire(new MemSeqAcc)
+  val mem = Wire(new DelayedMem)
   mem.noop() // By default
 
   when(pipeFenceI) {
@@ -166,7 +285,7 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with ExecUnitInt 
   }.elsewhen(pipeRead) {
     io.retirement.branch.nofire()
 
-    mem.op := MemSeqAccOp.ul
+    mem.op := DelayedMemOp.ul
     mem.addr := pipeAligned
     mem.offset := pipeOffset
     mem.sext := DontCare
@@ -174,31 +293,31 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with ExecUnitInt 
     switch(pipeInstr.instr.instr.funct3) {
       is(Decoder.LOAD_FUNC("LB")) {
         mem.sext := true.B
-        mem.len := MemSeqAccLen.B
+        mem.len := DelayedMemLen.B
       }
       is(Decoder.LOAD_FUNC("LH")) {
         mem.sext := true.B
-        mem.len := MemSeqAccLen.H
+        mem.len := DelayedMemLen.H
       }
       is(Decoder.LOAD_FUNC("LW")) {
         mem.sext := true.B
-        mem.len := MemSeqAccLen.W
+        mem.len := DelayedMemLen.W
       }
       is(Decoder.LOAD_FUNC("LD")) {
         mem.sext := false.B
-        mem.len := MemSeqAccLen.D
+        mem.len := DelayedMemLen.D
       }
       is(Decoder.LOAD_FUNC("LBU")) {
         mem.sext := false.B
-        mem.len := MemSeqAccLen.B
+        mem.len := DelayedMemLen.B
       }
       is(Decoder.LOAD_FUNC("LHU")) {
         mem.sext := false.B
-        mem.len := MemSeqAccLen.H
+        mem.len := DelayedMemLen.H
       }
       is(Decoder.LOAD_FUNC("LWU")) {
         mem.sext := false.B
-        mem.len := MemSeqAccLen.W
+        mem.len := DelayedMemLen.W
       }
     }
 
@@ -209,10 +328,10 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with ExecUnitInt 
 
     mem.len := DontCare
     switch(pipeInstr.instr.instr.funct3) {
-      is(Decoder.STORE_FUNC("SB")) { mem.len := MemSeqAccLen.B }
-      is(Decoder.STORE_FUNC("SH")) { mem.len := MemSeqAccLen.H }
-      is(Decoder.STORE_FUNC("SW")) { mem.len := MemSeqAccLen.W }
-      is(Decoder.STORE_FUNC("SD")) { mem.len := MemSeqAccLen.D }
+      is(Decoder.STORE_FUNC("SB")) { mem.len := DelayedMemLen.B }
+      is(Decoder.STORE_FUNC("SH")) { mem.len := DelayedMemLen.H }
+      is(Decoder.STORE_FUNC("SW")) { mem.len := DelayedMemLen.W }
+      is(Decoder.STORE_FUNC("SD")) { mem.len := DelayedMemLen.D }
     }
     mem.offset := pipeOffset
     // TODO: mask uncached bit
@@ -220,9 +339,9 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with ExecUnitInt 
     mem.sext := false.B
 
     when(pipeUncached) {
-      mem.op := MemSeqAccOp.us
+      mem.op := DelayedMemOp.us
     } otherwise {
-      mem.op := MemSeqAccOp.s
+      mem.op := DelayedMemOp.s
     }
 
     io.retirement.wb := DontCare
@@ -233,7 +352,7 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with ExecUnitInt 
     io.retirement.wb := DontCare
   }
 
-  val push = mem.op =/= MemSeqAccOp.no && !io.retired.instr.vacant
+  val push = mem.op =/= DelayedMemOp.no && !io.retired.instr.vacant
   io.retirement.hasMem := push
   pendings.io.enq.bits := mem
   pendings.io.enq.valid := push
@@ -255,17 +374,17 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with ExecUnitInt 
   toMem.uncached.write := false.B
 
   when(pendings.io.deq.valid && release.ready) {
-    toMem.writer.write := pendingHead.op === MemSeqAccOp.s
-    toMem.uncached.read := pendingHead.op === MemSeqAccOp.ul
-    toMem.uncached.write := pendingHead.op === MemSeqAccOp.us
+    toMem.writer.write := pendingHead.op === DelayedMemOp.s
+    toMem.uncached.read := pendingHead.op === DelayedMemOp.ul
+    toMem.uncached.write := pendingHead.op === DelayedMemOp.us
   }
 
   release.bits.data := toMem.uncached.rdata
-  release.bits.isLoad := pendingHead.op === MemSeqAccOp.ul
+  release.bits.isLoad := pendingHead.op === DelayedMemOp.ul
 
   val finished = (
     pendings.io.deq.valid
-    && Mux(pendingHead.op === MemSeqAccOp.s, !toMem.writer.stall, !toMem.uncached.stall)
+    && Mux(pendingHead.op === DelayedMemOp.s, !toMem.writer.stall, !toMem.uncached.stall)
   )
   release.valid := finished
 
