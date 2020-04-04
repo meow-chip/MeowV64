@@ -166,10 +166,7 @@ class LSBuf(val idx: Int)(implicit val coredef: CoreDef) extends MultiIOModule w
     val flush = Input(Bool())
   })
 
-  val saUp = IO(Input(Bool())) // A new sequenced access retired
-  val saDown = IO(Input(Bool())) // A new sequenced access committed
-
-  val pendingMemAcc = RegInit(0.U(log2Ceil(coredef.INFLIGHT_INSTR_LIMIT).W))
+  val hasPending = IO(Input(Bool())) // Is there any unfinished pending memory operations?
 
   val store = RegInit(VecInit(Seq.fill(DEPTH)(ReservedInstr.empty)))
 
@@ -184,8 +181,8 @@ class LSBuf(val idx: Int)(implicit val coredef: CoreDef) extends MultiIOModule w
   val headIsLoad = store(head).instr.instr.op === Decoder.Op("LOAD").ident
   val headIsFence = store(head).instr.instr.op === Decoder.Op("MEM-MISC").ident
   // TODO: optimize: allow stores with different address to slip over?
-  val loadBlocked = saUp || pendingMemAcc =/= 0.U
-  val fenceBlocked = saUp || pendingMemAcc =/= 0.U || !fs.wbufClear
+  val loadBlocked = hasPending
+  val fenceBlocked = hasPending || !fs.wbufClear
   val instrReady = head =/= tail && store(head).ready
   when(headIsFence) {
     exgress.valid := instrReady && !fenceBlocked
@@ -235,19 +232,9 @@ class LSBuf(val idx: Int)(implicit val coredef: CoreDef) extends MultiIOModule w
     tail := tail +% 1.U
   }
 
-  when(saUp) {
-    when(!saDown) {
-      pendingMemAcc := pendingMemAcc +% 1.U
-    }
-  }.elsewhen(saDown) {
-    assert(pendingMemAcc =/= 0.U)
-    pendingMemAcc := pendingMemAcc -% 1.U
-  }
-
   // Flush
   when(ctrl.flush) {
     head := 0.U
     tail := 0.U
-    pendingMemAcc := 0.U
   }
 }

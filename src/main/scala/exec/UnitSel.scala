@@ -17,6 +17,9 @@ import _root_.core.Const
 import _root_.core.PrivLevel
 import _root_.core.Status
 import instr.BHTPrediction
+import cache.L1UCPort
+import cache.DCWriter
+import chisel3.util.EnqIO
 
 /**
  * Read instructions from reservation stations, and send them into (probably one of multiple) exec unit
@@ -57,12 +60,24 @@ class UnitSel(
 
     if(u.isInstanceOf[WithLSUPort]) {
       println("Found extra port: LSU")
-      val dcReader = IO(new DCReader(coredef.L1D))
-      val saUp = IO(Output(Bool()))
-      u.asInstanceOf[WithLSUPort].reader <> dcReader
-      saUp := u.asInstanceOf[WithLSUPort].saUp
-      extras.put("LSU", dcReader)
-      extras.put("saUp", saUp)
+      val reader = IO(new DCReader(coredef.L1D))
+      val writer = IO(new DCWriter(coredef.L1D))
+      val uncached = IO(new L1UCPort(coredef.L1D))
+      u.asInstanceOf[WithLSUPort].toMem.reader <> reader
+      u.asInstanceOf[WithLSUPort].toMem.writer <> writer
+      u.asInstanceOf[WithLSUPort].toMem.uncached <> uncached
+
+      val hasPending = IO(Output(Bool()))
+      hasPending := u.asInstanceOf[WithLSUPort].hasPending
+
+      val release = IO(EnqIO(new DelayedMemResult))
+      release <> u.asInstanceOf[WithLSUPort].release
+
+      extras.put("reader", reader)
+      extras.put("writer", writer)
+      extras.put("uncached", uncached)
+      extras.put("hasPending", hasPending)
+      extras.put("release", release)
     }
 
     if(u.isInstanceOf[WithPrivPort]) {

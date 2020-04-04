@@ -17,6 +17,8 @@ import instr.Decoder.InstrType
 import cache.DCReader
 import _root_.core.PrivLevel
 import _root_.core.Status
+import cache.DCWriter
+import cache.L1UCPort
 
 /**
   * Branch result
@@ -139,6 +141,7 @@ class MemSeqAcc(implicit val coredef: CoreDef) extends Bundle {
   val offset = UInt(log2Ceil(coredef.XLEN/8).W)
   val len = MemSeqAccLen()
   val sext = Bool()
+  val data = UInt(coredef.XLEN.W)
 
   // Written data is shared with wb
 
@@ -149,7 +152,7 @@ class MemSeqAcc(implicit val coredef: CoreDef) extends Bundle {
 
   def isNoop() = op === MemSeqAccOp.no
 
-  def computeBe(): UInt = {
+  def be: UInt = {
     val raw = Wire(UInt((coredef.XLEN / 8).W))
     raw := DontCare
     switch(len) {
@@ -226,7 +229,7 @@ class MemSeqAcc(implicit val coredef: CoreDef) extends Bundle {
 class RetireInfo(implicit val coredef: CoreDef) extends Bundle {
   val wb = UInt(coredef.XLEN.W)
   val branch = new BranchResult
-  val mem = new MemSeqAcc
+  val hasMem = Bool()
 }
 
 object RetireInfo {
@@ -234,8 +237,8 @@ object RetireInfo {
     val info = Wire(new RetireInfo)
 
     info.branch.nofire()
-    info.mem.noop()
     info.wb := DontCare
+    info.hasMem := false.B
 
     info
   }
@@ -497,9 +500,21 @@ class CDB(implicit val coredef: CoreDef) extends Bundle {
   * Additional ports
   */
 
+class DelayedMemResult(implicit val coredef: CoreDef) extends Bundle {
+  val isLoad = Bool()
+  val data = UInt(coredef.XLEN.W)
+}
+
 trait WithLSUPort {
-  val reader: DCReader
-  val saUp: Bool
+  val toMem: Bundle {
+    val reader: DCReader
+    val writer: DCWriter
+    val uncached: L1UCPort
+  }
+
+  val hasPending: Bool
+
+  val release: DecoupledIO[DelayedMemResult]
 }
 
 trait WithCSRWriter {

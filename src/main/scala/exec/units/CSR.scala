@@ -88,23 +88,19 @@ class CSR(override implicit val coredef: CoreDef)
   }
 
   override def finalize(pipe: PipeInstr, ext: CSRExt): RetireInfo = {
-    val info = Wire(new RetireInfo)
+    val info = WireDefault(RetireInfo.vacant)
 
     when(ext.fault) {
       info.branch.ex(ExType.ILLEGAL_INSTR)
-      info.mem.noop()
-      info.wb := DontCare
     }.elsewhen(ext.written) {
       info.branch.fire(pipe.instr.addr + 4.U)
-      info.mem.noop()
       info.wb := ext.rdata
     } otherwise {
       info.branch.nofire()
-      info.mem.noop()
       info.wb := ext.rdata
     }
 
-      info
+    info
   }
 
   init()

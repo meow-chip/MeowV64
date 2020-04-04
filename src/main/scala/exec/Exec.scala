@@ -80,9 +80,9 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
   renamer.cdb := cdb
   renamer.toExec.flush := toCtrl.ctrl.flush
 
-  val memAccSucc = Wire(Bool())
-  val memAccWB = Wire(Bool())
-  val memAccData = Wire(UInt(coredef.XLEN.W))
+  // Delayed memory ops
+  val releaseMem = Wire(DeqIO(new DelayedMemResult))
+  releaseMem.nodeq()
 
   // Units
   val units = Seq(
@@ -158,9 +158,13 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
 
   // Connect extra ports
   units(0).extras("CSR") <> csrWriter
-  units(2).extras("LSU") <> toDC.r
+  units(2).extras("reader") <> toDC.r
+  units(2).extras("writer") <> toDC.w
+  units(2).extras("uncached") <> toDC.u
+  units(2).extras("release") <> releaseMem
   units(0).extras("priv") := toCtrl.priv
   units(0).extras("status") := toCtrl.status
+  val hasPendingMem = units(2).extras("hasPending")
 
   assume(units.length == coredef.UNIT_COUNT)
   // TODO: asserts Bypass is in unit 0
@@ -170,8 +174,7 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
       Module(new OoOResStation(idx)).suggestName(s"ResStation_${idx}")
     } else {
       val lsb = Module(new LSBuf(idx)).suggestName(s"LSBuf")
-      lsb.saUp := units(2).extras("saUp")
-      lsb.saDown := memAccSucc
+      lsb.hasPending := hasPendingMem
       lsb.fs := toDC.fs
       lsb
     }
@@ -315,7 +318,7 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
     ent.data := u.retire.info.wb
 
     when(!u.ctrl.stall && !u.retire.instr.instr.vacant) {
-      when(u.retire.info.mem.isNoop()) {
+      when(!u.retire.info.hasMem) {
         ent.name := u.retire.instr.rdname
         ent.valid := ent.name =/= 0.U
       }
@@ -335,10 +338,8 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
 
   // Default: no branch if nothing is retired
   toCtrl.branch.nofire()
-  toCtrl.tval := DontCare // TODO: just set tval = 0 for all exceptions
+  toCtrl.tval := DontCare
   toCtrl.nepc := DontCare
-
-  memAccSucc := false.B
 
   cdb.entries(coredef.UNIT_COUNT) := DontCare
   cdb.entries(coredef.UNIT_COUNT).valid := false.B
@@ -351,23 +352,26 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
       rwp.addr := 0.U
       rwp.data := DontCare
     }
-  }.elsewhen(!rob(retirePtr).retirement.info.mem.isNoop()) {
+  }.elsewhen(rob(retirePtr).retirement.info.hasMem) {
     // Is memory operation, wait for memAccSucc
     toCtrl.branch.nofire()
     for(rwp <- rw) {
       rwp.addr := 0.U
       rwp.data := DontCare
     }
-    when(memAccSucc) {
+
+    val memResult = releaseMem.deq()
+
+    when(releaseMem.fire()) {
       retireNum := 1.U
       rob(retirePtr).valid := false.B
       retirePtr := retirePtr +% 1.U
-      when(memAccWB) {
+      when(memResult.isLoad) {
         cdb.entries(coredef.UNIT_COUNT).name := rob(retirePtr).retirement.instr.rdname
-        cdb.entries(coredef.UNIT_COUNT).data := memAccData
+        cdb.entries(coredef.UNIT_COUNT).data := memResult.data
         cdb.entries(coredef.UNIT_COUNT).valid := true.B
         rw(0).addr := rob(retirePtr).retirement.instr.instr.instr.getRd
-        rw(0).data := memAccData
+        rw(0).data := memResult.data
       }
     }.otherwise {
       retireNum := 0.U
@@ -389,7 +393,7 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
         canRetire(idx) := info.valid
       } else {
         // Only allow mem ops in the first retire slot
-        canRetire(idx) := info.valid && canRetire(idx - 1) && !isBranch(idx-1) && info.retirement.info.mem.isNoop()
+        canRetire(idx) := info.valid && canRetire(idx - 1) && !isBranch(idx-1) && !info.retirement.info.hasMem
       }
 
       when(canRetire(idx)) {
@@ -438,51 +442,10 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
     assert(!(canRetire.asUInt & (canRetire.asUInt+%1.U)).orR)
   }
 
-  // Mem opts
-  toDC.w := DontCare
-  toDC.w.write := false.B
-  toDC.u := DontCare
-  toDC.u.read := false.B
-  toDC.u.write := false.B
-
-  memAccWB := false.B
-  memAccData := DontCare
-
   val retireNext = rob(retirePtr)
-  when(retireNext.valid) {
-    val memAcc = retireNext.retirement.info.mem
-    switch(memAcc.op) {
-      is(MemSeqAccOp.s) {
-        toDC.w.addr := memAcc.addr
-        toDC.w.be := memAcc.computeBe
-        toDC.w.data := retireNext.retirement.info.wb
-        toDC.w.write := true.B
-
-        memAccSucc := !toDC.w.stall
-      }
-
-      is(MemSeqAccOp.ul) {
-        toDC.u.addr := memAcc.addr
-        toDC.u.read := true.B
-
-        memAccSucc := !toDC.u.stall
-        memAccWB := true.B
-        memAccData := memAcc.getSlice(toDC.u.rdata)
-      }
-
-      is(MemSeqAccOp.us) {
-        toDC.u.addr := memAcc.addr
-        toDC.u.write := true.B
-        toDC.u.wdata := retireNext.retirement.info.wb
-        toDC.u.wstrb := memAcc.computeBe
-
-        memAccSucc := !toDC.u.stall
-      }
-    }
-  }
 
   // intAck
-  when(retireNext.valid && retireNext.retirement.info.mem.op =/= MemSeqAccOp.no) {
+  when(retireNext.valid && retireNext.retirement.info.hasMem) {
     toCtrl.intAck := false.B
   }.otherwise {
     toCtrl.intAck := toCtrl.int

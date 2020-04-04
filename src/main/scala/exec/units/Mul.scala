@@ -126,9 +126,7 @@ class Mul(override implicit val coredef: CoreDef) extends ExecUnit(2, new MulExt
   }
 
   override def finalize(pipe: PipeInstr, ext: MulExt): RetireInfo = {
-    val info = Wire(new RetireInfo)
-    info.branch.nofire()
-    info.mem.noop()
+    val info = WireDefault(RetireInfo.vacant)
 
     info.wb := ext.x1
 

@@ -43,12 +43,11 @@ class Bypass(override implicit val coredef: CoreDef) extends ExecUnit(0, new Byp
     (ext, false.B)
   }
   def finalize(pipe: PipeInstr, ext: BypassExt): RetireInfo = {
-    val info = Wire(new RetireInfo)
-    info.mem.noop()
+    val info = WireDefault(RetireInfo.vacant)
 
     when(pipe.instr.invalAddr) {
       info.branch.ex(ExType.INSTR_ACCESS_FAULT)
-      info.wb := DontCare
+      info.wb := pipe.instr.addr
     }.elsewhen(ext.inval) {
       info.branch.ex(ExType.ILLEGAL_INSTR)
       info.wb := 0.U
@@ -63,7 +62,6 @@ class Bypass(override implicit val coredef: CoreDef) extends ExecUnit(0, new Byp
 
       info.branch.fire((pipe.instr.addr.asSInt + pipe.instr.instr.imm).asUInt)
     }.otherwise {
-      info.branch.nofire()
       info.wb := ext.acc
     }
 

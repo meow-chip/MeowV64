@@ -127,10 +127,7 @@ class ALU(override implicit val coredef: CoreDef)
 
   def finalize(pipe: PipeInstr, ext: ALUExt): RetireInfo = {
     // Sign extend if needed
-    val info = Wire(new RetireInfo)
-    info.branch.nofire()
-    info.mem.noop()
-
+    val info = WireDefault(RetireInfo.vacant)
     val extended = Wire(SInt(coredef.XLEN.W))
     extended := ext.acc
     info.wb := extended.asUInt
