@@ -8,18 +8,13 @@ import chisel3.experimental.ChiselEnum
 import exec._
 import _root_.core.CoreDef
 import _root_.core.ExType
+import _root_.core.ExReq
 
-class LSUExt(implicit val coredef: CoreDef) extends Bundle {
-  val mem = new MemSeqAcc
-  val wb = UInt(coredef.XLEN.W)
-  val lInvalAddr = Bool()
-  val sInvalAddr = Bool()
+class LSU(implicit val coredef: CoreDef) extends MultiIOModule with ExecUnitInt with exec.WithLSUPort {
+  val DEPTH = 1
 
-  val lUnaligned = Bool()
-  val sUnaligned = Bool()
-}
+  val io = IO(new ExecUnitPort)
 
-class LSU(override implicit val coredef: CoreDef) extends ExecUnit(1, new LSUExt) with exec.WithLSUPort {
   val reader = IO(new DCReader(coredef.L1D))
   val saUp = IO(Output(Bool()))
   val flushed = RegInit(false.B)
@@ -36,186 +31,201 @@ class LSU(override implicit val coredef: CoreDef) extends ExecUnit(1, new LSUExt
     flushed := false.B
   }
 
-  override def map(stage: Int, pipe: PipeInstr, pext: Option[LSUExt]): (LSUExt, Bool) =  {
-    val ext = Wire(new LSUExt)
+  // Let's do this without helper
 
-    val addr = (pipe.rs1val.asSInt + pipe.instr.instr.imm).asUInt
-    val aligned = addr(coredef.VADDR_WIDTH-1, 3) ## 0.U(3.W)
-    val offset = addr(2, 0)
-    val isUncached = addr(47)
-    val isRead = pipe.instr.instr.op === Decoder.Op("LOAD").ident
-    val isWrite = pipe.instr.instr.op === Decoder.Op("STORE").ident
-
-    val isCachedRead = isRead && !isUncached
-    val isCachedWrite = isWrite && !isUncached
-    val isUncachedRead = isRead && isUncached
-    val isUncachedWrite = isWrite && isUncached
-    val isInvalAddr = if(coredef.XLEN == coredef.VADDR_WIDTH) {
-      false.B
-    } else {
-      addr(coredef.XLEN-1, coredef.VADDR_WIDTH).orR
-    }
-
-    // Is unaligned?
-    val isUnaligned = Wire(Bool())
-    isUnaligned := false.B
-    /**
-     * According to ISA, the least two bits of funct3 repersents the size of the load/store:
-     * - (L/S)B[U]: 00
-     * - (L/S)H[U]: 01
-     * - (L/S)W[U]: 10
-     * - (L/S)D: 11
-     */
-    val size = pipe.instr.instr.funct3(1, 0)
-    when(size === 1.U) {
-      isUnaligned := offset(0)
-    }.elsewhen(size === 2.U) {
-      isUnaligned := offset(1, 0).orR
-    }.elsewhen(size === 3.U) {
-      isUnaligned := offset.orR
-    }
-    // For size = 0, addr is always aligned
-
-    if(stage == 0) {
-
-      // First stage, send LOAD addr
-      reader.addr := aligned
-      reader.read := isCachedRead && !isInvalAddr &&  !isUnaligned && !io.flush
-
-      // Compute write be
-      val tailMask = Wire(UInt((coredef.XLEN/8).W))
-      tailMask := 0.U
-
-      ext.mem.len := DontCare
-      switch(pipe.instr.instr.funct3) {
-        is(Decoder.STORE_FUNC("SB")) { ext.mem.len := MemSeqAccLen.B }
-        is(Decoder.STORE_FUNC("SH")) { ext.mem.len := MemSeqAccLen.H }
-        is(Decoder.STORE_FUNC("SW")) { ext.mem.len := MemSeqAccLen.W }
-        is(Decoder.STORE_FUNC("SD")) { ext.mem.len := MemSeqAccLen.D }
-      }
-      ext.mem.offset := offset
-      ext.mem.addr := aligned
-      ext.mem.sext := false.B
-      // Memory write data
-      ext.wb := pipe.rs2val << (offset << 3)
-      ext.mem.op := MemSeqAccOp.no
-
-      when(isUncachedWrite) {
-        ext.mem.op := MemSeqAccOp.us
-      }.elsewhen(isCachedWrite) {
-        ext.mem.op := MemSeqAccOp.s
-      }
-
-      ext.lInvalAddr := isRead && isInvalAddr
-      ext.sInvalAddr := isWrite && isInvalAddr
-      ext.lUnaligned := isRead && isUnaligned
-      ext.sUnaligned := isWrite && isUnaligned
-
-      (ext, flushed)
-    } else {
-      val shifted = reader.data >> (offset << 3)
-      val signedResult = Wire(SInt(coredef.XLEN.W)).suggestName("signedResult")
-      val result = Wire(UInt(coredef.XLEN.W)).suggestName("result")
-      shifted.suggestName("shifted")
-      result := signedResult.asUInt
-      signedResult := DontCare
-
-      ext := pext.get
-
-      when(isCachedRead) {
-        switch(pipe.instr.instr.funct3) {
-          is(Decoder.LOAD_FUNC("LB")) { signedResult := shifted(7, 0).asSInt }
-          is(Decoder.LOAD_FUNC("LH")) { signedResult := shifted(15, 0).asSInt }
-          is(Decoder.LOAD_FUNC("LW")) { signedResult := shifted(31, 0).asSInt }
-          is(Decoder.LOAD_FUNC("LD")) { result := shifted }
-          is(Decoder.LOAD_FUNC("LBU")) { result := shifted(7, 0) }
-          is(Decoder.LOAD_FUNC("LHU")) { result := shifted(15, 0) }
-          is(Decoder.LOAD_FUNC("LWU")) { result := shifted(31, 0) }
-        }
-
-        ext.wb := result
-      }.elsewhen(isUncachedRead) {
-        ext.mem.op := MemSeqAccOp.ul
-        switch(pipe.instr.instr.funct3) {
-          is(Decoder.LOAD_FUNC("LB")) {
-            ext.mem.sext := true.B
-            ext.mem.len := MemSeqAccLen.B
-          }
-          is(Decoder.LOAD_FUNC("LH")) {
-            ext.mem.sext := true.B
-            ext.mem.len := MemSeqAccLen.H
-          }
-          is(Decoder.LOAD_FUNC("LW")) {
-            ext.mem.sext := true.B
-            ext.mem.len := MemSeqAccLen.W
-          }
-          is(Decoder.LOAD_FUNC("LD")) {
-            ext.mem.sext := false.B
-            ext.mem.len := MemSeqAccLen.D
-          }
-          is(Decoder.LOAD_FUNC("LBU")) {
-            ext.mem.sext := false.B
-            ext.mem.len := MemSeqAccLen.B
-          }
-          is(Decoder.LOAD_FUNC("LHU")) {
-            ext.mem.sext := false.B
-            ext.mem.len := MemSeqAccLen.H
-          }
-          is(Decoder.LOAD_FUNC("LWU")) {
-            ext.mem.sext := false.B
-            ext.mem.len := MemSeqAccLen.W
-          }
-        }
-      }
-
-      // Finally, reuse write-back during misalign rw to write tval
-      when(isUnaligned) {
-        ext.wb := addr
-      }
-
-      (ext, reader.stall)
-    }
+  // Utils
+  def isInvalAddr(addr: UInt) = if(coredef.XLEN == coredef.VADDR_WIDTH) { // TODO: physical mode
+    false.B
+  } else {
+    addr(coredef.XLEN-1, coredef.VADDR_WIDTH).orR
   }
 
-  override def finalize(pipe: PipeInstr, ext: LSUExt): RetireInfo = {
-    val info = Wire(new RetireInfo)
+  /**
+   * Is this access misaligned?
+   * 
+   * According to ISA, the least two bits of funct3 repersents the size of the load/store:
+   * - (L/S)B[U]: 00
+   * - (L/S)H[U]: 01
+   * - (L/S)W[U]: 10
+   * - (L/S)D: 11
+   */
+  def isMisaligned(offset: UInt, funct3: UInt) = Mux1H(
+    UIntToOH(funct3(1, 0)),
+    Seq(
+      false.B,
+      offset(0),
+      offset(1, 0).orR,
+      offset.orR
+    )
+  )
 
-    saUp := ext.mem.op =/= MemSeqAccOp.no
+  val stall = reader.stall
 
-    info.wb := ext.wb
-    when(
-      pipe.instr.instr.op === Decoder.Op("MEM-MISC").ident
-      && pipe.instr.instr.funct3 === Decoder.MEM_MISC_FUNC("FENCE.I")
-    ) {
-      info.branch.ifence(pipe.instr.addr + 4.U)
-      info.mem.noop()
-    }.elsewhen(ext.lInvalAddr) {
-      info.branch.ex(ExType.LOAD_ACCESS_FAULT)
-      info.mem.noop()
-    }.elsewhen(ext.sInvalAddr) {
-      info.branch.ex(ExType.LOAD_ACCESS_FAULT)
-      info.mem.noop()
-    }.elsewhen(ext.lUnaligned) {
-      info.branch.ex(ExType.LOAD_ADDR_MISALIGN)
-      info.mem.noop()
-    }.elsewhen(ext.sUnaligned) {
-      info.branch.ex(ExType.STORE_ADDR_MISALIGN)
-      info.mem.noop()
-    }.otherwise {
-      info.branch.nofire()
-      info.mem := ext.mem
+  /**
+   * Stage 1 state
+   */ 
+  assert(coredef.PADDR_WIDTH > coredef.VADDR_WIDTH)
+  val addr = (io.next.rs1val.asSInt + io.next.instr.instr.imm).asUInt
+  val aligned = addr(coredef.PADDR_WIDTH - 1, 3) ## 0.U(3.W)
+  val offset = addr(2, 0)
+  val uncached = addr(coredef.PADDR_WIDTH) // Use bit 56 to denote uncached
+  val read = io.next.instr.instr.op === Decoder.Op("LOAD").ident && !io.next.instr.vacant
+  val write = io.next.instr.instr.op === Decoder.Op("STORE").ident && !io.next.instr.vacant
 
-      when(ext.mem.addr(coredef.VADDR_WIDTH-2) === false.B) {
-        val splashed = ext.mem.addr.asBools
-        val edited = Wire(Vec(coredef.XLEN, Bool()))
-        edited := splashed
-        edited(coredef.VADDR_WIDTH-1) := false.B
-        info.mem.addr := edited.asUInt()
+  val invalAddr = isInvalAddr(addr)
+  val misaligned = isMisaligned(offset, io.next.instr.instr.funct3)
+
+  /**
+   * Stage 2 state
+   */
+  val pipeInstr = RegInit(PipeInstr.empty)
+  when(!stall) {
+    pipeInstr := io.next
+  }
+  when(io.flush) {
+    pipeInstr.instr.vacant := true.B
+  }
+
+  val pipeAddr = (pipeInstr.rs1val.asSInt + pipeInstr.instr.instr.imm).asUInt
+  val pipeAligned = pipeAddr(coredef.PADDR_WIDTH - 1, 3) ## 0.U(3.W)
+  val pipeOffset = pipeAddr(2, 0)
+  val pipeUncached = pipeAddr(coredef.PADDR_WIDTH) // Use bit 56 to denote uncached
+  val pipeRead = pipeInstr.instr.instr.op === Decoder.Op("LOAD").ident && !pipeInstr.instr.vacant
+  val pipeWrite = pipeInstr.instr.instr.op === Decoder.Op("STORE").ident && !pipeInstr.instr.vacant
+  val pipeFenceI = (
+    pipeInstr.instr.instr.op === Decoder.Op("MEM-MISC").ident
+    && pipeInstr.instr.instr.funct3 === Decoder.MEM_MISC_FUNC("FENCE.I")
+    && !pipeInstr.instr.vacant
+  )
+  val pipeInvalAddr = isInvalAddr(pipeAddr)
+  val pipeMisaligned = isMisaligned(pipeOffset, pipeInstr.instr.instr.funct3)
+
+  io.retired := pipeInstr
+  io.stall := stall
+  when(io.flush) {
+    io.retired.instr.vacant := true.B
+  }
+
+  // Reader
+  reader.addr := aligned
+  reader.read := read && !uncached && !invalAddr &&  !misaligned && !io.flush
+
+  val shifted = reader.data >> (pipeOffset << 3) // TODO: use lookup table?
+  val signedResult = Wire(SInt(coredef.XLEN.W)).suggestName("signedResult")
+  val result = Wire(UInt(coredef.XLEN.W)).suggestName("result")
+  shifted.suggestName("shifted")
+  result := signedResult.asUInt
+  signedResult := DontCare
+
+  switch(pipeInstr.instr.instr.funct3) {
+    is(Decoder.LOAD_FUNC("LB")) { signedResult := shifted(7, 0).asSInt }
+    is(Decoder.LOAD_FUNC("LH")) { signedResult := shifted(15, 0).asSInt }
+    is(Decoder.LOAD_FUNC("LW")) { signedResult := shifted(31, 0).asSInt }
+    is(Decoder.LOAD_FUNC("LD")) { result := shifted }
+    is(Decoder.LOAD_FUNC("LBU")) { result := shifted(7, 0) }
+    is(Decoder.LOAD_FUNC("LHU")) { result := shifted(15, 0) }
+    is(Decoder.LOAD_FUNC("LWU")) { result := shifted(31, 0) }
+  }
+
+  // Retirement
+  when(pipeFenceI) {
+    io.retirement.wb := DontCare
+    io.retirement.mem.noop()
+    io.retirement.branch.ifence(pipeInstr.instr.addr + 4.U)
+  }.elsewhen(pipeInvalAddr) {
+    io.retirement.wb := DontCare
+    io.retirement.mem.noop()
+    io.retirement.branch.ex(Mux(
+      pipeRead,
+      ExType.LOAD_ACCESS_FAULT,
+      ExType.STORE_ACCESS_FAULT
+    ))
+  }.elsewhen(pipeMisaligned) {
+    io.retirement.wb := DontCare
+    io.retirement.mem.noop()
+    io.retirement.branch.ex(Mux(
+      pipeRead,
+      ExType.LOAD_ADDR_MISALIGN,
+      ExType.STORE_ADDR_MISALIGN
+    ))
+  }.elsewhen(pipeRead && !pipeUncached) {
+    io.retirement.branch.nofire()
+    io.retirement.mem.noop()
+    io.retirement.wb := result
+  }.elsewhen(pipeRead) {
+    io.retirement.branch.nofire()
+
+    val mem = Wire(new MemSeqAcc)
+
+    mem.op := MemSeqAccOp.ul
+    mem.addr := pipeAligned
+    mem.offset := pipeOffset
+    mem.sext := DontCare
+    mem.len := DontCare
+    switch(pipeInstr.instr.instr.funct3) {
+      is(Decoder.LOAD_FUNC("LB")) {
+        mem.sext := true.B
+        mem.len := MemSeqAccLen.B
+      }
+      is(Decoder.LOAD_FUNC("LH")) {
+        mem.sext := true.B
+        mem.len := MemSeqAccLen.H
+      }
+      is(Decoder.LOAD_FUNC("LW")) {
+        mem.sext := true.B
+        mem.len := MemSeqAccLen.W
+      }
+      is(Decoder.LOAD_FUNC("LD")) {
+        mem.sext := false.B
+        mem.len := MemSeqAccLen.D
+      }
+      is(Decoder.LOAD_FUNC("LBU")) {
+        mem.sext := false.B
+        mem.len := MemSeqAccLen.B
+      }
+      is(Decoder.LOAD_FUNC("LHU")) {
+        mem.sext := false.B
+        mem.len := MemSeqAccLen.H
+      }
+      is(Decoder.LOAD_FUNC("LWU")) {
+        mem.sext := false.B
+        mem.len := MemSeqAccLen.W
       }
     }
 
-    info
+    io.retirement.mem := mem
+    io.retirement.wb := DontCare
+  }.elsewhen(pipeWrite) {
+    io.retirement.branch.nofire()
+
+    val mem = Wire(new MemSeqAcc)
+
+    mem.len := DontCare
+    switch(pipeInstr.instr.instr.funct3) {
+      is(Decoder.STORE_FUNC("SB")) { mem.len := MemSeqAccLen.B }
+      is(Decoder.STORE_FUNC("SH")) { mem.len := MemSeqAccLen.H }
+      is(Decoder.STORE_FUNC("SW")) { mem.len := MemSeqAccLen.W }
+      is(Decoder.STORE_FUNC("SD")) { mem.len := MemSeqAccLen.D }
+    }
+    mem.offset := pipeOffset
+    // TODO: mask uncached bit
+    mem.addr := pipeAligned
+    mem.sext := false.B
+
+    when(pipeUncached) {
+      mem.op := MemSeqAccOp.us
+    } otherwise {
+      mem.op := MemSeqAccOp.s
+    }
+
+    io.retirement.mem := mem
+    io.retirement.wb := pipeInstr.rs2val << (pipeOffset << 3)
+  }.otherwise {
+    // Inval instr?
+    io.retirement.branch.ex(ExType.ILLEGAL_INSTR)
+    io.retirement.wb := DontCare
+    io.retirement.mem.noop()
   }
 
-  init()
+  saUp := io.retirement.mem.op =/= MemSeqAccOp.no && !io.retired.instr.vacant
 }
