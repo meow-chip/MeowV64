@@ -8,6 +8,7 @@ import _root_.core.StageCtrl
 import instr.Decoder.InstrType
 import _root_.core.CSRWriter
 import _root_.core.CoreDef
+import _root_.util._
 import cache.DCReader
 import cache.DCWriter
 import exec.units._
@@ -64,7 +65,7 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
   val rr = IO(Vec(coredef.ISSUE_NUM*2, new RegReader))
   val rw = IO(Vec(coredef.RETIRE_NUM, new RegWriter))
 
-  val toIF = IO(new InstrFifoReader)
+  val toIF = IO(new MultiQueueIO(new InstrExt, coredef.ISSUE_NUM))
 
   val toDC = IO(new Bundle {
     val r = new DCReader(coredef.L1D)
@@ -118,7 +119,8 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
           !gotoALU && !gotoBr && !gotoCSR
         )
       },
-      Some(3)
+      Some(3),
+      hasPipe = false
     )),
     Module(new UnitSel(
       Seq(
@@ -144,7 +146,8 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
         val isDiv = regALU && instr.funct7 === Decoder.MULDIV_FUNCT7 && !isMul
 
         Seq(!isMul && !isDiv, isMul, isDiv)
-      }
+      },
+      hasPipe = false
     )),
     Module(new UnitSel(
       Seq(

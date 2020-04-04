@@ -20,6 +20,7 @@ import instr.BHTPrediction
 import cache.L1UCPort
 import cache.DCWriter
 import chisel3.util.EnqIO
+import chisel3.util.Mux1H
 
 /**
  * Read instructions from reservation stations, and send them into (probably one of multiple) exec unit
@@ -170,14 +171,16 @@ class UnitSel(
   } else {
     pipeInput := DontCare
     when(rs.valid) {
+      rs.pop := !Mux1H(execMap.zip(units.map(_.io.stall)))
       for((u, e) <- units.zip(execMap)) {
         when(e) {
           u.io.next := rs.instr
-          rs.pop := !u.io.stall
         }
       }
     }
   }
+
+  // Retire FIFO and friends
 
   // Puts into retire FIFO 
 
