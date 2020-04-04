@@ -51,8 +51,9 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
 
   val toBPU = IO(new Bundle {
     val valid = Output(Bool())
-    val pc = Output(UInt(coredef.XLEN.W))
+    val lpc = Output(UInt(coredef.XLEN.W))
     val taken = Output(Bool())
+    val hist = Output(new BPUResult)
   })
 
   val csrWriter = IO(new CSRWriter(coredef.XLEN))
@@ -326,8 +327,9 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
 
   // Commit
   toBPU.valid := false.B
-  toBPU.pc := DontCare
+  toBPU.lpc := DontCare
   toBPU.taken := DontCare
+  toBPU.hist := DontCare
 
   retireNum := 0.U
 
@@ -403,16 +405,9 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
           && info.retirement.info.branch.ex === ExReq.none
         ) {
           toBPU.valid := true.B
-          toBPU.pc := info.retirement.instr.instr.addr
+          toBPU.lpc := info.retirement.instr.instr.npc - 1.U
           toBPU.taken := info.retirement.info.branch.branched()
-
-          val instrOffset = log2Ceil(Const.INSTR_MIN_WIDTH / 8 * coredef.FETCH_NUM)
-          when(
-            info.retirement.instr.instr.instr.base =/= InstrType.C
-            && info.retirement.instr.instr.addr(instrOffset-1, 0) =/= 0.U // First slot, full width
-          ) {
-            toBPU.pc := info.retirement.instr.instr.addr + (Const.INSTR_MIN_WIDTH/8).U
-          }
+          toBPU.hist := info.retirement.instr.instr.pred
         }
 
         when(info.retirement.info.branch.ex =/= ExReq.none) {

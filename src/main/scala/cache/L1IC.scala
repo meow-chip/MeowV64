@@ -88,6 +88,7 @@ class L1IC(opts: L1Opts) extends MultiIOModule {
 
   // Stage 1, tag fetch, data fetch
   val pipeRead = RegInit(false.B)
+  val pipeRst = RegInit(false.B)
   val pipeAddr = RegInit(0.U(opts.ADDR_WIDTH.W))
 
   val readingAddr = Wire(UInt(opts.ADDR_WIDTH.W))
@@ -125,6 +126,7 @@ class L1IC(opts: L1Opts) extends MultiIOModule {
   when(!toCPU.stall) {
     pipeRead := toCPU.read
     pipeAddr := toCPU.addr
+    pipeRst := toCPU.rst
   }
 
   val waitBufAddr = RegInit(0.U(opts.ADDR_WIDTH.W))
@@ -142,15 +144,24 @@ class L1IC(opts: L1Opts) extends MultiIOModule {
       when(rstCnt.andR()) {
         // Omit current request
         toCPU.vacant := true.B
-        nstate := S2State.idle
+
+        when(pipeRead) {
+          nstate := S2State.refill
+        }.otherwise {
+          nstate := S2State.idle
+        }
       }
     }
+
     is(S2State.idle) {
       val rdata = Mux1H(
         dataReadouts.zipWithIndex.map({ case (line, idx) => pipeHitMap(idx) -> line })
       )
 
-      when(pipeRead) {
+      when(pipeRst) {
+        nstate := S2State.rst
+        rstCnt := 0.U
+      }.elsewhen(pipeRead) {
         when(pipeHitMap.asUInt().orR) {
           toCPU.vacant := false.B
           toCPU.data := rdata(getTransferOffset(pipeAddr))
@@ -159,14 +170,7 @@ class L1IC(opts: L1Opts) extends MultiIOModule {
         }
       }.otherwise {
         toCPU.vacant := true.B
-
-        when(toCPU.rst) {
-          nstate := S2State.rst
-          rstCnt := 0.U
-          pipeRead := false.B
-        }.otherwise {
-          nstate := S2State.idle
-        }
+        nstate := S2State.idle
       }
     }
 
@@ -196,13 +200,7 @@ class L1IC(opts: L1Opts) extends MultiIOModule {
     }
 
     is(S2State.refilled) {
-      when(toCPU.rst) {
-        nstate := S2State.rst
-        rstCnt := 0.U
-        pipeRead := false.B
-      }.otherwise {
-        nstate := S2State.idle
-      }
+      nstate := S2State.idle
 
       toCPU.data := pipeOutput
       toCPU.vacant := false.B

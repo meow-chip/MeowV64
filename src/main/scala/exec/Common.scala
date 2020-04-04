@@ -23,7 +23,7 @@ import _root_.core.Status
   * 
   * Branch are used to state an interrupt in pipelined execution, which comes from
   * the execution of an instruction. Following conditions are considered as a branch:
-  * - Jumps and branches that don't match branch perdiction results
+  * - Jumps and branches that don't match branch prediction results
   * - Instructions caused an exceptions
   * - Instructions have side-effects on previous stages, so that we need to flush the pipeline.
   *   This includes:
@@ -255,7 +255,7 @@ object RetireInfo {
   * @param coredef
   */
 class PipeInstr(implicit val coredef: CoreDef) extends Bundle {
-  val instr = new InstrExt(coredef.XLEN)
+  val instr = new InstrExt
 
   val rs1val = UInt(coredef.XLEN.W)
   val rs2val = UInt(coredef.XLEN.W)
@@ -295,7 +295,7 @@ class ReservedInstr(override implicit val coredef: CoreDef) extends PipeInstr {
 object PipeInstr {
   def empty(implicit coredef: CoreDef): PipeInstr = {
     val ret = Wire(new PipeInstr)
-    ret.instr := InstrExt.empty(coredef.XLEN)
+    ret.instr := InstrExt.empty
     ret.rs1val := DontCare
     ret.rs2val := DontCare
     ret.rdname := DontCare
@@ -309,7 +309,7 @@ object ReservedInstr {
   def empty(implicit coredef: CoreDef): ReservedInstr = {
     val ret = Wire(new ReservedInstr)
     ret := DontCare
-    ret.instr := InstrExt.empty(coredef.XLEN)
+    ret.instr := InstrExt.empty
 
     ret
   }

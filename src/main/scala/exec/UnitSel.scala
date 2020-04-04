@@ -16,6 +16,7 @@ import _root_.instr.Decoder
 import _root_.core.Const
 import _root_.core.PrivLevel
 import _root_.core.Status
+import instr.BHTPrediction
 
 /**
  * Read instructions from reservation stations, and send them into (probably one of multiple) exec unit
@@ -248,11 +249,10 @@ object UnitSel {
       when(b.ex =/= ExReq.none) {
         result := b
       }.elsewhen(instr.instr.instr.op === Decoder.Op("JAL").ident) {
-        // result.nofire()
-        // FXIME: readd BPU!
-        result := b
+        assert(instr.instr.forcePred)
+        result.nofire()
       }.otherwise {
-        when(b.branch === instr.instr.pred) {
+        when(b.branch === instr.instr.taken) {
           result.nofire()
         }.elsewhen(b.branch) {
           result := b

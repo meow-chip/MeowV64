@@ -9,12 +9,13 @@ import chisel3.util._
 import _root_.util.FlushableQueue
 import chisel3.experimental.chiselName
 
-class InstrExt(val XLEN: Int = 64) extends Bundle {
-  val addr = UInt(XLEN.W)
+class InstrExt(implicit val coredef: CoreDef) extends Bundle {
+  val addr = UInt(coredef.XLEN.W)
   val instr = new Instr
   val vacant = Bool()
   val invalAddr = Bool()
-  val pred = Bool()
+  val pred = new BPUResult
+  val forcePred = Bool() // RAS and missed branch
 
   override def toPrintable: Printable = {
     p"Address: 0x${Hexadecimal(addr)}\n" +
@@ -23,30 +24,32 @@ class InstrExt(val XLEN: Int = 64) extends Bundle {
   }
 
   def npc: UInt = Mux(instr.base === InstrType.C, addr + 2.U, addr + 4.U)
+  def taken: Bool = forcePred || pred.prediction === BHTPrediction.taken
 }
 
 object InstrExt {
-  def empty(XLEN: Int): InstrExt = {
-    val ret = Wire(new InstrExt(XLEN))
+  def empty(implicit coredef: CoreDef): InstrExt = {
+    val ret = Wire(new InstrExt)
 
     ret.addr := DontCare
     ret.instr := DontCare
     ret.vacant := true.B
     ret.pred := DontCare
     ret.invalAddr := DontCare
+    ret.forcePred := DontCare
 
     ret
   }
 }
 
 class InstrFifoReader(implicit val coredef: CoreDef) extends Bundle {
-  val view = Input(Vec(coredef.ISSUE_NUM, new InstrExt(coredef.XLEN)))
+  val view = Input(Vec(coredef.ISSUE_NUM, new InstrExt))
   val cnt = Input(UInt(log2Ceil(coredef.ISSUE_NUM + 1).W))
   val accept = Output(UInt(log2Ceil(coredef.ISSUE_NUM + 1).W))
 }
 
 class InstrFifoWriter(implicit val coredef: CoreDef) extends Bundle {
-  val view = Input(Vec(coredef.FETCH_NUM, new InstrExt(coredef.XLEN)))
+  val view = Input(Vec(coredef.FETCH_NUM, new InstrExt))
   val cnt = Input(UInt(log2Ceil(coredef.FETCH_NUM + 1).W))
   val accept = Output(UInt(log2Ceil(coredef.FETCH_NUM + 1).W))
 }
@@ -121,7 +124,7 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
 
   val toBPU = IO(new Bundle {
     val pc = Output(UInt(coredef.XLEN.W))
-    val taken = Input(Vec(coredef.FETCH_NUM, BHTPerdiction()))
+    val results = Input(Vec(coredef.L1I.TRANSFER_SIZE / Const.INSTR_MIN_WIDTH, new BPUResult))
   })
 
   val debug = IO(new Bundle {
@@ -138,18 +141,26 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
     }
   }
 
+  toBPU.pc := RegNext(pc)
+
+  // TODO: BHT
+
   // First, push all IC readouts into a queue
   class ICData extends Bundle {
     val data = UInt(coredef.L1I.TRANSFER_SIZE.W)
     val addr = UInt(coredef.XLEN.W)
+    val pred = Vec(coredef.L1I.TRANSFER_SIZE / Const.INSTR_MIN_WIDTH, new BPUResult)
   }
 
   val ICQueue = Module(new FlushableQueue(new ICData, 2, false, true))
   ICQueue.io.enq.bits.data := toIC.data
   ICQueue.io.enq.bits.addr := pipePc
+  ICQueue.io.enq.bits.pred := toBPU.results
   ICQueue.io.enq.valid := !toIC.stall && !toIC.vacant
   
-  val haltIC = ICQueue.io.count >= 1.U && !toCtrl.ctrl.flush
+  val specBr = Wire(Bool())
+
+  val haltIC = ICQueue.io.count >= 1.U && !toCtrl.ctrl.flush && !specBr
   toIC.read := !haltIC
   toIC.addr := pc
   toIC.rst := toCtrl.ctrl.flush && toCtrl.irst
@@ -166,13 +177,15 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
   for((v, i) <- joinedVec.zipWithIndex) {
     v := decodeVec(i+1) ## decodeVec(i)
   }
+  // Scala ++ works in reverse order (lttle endian you may say?)
+  val joinedPred = VecInit(ICHead.io.deq.bits.pred ++ ICQueue.io.deq.bits.pred)
 
   val decodable = Wire(Vec(coredef.FETCH_NUM, Bool()))
   val decodePtr = Wire(Vec(coredef.FETCH_NUM + 1, UInt(log2Ceil(coredef.L1I.TRANSFER_SIZE * 2 / 16).W)))
   val decoded = Wire(Vec(coredef.FETCH_NUM, new InstrExt))
+  val brTargets = Wire(Vec(coredef.FETCH_NUM, UInt(coredef.XLEN.W)))
   decodePtr(0) := headPtr
 
-  // FIXME: BPU
   for(i <- 0 until coredef.FETCH_NUM) {
     val overflowed = decodePtr(i) >= (coredef.L1I.TRANSFER_SIZE / 16 - Const.INSTR_MIN_WIDTH / 8).U
 
@@ -199,7 +212,19 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
       ICHead.io.deq.bits.addr(coredef.XLEN-1, coredef.VADDR_WIDTH).orR
     })
     decoded(i).vacant := false.B
-    decoded(i).pred := false.B
+    val pred = joinedPred(decodePtr(i+1) - 1.U)
+    decoded(i).pred := pred
+    decoded(i).forcePred := false.B
+
+    when(instr.op === Decoder.Op("JAL").ident) {
+      decoded(i).forcePred := true.B
+    }.elsewhen(instr.op === Decoder.Op("BRANCH").ident) {
+      when(instr.imm < 0.S && pred.prediction === BHTPrediction.missed) {
+        decoded(i).forcePred := true.B
+      }
+    }
+
+    brTargets(i) := (instr.imm +% decoded(i).addr.asSInt()).asUInt
   }
 
   val issueFifo = Module(new IssueFIFO)
@@ -208,7 +233,16 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
   steppings(0) := 0.U
   brokens(0) := false.B
   for(i <- (0 until coredef.FETCH_NUM)) {
-    brokens(i+1) := Mux((i+1).U <= issueFifo.writer.accept && decodable(i), brokens(i), true.B)
+    brokens(i+1) := Mux(
+      (i+1).U <= issueFifo.writer.accept && decodable(i),
+      brokens(i),
+      true.B
+    )
+    if(i > 0) {
+      when(decoded(i-1).taken) {
+        brokens(i+1) := true.B
+      }
+    }
     steppings(i+1) := Mux(brokens(i+1), steppings(i), (i+1).U)
   }
 
@@ -227,14 +261,59 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
   issueFifo.writer.view := decoded
   issueFifo.writer.cnt := stepping
 
-  // Special case: flushing
-  issueFifo.flush := toCtrl.ctrl.flush
-  ICQueue.io.flush := toCtrl.ctrl.flush
-  ICHead.io.flush := toCtrl.ctrl.flush
-  toCtrl.ctrl.stall := (!toCtrl.ctrl.flush) && (haltIC || toIC.stall)
+  toCtrl.ctrl.stall := haltIC || toIC.stall
 
   val pendingIRST = RegInit(false.B)
   val pendingFlush = RegInit(false.B)
+
+  ICQueue.io.flush := false.B
+  ICHead.io.flush := false.B
+  issueFifo.flush := false.B
+
+  // Speculative branch
+  val specBrMask = decoded.zipWithIndex.map({ case (instr, idx) => idx.U < stepping && instr.taken })
+  specBr := VecInit(specBrMask).asUInt.orR()
+  val specBrTarget = MuxLookup(
+    true.B,
+    0.U,
+    specBrMask.zip(brTargets)
+  )
+
+  when(specBr) {
+    pendingIRST := false.B
+
+    ICQueue.io.flush := true.B
+    ICHead.io.flush := true.B
+    // Do not flush issue fifo
+
+    val ICAlign = log2Ceil(coredef.L1I.TRANSFER_SIZE / 8)
+    headPtr := specBrTarget(ICAlign-1, log2Ceil(Const.INSTR_MIN_WIDTH / 8))
+    val rawbpc = specBrTarget(coredef.XLEN-1, ICAlign) ## 0.U(ICAlign.W)
+    val bpc = WireDefault(rawbpc)
+
+    when(toIC.stall) {
+      pendingIRST := false.B
+      pendingFlush := true.B
+    }.otherwise {
+      bpc := rawbpc + (1.U << ICAlign)
+    }
+
+    pc := bpc
+
+    toIC.addr := rawbpc
+    toBPU.pc := rawbpc
+    when(!toIC.stall) {
+      pipePc := rawbpc
+    }
+  }
+
+  // Flushing
+  when(toCtrl.ctrl.flush) {
+    issueFifo.flush := true.B
+    ICQueue.io.flush := true.B
+    ICHead.io.flush := true.B
+    toCtrl.ctrl.stall := false.B
+  }
 
   when(toCtrl.ctrl.flush) {
     val ICAlign = log2Ceil(coredef.L1I.TRANSFER_SIZE / 8)
@@ -252,6 +331,7 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
     headPtr := toCtrl.pc(ICAlign-1, log2Ceil(Const.INSTR_MIN_WIDTH / 8))
 
     toIC.addr := rawbpc
+    toBPU.pc := rawbpc
     when(!toIC.stall) {
       pipePc := rawbpc
     }
@@ -266,7 +346,6 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
     }
   }
   
-  // TODO: impl BPU
   toBPU.pc := DontCare
 
   // TODO: asserts that decodable is shaped like [true, ..., true, false, ..., false] when there is no BPU
@@ -338,15 +417,15 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
     instr.pred := DontCare
 
     switch(pred) {
-      is(BHTPerdiction.taken) {
+      is(BHTPrediction.taken) {
         instr.pred := true.B
       }
 
-      is(BHTPerdiction.notTaken) {
+      is(BHTPrediction.notTaken) {
         instr.pred := false.B
       }
 
-      is(BHTPerdiction.missed) {
+      is(BHTPrediction.missed) {
         instr.pred := instr.instr.op === Decoder.Op("BRANCH").ident && instr.instr.imm < 0.S
       }
     }

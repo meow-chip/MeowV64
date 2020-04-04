@@ -16,7 +16,7 @@ class Renamer(implicit coredef: CoreDef) extends MultiIOModule {
   val rr = IO(Vec(coredef.ISSUE_NUM * 2, new RegReader(coredef.XLEN)))
 
   val toExec = IO(new Bundle {
-    val input = Input(Vec(coredef.ISSUE_NUM, new InstrExt(coredef.XLEN)))
+    val input = Input(Vec(coredef.ISSUE_NUM, new InstrExt))
     val commit = Input(UInt(log2Ceil(coredef.ISSUE_NUM+1).W))
     val ntag = Input(UInt(log2Ceil(coredef.INFLIGHT_INSTR_LIMIT).W))
     val output = Output(Vec(coredef.ISSUE_NUM, new ReservedInstr))
