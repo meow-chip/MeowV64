@@ -492,7 +492,6 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
       }
     }
 
-    toCtrl.nepc := inflights.reader.view(0).npc
     toCtrl.branch := BranchResult.empty
     when(pendingBr && pendingBrTag -% retirePtr < retireNum) {
       toCtrl.branch := pendingBrResult
