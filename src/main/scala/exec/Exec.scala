@@ -84,6 +84,10 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
   renamer.cdb := cdb
   renamer.toExec.flush := toCtrl.ctrl.flush
 
+  // Inflight instr info
+  val inflights = Module(new MultiQueue(new InflightInstr, coredef.INFLIGHT_INSTR_LIMIT, coredef.ISSUE_NUM, coredef.RETIRE_NUM))
+  inflights.flush := toCtrl.ctrl.flush
+
   // Delayed memory ops
   val releaseMem = Wire(DeqIO(new DelayedMemResult))
   releaseMem.nodeq()
@@ -318,6 +322,10 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
     taken = taken | sending
   }
 
+  inflights.writer.cnt := issueNum
+  assert(inflights.writer.accept >= issueNum)
+  inflights.writer.view := toIF.view.map(InflightInstr.from)
+
   // Filling ROB & CDB broadcast
   for((u, ent) <- units.zip(cdb.entries)) {
     ent.valid := false.B
@@ -330,7 +338,7 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
         ent.valid := true.B
       }
 
-      rob(u.retire.instr.tag).retirement := u.retire
+      rob(u.retire.instr.tag).info := u.retire.info
       rob(u.retire.instr.tag).valid := true.B
     }
   }
@@ -359,7 +367,7 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
       rwp.addr := 0.U
       rwp.data := DontCare
     }
-  }.elsewhen(rob(retirePtr).retirement.info.hasMem) {
+  }.elsewhen(rob(retirePtr).info.hasMem) {
     // Is memory operation, wait for memAccSucc
     toCtrl.branch.nofire()
     for(rwp <- rw) {
@@ -374,10 +382,11 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
       rob(retirePtr).valid := false.B
       retirePtr := retirePtr +% 1.U
       when(memResult.isLoad) {
-        cdb.entries(coredef.UNIT_COUNT).name := rob(retirePtr).retirement.instr.rdname
+        // TODO: FIXME
+        cdb.entries(coredef.UNIT_COUNT).name := retirePtr // tag === rdname
         cdb.entries(coredef.UNIT_COUNT).data := memResult.data
         cdb.entries(coredef.UNIT_COUNT).valid := true.B
-        rw(0).addr := rob(retirePtr).retirement.instr.instr.instr.getRd
+        rw(0).addr := inflights.reader.view(0).erd
         rw(0).data := memResult.data
       }
     }.otherwise {
@@ -390,46 +399,48 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
     // First only not memory operation, possible to do multiple retirement
     // Compute if we can retire a certain instruction
     for(idx <- (0 until coredef.RETIRE_NUM)) {
+      val inflight = inflights.reader.view(idx)
       val info = rob(retirePtr +% idx.U)
+      // TODO: FIXME
       isBranch(idx) := (
-        info.retirement.normalizedBranch().branched()
-        || info.retirement.instr.instr.instr.op === Decoder.Op("BRANCH").ident
+        info.info.normalizedBranch(inflight.op, inflight.taken, inflight.npc).branched()
+        || inflight.op === Decoder.Op("BRANCH").ident
       )
 
       if(idx == 0) {
         canRetire(idx) := info.valid
       } else {
         // Only allow mem ops in the first retire slot
-        canRetire(idx) := info.valid && canRetire(idx - 1) && !isBranch(idx-1) && !info.retirement.info.hasMem
+        canRetire(idx) := info.valid && canRetire(idx - 1) && !isBranch(idx-1) && !info.info.hasMem
       }
 
       when(canRetire(idx)) {
-        rw(idx).addr := info.retirement.instr.instr.instr.getRd
-        rw(idx).data := info.retirement.info.wb
+        rw(idx).addr := inflight.erd
+        rw(idx).data := info.info.wb
 
         // Branching. canRetire(idx) -> \forall i < idx, !isBranch(i)
         // So we can safely sets toCtrl.branch to the last valid branch info
-        toCtrl.branch := info.retirement.normalizedBranch()
+        toCtrl.branch := info.info.normalizedBranch(inflight.op, inflight.taken, inflight.npc)
         // Update BPU accordingly
         when(
-          info.retirement.instr.instr.instr.op === Decoder.Op("BRANCH").ident
-          && info.retirement.info.branch.ex === ExReq.none
+          inflight.op === Decoder.Op("BRANCH").ident
+          && info.info.branch.ex === ExReq.none
         ) {
           toBPU.valid := true.B
-          toBPU.lpc := info.retirement.instr.instr.npc - 1.U
-          toBPU.taken := info.retirement.info.branch.branched()
-          toBPU.hist := info.retirement.instr.instr.pred
+          toBPU.lpc := inflight.npc - 1.U
+          toBPU.taken := info.info.branch.branched()
+          toBPU.hist := inflight.pred
         }
 
-        when(info.retirement.info.branch.ex =/= ExReq.none) {
+        when(info.info.branch.ex =/= ExReq.none) {
           // Don't write-back exceptioned instr
           rw(idx).addr := 0.U
         }
 
-        toCtrl.nepc := info.retirement.instr.instr.npc
-        when(info.retirement.info.branch.ex === ExReq.ex) {
-          toCtrl.tval := info.retirement.info.wb
-          toCtrl.nepc := info.retirement.instr.instr.addr
+        toCtrl.nepc := inflight.npc
+        when(info.info.branch.ex === ExReq.ex) {
+          toCtrl.tval := info.info.wb
+          toCtrl.nepc := inflight.addr
         }
 
         info.valid := false.B
@@ -455,12 +466,15 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
   for(i <- (0 until coredef.RETIRE_NUM)) {
     // renamer.toExec.releases(i).name := rob(retirePtr +% i.U).retirement.instr.rdname
     renamer.toExec.releases(i).name := retirePtr + i.U
-    renamer.toExec.releases(i).reg := rob(retirePtr +% i.U).retirement.instr.instr.instr.rd
+    renamer.toExec.releases(i).reg := inflights.reader.view(i).erd
   }
+
   renamer.toExec.retire := retireNum
+  inflights.reader.accept := retireNum
+  assert(inflights.reader.cnt >= retireNum)
 
   // intAck
-  when(retireNext.valid && retireNext.retirement.info.hasMem) {
+  when(retireNext.valid && retireNext.info.hasMem) {
     toCtrl.intAck := false.B
   }.otherwise {
     toCtrl.intAck := toCtrl.int
@@ -479,14 +493,15 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
 
 object Exec {
   class ROBEntry(implicit val coredef: CoreDef) extends Bundle {
-    val retirement = new Retirement
+    // val retirement = new Retirement
+    val info = new RetireInfo
     val valid = Bool()
   }
 
   object ROBEntry {
     def empty(implicit coredef: CoreDef) = {
       val ret = Wire(new ROBEntry)
-      ret.retirement := DontCare
+      ret.info := DontCare
       ret.valid := false.B
 
       ret

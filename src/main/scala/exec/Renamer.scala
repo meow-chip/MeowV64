@@ -67,7 +67,6 @@ class Renamer(implicit coredef: CoreDef) extends MultiIOModule {
 
   // TODO: asserts that CDB never broadcasts names that are being allocated
 
-  // Stage 1, allocate rd name, lookup register names
   val tags = (0 until coredef.ISSUE_NUM).map(idx => toExec.ntag +% idx.U)
 
   val canRename = (0 until coredef.ISSUE_NUM).map(idx => {

@@ -259,28 +259,6 @@ object UnitSel {
   class Retirement(implicit val coredef: CoreDef)  extends Bundle {
     val instr = new PipeInstr
     val info = new RetireInfo
-
-    def normalizedBranch(): BranchResult = {
-      val b = info.branch
-      val result = Wire(new BranchResult)
-
-      when(b.ex =/= ExReq.none) {
-        result := b
-      }.elsewhen(instr.instr.instr.op === Decoder.Op("JAL").ident) {
-        assert(instr.instr.forcePred)
-        result.nofire()
-      }.otherwise {
-        when(b.branch === instr.instr.taken) {
-          result.nofire()
-        }.elsewhen(b.branch) {
-          result := b
-        }.otherwise {
-          result.fire(instr.instr.npc)
-        }
-      }
-
-      result
-    }
   }
 
   object Retirement {

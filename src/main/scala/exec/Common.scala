@@ -19,6 +19,9 @@ import _root_.core.PrivLevel
 import _root_.core.Status
 import cache.DCWriter
 import cache.L1UCPort
+import instr.Decoder
+import instr.BHTPrediction
+import instr.BPUResult
 
 /**
   * Branch result
@@ -111,6 +114,28 @@ class RetireInfo(implicit val coredef: CoreDef) extends Bundle {
   val wb = UInt(coredef.XLEN.W)
   val branch = new BranchResult
   val hasMem = Bool()
+
+  def normalizedBranch(op: UInt, taken: Bool, npc: UInt): BranchResult = {
+    val b = branch
+    val result = Wire(new BranchResult)
+
+    when(b.ex =/= ExReq.none) {
+      result := b
+    }.elsewhen(op === Decoder.Op("JAL").ident) {
+      // assert(instr.forcePred)
+      result.nofire()
+    }.otherwise {
+      when(b.branch === taken) {
+        result.nofire()
+      }.elsewhen(b.branch) {
+        result := b
+      }.otherwise {
+        result.fire(npc)
+      }
+    }
+
+    result
+  }
 }
 
 object RetireInfo {
@@ -176,7 +201,29 @@ class ReservedInstr(override implicit val coredef: CoreDef) extends PipeInstr {
 class InflightInstr(implicit val coredef: CoreDef) extends Bundle {
   // val rdname = UInt(coredef.XLEN.W)
   // rdname === tag, so we don't need this wire anymore
-  val instr = new InstrExt
+  val op = UInt(5.W)
+  val isC = Bool()
+  val addr = UInt(coredef.XLEN.W)
+  val erd = UInt(log2Ceil(32).W) // Effective rd
+  val pred = new BPUResult
+  val forcePred = Bool() // FIXME: change to default pred
+
+  def taken = pred.prediction === BHTPrediction.taken || forcePred
+  def npc = Mux(isC, 2.U, 4.U) +% addr
+}
+
+object InflightInstr {
+  def from(instr: InstrExt)(implicit coredef: CoreDef) = {
+    val ret = Wire(new InflightInstr)
+    ret.op := instr.instr.op
+    ret.addr := instr.addr
+    ret.isC := instr.instr.base === InstrType.C
+    ret.erd := instr.instr.getRd()
+    ret.pred := instr.pred
+    ret.forcePred := instr.forcePred
+
+    ret
+  }
 }
 
 object PipeInstr {
