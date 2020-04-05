@@ -81,6 +81,7 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
     renamer.rr(i)(0) <> rr(i * 2)
     renamer.rr(i)(1) <> rr(i * 2 + 1)
   }
+  renamer.rw <> rw
   renamer.cdb := cdb
   renamer.toExec.flush := toCtrl.ctrl.flush
 
@@ -326,11 +327,42 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
   assert(inflights.writer.accept >= issueNum)
   inflights.writer.view := toIF.view.map(InflightInstr.from)
 
+  val pendingBr = RegInit(false.B)
+  val pendingBrTag = RegInit(0.U(log2Ceil(coredef.INFLIGHT_INSTR_LIMIT).W))
+  val pendingBrResult = RegInit(BranchResult.empty)
+  assert(!pendingBr || pendingBrResult.branched())
+
+  val brMask = Wire(Vec(units.size, UInt(coredef.INFLIGHT_INSTR_LIMIT.W)))
+  val brMux = Wire(UInt(coredef.INFLIGHT_INSTR_LIMIT.W))
+  brMux := brMask.reduceTree(_ | _) | Mux(pendingBr, pendingBrTag -% retirePtr, 0.U)
+  val brSel = VecInit(PriorityEncoderOH(brMux.asBools())).asUInt()
+  val brSeled = Wire(Vec(units.size, Bool()))
+  val brNormlalized = Wire(Vec(units.size, new BranchResult))
+
+  when(brSeled.asUInt.orR()) {
+    pendingBr := true.B
+    pendingBrTag := OHToUInt(brSel) +% retirePtr // Actually this is always true
+    pendingBrResult := Mux1H(brSeled, brNormlalized)
+  }
+
   // Filling ROB & CDB broadcast
-  for((u, ent) <- units.zip(cdb.entries)) {
+  for(((u, ent), idx) <- units.zip(cdb.entries).zipWithIndex) {
     ent.valid := false.B
     ent.name := 0.U // Helps to debug, because we are asserting store(0) === 0
     ent.data := u.retire.info.wb
+
+    // TODO: maybe pipeline here?
+    val dist = u.retire.instr.tag -% retirePtr
+    val oh = UIntToOH(dist)
+    val normalized = u.retire.info.normalizedBranch(
+      u.retire.instr.instr.instr.op,
+      u.retire.instr.instr.taken,
+      u.retire.instr.instr.npc
+    )
+    val canBr = !u.ctrl.stall && !u.retire.instr.instr.vacant && normalized.branched()
+    brMask(idx) := Mux(canBr, oh, 0.U)
+    brSeled(idx) := brSel === oh && canBr
+    brNormlalized(idx) := normalized
 
     when(!u.ctrl.stall && !u.retire.instr.instr.vacant) {
       when(!u.retire.info.hasMem) {
@@ -338,12 +370,13 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
         ent.valid := true.B
       }
 
-      rob(u.retire.instr.tag).info := u.retire.info
+      rob(u.retire.instr.tag).hasMem := u.retire.info.hasMem
       rob(u.retire.instr.tag).valid := true.B
     }
   }
 
   // Commit
+
   toBPU.valid := false.B
   toBPU.lpc := DontCare
   toBPU.taken := DontCare
@@ -367,7 +400,7 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
       rwp.addr := 0.U
       rwp.data := DontCare
     }
-  }.elsewhen(rob(retirePtr).info.hasMem) {
+  }.elsewhen(rob(retirePtr).hasMem) {
     // Is memory operation, wait for memAccSucc
     toCtrl.branch.nofire()
     for(rwp <- rw) {
@@ -393,71 +426,77 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
       retireNum := 0.U
     }
   }.otherwise {
-    val canRetire = Wire(Vec(coredef.RETIRE_NUM, Bool()))
+    val blocked = Wire(Vec(coredef.RETIRE_NUM, Bool()))
     val isBranch = Wire(Vec(coredef.RETIRE_NUM, Bool()))
+
+    val mask = blocked.asUInt
+    retireNum := Mux(
+      mask === 0.U,
+      coredef.RETIRE_NUM.U,
+      OHToUInt(
+        PriorityEncoderOH(
+          blocked
+        )
+      )
+    )
 
     // First only not memory operation, possible to do multiple retirement
     // Compute if we can retire a certain instruction
     for(idx <- (0 until coredef.RETIRE_NUM)) {
       val inflight = inflights.reader.view(idx)
-      val info = rob(retirePtr +% idx.U)
-      // TODO: FIXME
+      val tag = retirePtr +% idx.U
+      val info = rob(tag)
+
       isBranch(idx) := (
-        info.info.normalizedBranch(inflight.op, inflight.taken, inflight.npc).branched()
+        pendingBr && pendingBrTag === tag
         || inflight.op === Decoder.Op("BRANCH").ident
       )
 
       if(idx == 0) {
-        canRetire(idx) := info.valid
+        blocked(idx) := !info.valid
       } else {
         // Only allow mem ops in the first retire slot
-        canRetire(idx) := info.valid && canRetire(idx - 1) && !isBranch(idx-1) && !info.info.hasMem
+        blocked(idx) := !info.valid || isBranch(idx-1) || info.hasMem
       }
 
-      when(canRetire(idx)) {
+      when(idx.U < retireNum) {
         rw(idx).addr := inflight.erd
-        rw(idx).data := info.info.wb
+        rw(idx).data := renamer.toExec.releases(idx).value
 
-        // Branching. canRetire(idx) -> \forall i < idx, !isBranch(i)
-        // So we can safely sets toCtrl.branch to the last valid branch info
-        toCtrl.branch := info.info.normalizedBranch(inflight.op, inflight.taken, inflight.npc)
         // Update BPU accordingly
         when(
           inflight.op === Decoder.Op("BRANCH").ident
-          && info.info.branch.ex === ExReq.none
+          // && info.info.branch.ex === ExReq.none
+          // Update: BRANCH never exceptions
         ) {
           toBPU.valid := true.B
           toBPU.lpc := inflight.npc - 1.U
-          toBPU.taken := info.info.branch.branched()
+          toBPU.taken := pendingBr && pendingBrTag === tag
           toBPU.hist := inflight.pred
         }
 
-        when(info.info.branch.ex =/= ExReq.none) {
+        when(pendingBr && pendingBrTag === tag && pendingBrResult.ex =/= ExReq.none) {
           // Don't write-back exceptioned instr
           rw(idx).addr := 0.U
         }
 
-        toCtrl.nepc := inflight.npc
-        when(info.info.branch.ex === ExReq.ex) {
-          toCtrl.tval := info.info.wb
+        when(pendingBr && pendingBrTag === tag && pendingBrResult.ex === ExReq.ex) {
+          toCtrl.tval := renamer.toExec.releases(idx).value
           toCtrl.nepc := inflight.addr
         }
 
         info.valid := false.B
-
-        retireNum := (1+idx).U
       }.otherwise {
         rw(idx).addr := 0.U
         rw(idx).data := DontCare
       }
     }
 
-    // Asserts that at most one can branch
-    val branchMask = isBranch.asUInt() & canRetire.asUInt()
-    assert(!(branchMask & (branchMask-%1.U)).orR)
-
-    // Asserts that canRetire forms a tailing 1 sequence, e.g.: 00011111
-    assert(!(canRetire.asUInt & (canRetire.asUInt+%1.U)).orR)
+    toCtrl.nepc := inflights.reader.view(0).npc
+    toCtrl.branch := BranchResult.empty
+    when(pendingBr && pendingBrTag -% retirePtr < retireNum) {
+      toCtrl.branch := pendingBrResult
+    }
   }
 
   val retireNext = rob(retirePtr)
@@ -474,7 +513,7 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
   assert(inflights.reader.cnt >= retireNum)
 
   // intAck
-  when(retireNext.valid && retireNext.info.hasMem) {
+  when(retireNext.valid && retireNext.hasMem) {
     toCtrl.intAck := false.B
   }.otherwise {
     toCtrl.intAck := toCtrl.int
@@ -484,6 +523,7 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
   when(toCtrl.ctrl.flush) {
     issuePtr := 0.U
     retirePtr := 0.U
+    pendingBr := false.B
 
     for(row <- rob) {
       row.valid := false.B
@@ -493,15 +533,15 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
 
 object Exec {
   class ROBEntry(implicit val coredef: CoreDef) extends Bundle {
-    // val retirement = new Retirement
-    val info = new RetireInfo
+    // val info = new RetireInfo
+    val hasMem = Bool()
     val valid = Bool()
   }
 
   object ROBEntry {
     def empty(implicit coredef: CoreDef) = {
       val ret = Wire(new ROBEntry)
-      ret.info := DontCare
+      ret.hasMem := DontCare
       ret.valid := false.B
 
       ret
@@ -545,4 +585,4 @@ object Exec {
 
     ret
   }
-  }
+}

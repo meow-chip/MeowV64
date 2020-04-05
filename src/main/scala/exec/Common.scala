@@ -115,6 +115,7 @@ class RetireInfo(implicit val coredef: CoreDef) extends Bundle {
   val branch = new BranchResult
   val hasMem = Bool()
 
+  // TODO: put into PipeInstr
   def normalizedBranch(op: UInt, taken: Bool, npc: UInt): BranchResult = {
     val b = branch
     val result = Wire(new BranchResult)

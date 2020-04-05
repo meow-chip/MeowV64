@@ -10,8 +10,9 @@ import reg.RegReader
 import chisel3.util.MuxLookup
 
 class Release(implicit val coredef: CoreDef) extends Bundle {
-  val name = UInt(log2Ceil(coredef.INFLIGHT_INSTR_LIMIT).W)
-  val reg = UInt(log2Ceil(32).W)
+  val name = Input(UInt(log2Ceil(coredef.INFLIGHT_INSTR_LIMIT).W))
+  val reg = Input(UInt(log2Ceil(32).W))
+  val value = Output(UInt(coredef.XLEN.W))
 }
 
 @chiselName
@@ -20,6 +21,7 @@ class Renamer(implicit coredef: CoreDef) extends MultiIOModule {
 
   val cdb = IO(Input(new CDB))
   val rr = IO(Vec(coredef.ISSUE_NUM, Vec(2, new RegReader(coredef.XLEN))))
+  val rw = IO(Vec(coredef.ISSUE_NUM, new RegWriter(coredef.XLEN)))
 
   val toExec = IO(new Bundle {
     val input = Input(Vec(coredef.ISSUE_NUM, new InstrExt))
@@ -28,7 +30,7 @@ class Renamer(implicit coredef: CoreDef) extends MultiIOModule {
     val output = Output(Vec(coredef.ISSUE_NUM, new ReservedInstr))
     val count = Output(UInt(log2Ceil(coredef.ISSUE_NUM+1).W))
 
-    val releases = Input(Vec(coredef.RETIRE_NUM, new Release))
+    val releases = Vec(coredef.RETIRE_NUM, new Release)
     val retire = Input(UInt(log2Ceil(coredef.RETIRE_NUM+1).W))
 
     val flush = Input(Bool())
@@ -123,9 +125,16 @@ class Renamer(implicit coredef: CoreDef) extends MultiIOModule {
   
   // Release before allocation
   for((release, idx) <- toExec.releases.zipWithIndex) {
+    val data = store(release.name)
     when(idx.U < toExec.retire) {
       regMapped(release.reg) := reg2name(release.reg) =/= release.name
+      rw(idx).addr := release.reg
+      rw(idx).data := data
+    }.otherwise {
+      rw(idx).addr := 0.U
+      rw(idx).data := DontCare
     }
+    release.value := data
   }
 
   for((instr, idx) <- toExec.input.zipWithIndex) {
