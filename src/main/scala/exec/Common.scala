@@ -170,6 +170,15 @@ class ReservedInstr(override implicit val coredef: CoreDef) extends PipeInstr {
   def ready = (inval || rs1ready && rs2ready)
 }
 
+/**
+ * Instruction pushed by issuer, and reused by rob
+ */
+class InflightInstr(implicit val coredef: CoreDef) extends Bundle {
+  // val rdname = UInt(coredef.XLEN.W)
+  // rdname === tag, so we don't need this wire anymore
+  val instr = new InstrExt
+}
+
 object PipeInstr {
   def empty(implicit coredef: CoreDef): PipeInstr = {
     val ret = Wire(new PipeInstr)

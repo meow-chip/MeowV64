@@ -377,7 +377,7 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
         cdb.entries(coredef.UNIT_COUNT).name := rob(retirePtr).retirement.instr.rdname
         cdb.entries(coredef.UNIT_COUNT).data := memResult.data
         cdb.entries(coredef.UNIT_COUNT).valid := true.B
-        rw(0).addr := rob(retirePtr).retirement.instr.instr.instr.rd
+        rw(0).addr := rob(retirePtr).retirement.instr.instr.instr.getRd
         rw(0).data := memResult.data
       }
     }.otherwise {
@@ -404,7 +404,7 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
       }
 
       when(canRetire(idx)) {
-        rw(idx).addr := info.retirement.instr.instr.instr.rd
+        rw(idx).addr := info.retirement.instr.instr.instr.getRd
         rw(idx).data := info.retirement.info.wb
 
         // Branching. canRetire(idx) -> \forall i < idx, !isBranch(i)
@@ -450,6 +450,13 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
   }
 
   val retireNext = rob(retirePtr)
+
+  // Renamer release
+  for(i <- (0 until coredef.RETIRE_NUM)) {
+    renamer.toExec.releases(i).name := rob(retirePtr +% i.U).retirement.instr.rdname
+    renamer.toExec.releases(i).reg := rob(retirePtr +% i.U).retirement.instr.instr.instr.rd
+  }
+  renamer.toExec.retire := retireNum
 
   // intAck
   when(retireNext.valid && retireNext.retirement.info.hasMem) {

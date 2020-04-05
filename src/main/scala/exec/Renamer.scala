@@ -9,6 +9,11 @@ import Chisel.experimental.chiselName
 import reg.RegReader
 import chisel3.util.MuxLookup
 
+class Release(implicit val coredef: CoreDef) extends Bundle {
+  val name = UInt(log2Ceil(coredef.INFLIGHT_INSTR_LIMIT).W)
+  val reg = UInt(log2Ceil(32).W)
+}
+
 @chiselName
 class Renamer(implicit coredef: CoreDef) extends MultiIOModule {
   val REG_NUM = 32 // TODO: do we need to make this configurable?
@@ -23,6 +28,9 @@ class Renamer(implicit coredef: CoreDef) extends MultiIOModule {
     val output = Output(Vec(coredef.ISSUE_NUM, new ReservedInstr))
     val count = Output(UInt(log2Ceil(coredef.ISSUE_NUM+1).W))
 
+    val releases = Input(Vec(coredef.RETIRE_NUM, new Release))
+    val retire = Input(UInt(log2Ceil(coredef.RETIRE_NUM+1).W))
+
     val flush = Input(Bool())
   })
 
@@ -34,7 +42,6 @@ class Renamer(implicit coredef: CoreDef) extends MultiIOModule {
   // has been retired after the instruction which wrote to the register.
   // So it's value must have been stored into the regfile
   val reg2name = RegInit(VecInit(Seq.fill(REG_NUM)(0.U(NAME_LENGTH.W))))
-  val name2reg = RegInit(VecInit(Seq.fill(coredef.INFLIGHT_INSTR_LIMIT)(0.U(log2Ceil(REG_NUM).W))))
   val regMapped = RegInit(VecInit(Seq.fill(REG_NUM)(false.B)))
 
   // Is the value for a specific name already broadcasted on the CDB?
@@ -42,7 +49,6 @@ class Renamer(implicit coredef: CoreDef) extends MultiIOModule {
 
   def flush() = {
     reg2name := VecInit(Seq.fill(REG_NUM)(0.U(NAME_LENGTH.W)))
-    name2reg:= VecInit(Seq.fill(coredef.INFLIGHT_INSTR_LIMIT)(0.U(log2Ceil(REG_NUM).W)))
     nameReady := VecInit(Seq.fill(coredef.INFLIGHT_INSTR_LIMIT)(true.B))
     regMapped := VecInit(Seq.fill(REG_NUM)(false.B))
   }
@@ -70,11 +76,11 @@ class Renamer(implicit coredef: CoreDef) extends MultiIOModule {
     } else {
       val ret = WireDefault(true.B)
       for(i <- (0 until idx)) {
-        when(toExec.input(idx).instr.rs1 === toExec.input(i).instr.rd) {
+        when(toExec.input(idx).instr.getRs1 === toExec.input(i).instr.getRd) {
           ret := false.B
         }
 
-        when(toExec.input(idx).instr.rs2 === toExec.input(i).instr.rd) {
+        when(toExec.input(idx).instr.getRs2 === toExec.input(i).instr.getRd) {
           ret := false.B
         }
       }
@@ -115,10 +121,17 @@ class Renamer(implicit coredef: CoreDef) extends MultiIOModule {
     coredef.ISSUE_NUM.U,
     canRename.zipWithIndex.map({ case (bit, idx) => bit -> idx.U })
   )
+  
+  // Release before allocation
+  for((release, idx) <- toExec.releases.zipWithIndex) {
+    when(idx.U < toExec.retire) {
+      regMapped(release.reg) := reg2name(release.reg) =/= release.name
+    }
+  }
 
   for((instr, idx) <- toExec.input.zipWithIndex) {
-    val (rs1name, rs1ready, rs1val) = readRegs(rr(idx)(0), instr.instr.rs1)
-    val (rs2name, rs2ready, rs2val) = readRegs(rr(idx)(1), instr.instr.rs2)
+    val (rs1name, rs1ready, rs1val) = readRegs(rr(idx)(0), instr.instr.getRs1)
+    val (rs2name, rs2ready, rs2val) = readRegs(rr(idx)(1), instr.instr.getRs2)
 
     toExec.output(idx).rs1name := rs1name
     toExec.output(idx).rs2name := rs2name
@@ -134,19 +147,8 @@ class Renamer(implicit coredef: CoreDef) extends MultiIOModule {
     toExec.output(idx).tag := tags(idx)
 
     when(idx.U < toExec.commit) {
-      val original = name2reg(tags(idx))
       reg2name(instr.instr.rd) := tags(idx)
-      name2reg(tags(idx)) := instr.instr.rd
-      // TODO: use retirement rd to unset. Then we can remove name2reg mapping entirely
-      if(idx == 1) {
-        when(reg2name(original) === tags(idx) && original =/= toExec.input(0).instr.rd) {
-          regMapped(original) := false.B
-        }
-      } else {
-        when(reg2name(original) === tags(idx)) {
-          regMapped(original) := false.B
-        }
-      }
+
       regMapped(instr.instr.rd) := true.B
       nameReady(tags(idx)) := false.B
     }
