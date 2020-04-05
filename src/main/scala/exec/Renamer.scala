@@ -147,9 +147,8 @@ class Renamer(implicit coredef: CoreDef) extends MultiIOModule {
     toExec.output(idx).tag := tags(idx)
 
     when(idx.U < toExec.commit) {
-      reg2name(instr.instr.rd) := tags(idx)
-
-      regMapped(instr.instr.rd) := true.B
+      reg2name(instr.instr.getRd) := tags(idx)
+      regMapped(instr.instr.getRd) := true.B
       nameReady(tags(idx)) := false.B
     }
   }

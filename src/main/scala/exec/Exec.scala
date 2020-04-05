@@ -453,7 +453,8 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
 
   // Renamer release
   for(i <- (0 until coredef.RETIRE_NUM)) {
-    renamer.toExec.releases(i).name := rob(retirePtr +% i.U).retirement.instr.rdname
+    // renamer.toExec.releases(i).name := rob(retirePtr +% i.U).retirement.instr.rdname
+    renamer.toExec.releases(i).name := retirePtr + i.U
     renamer.toExec.releases(i).reg := rob(retirePtr +% i.U).retirement.instr.instr.instr.rd
   }
   renamer.toExec.retire := retireNum
