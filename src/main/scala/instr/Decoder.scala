@@ -129,9 +129,10 @@ object Decoder {
   }
 
   implicit class ConvertToInstr(self: Data) {
-    def asInstr(): Instr = {
+    def parseInstr(): (Instr, Bool) = {
       assert(self.getWidth == 32, s"Unexpected decoder input width: ${self.getWidth}")
       val result = Wire(new Instr)
+      val isInstr16 = WireDefault(false.B)
       val ui = self.asUInt
 
       when(!ui.orR()) {
@@ -140,11 +141,12 @@ object Decoder {
         result.base := InstrType.RESERVED
       }.elsewhen(ui(1, 0) =/= "11".asBits(2.W)) {
         result := self.asInstr16()
+        isInstr16 := true.B
       }.otherwise {
         result := self.asInstr32()
       }
 
-      result
+      (result, isInstr16)
     }
 
     def tryAsInstr16(): (Instr, Bool) = {

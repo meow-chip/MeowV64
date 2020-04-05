@@ -84,7 +84,7 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
     val pred = Vec(coredef.L1I.TRANSFER_SIZE / Const.INSTR_MIN_WIDTH, new BPUResult)
   }
 
-  val ICQueue = Module(new FlushableQueue(new ICData, 2, false, true))
+  val ICQueue = Module(new FlushableQueue(new ICData, 2, false, false))
   ICQueue.io.enq.bits.data := toIC.data
   ICQueue.io.enq.bits.addr := pipePc
   ICQueue.io.enq.bits.pred := toBPU.results
@@ -128,8 +128,9 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
       decodable(i) := ICHead.io.deq.valid && ICQueue.io.deq.valid && ICHead.io.count =/= 0.U
     }
 
-    val instr = joinedVec(decodePtr(i)).asInstr()
-    when(instr.base === InstrType.C) {
+    val raw = joinedVec(decodePtr(i))
+    val (instr, isInstr16) = raw.parseInstr()
+    when(isInstr16) {
       decodePtr(i+1) := decodePtr(i) + 1.U
     } otherwise {
       decodePtr(i+1) := decodePtr(i) + 2.U
