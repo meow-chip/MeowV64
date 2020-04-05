@@ -203,16 +203,16 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
   issueFifo.flush := false.B
 
   // Speculative branch
-  val specBrMask = decoded.zipWithIndex.map({ case (instr, idx) => idx.U < stepping && instr.taken })
-  val specBr = VecInit(specBrMask).asUInt.orR()
-  val specBrTarget = MuxLookup(
+  val pipeStepping = RegNext(stepping)
+  val pipeTaken = RegNext(VecInit(decoded.map(_.taken)))
+  val pipeSpecBrTargets = RegNext(brTargets)
+  val pipeSpecBrMask = pipeTaken.zipWithIndex.map({ case (taken, idx) => idx.U < pipeStepping && taken })
+  val pipeSpecBrTarget = MuxLookup(
     true.B,
     0.U,
-    specBrMask.zip(brTargets)
+    pipeSpecBrMask.zip(pipeSpecBrTargets)
   )
-
-  pipeSpecBr := RegNext(specBr && !toCtrl.ctrl.flush && !pipeSpecBr)
-  val pipeSpecBrTarget = RegNext(specBrTarget)
+  pipeSpecBr := VecInit(pipeSpecBrMask).asUInt.orR && RegNext(!toCtrl.ctrl.flush && !pipeSpecBr)
 
   when(pipeSpecBr) {
     pendingIRST := false.B
