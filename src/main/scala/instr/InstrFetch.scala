@@ -211,7 +211,7 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
     specBrMask.zip(brTargets)
   )
 
-  pipeSpecBr := RegNext(specBr && !toCtrl.ctrl.flush)
+  pipeSpecBr := RegNext(specBr && !toCtrl.ctrl.flush && !pipeSpecBr)
   val pipeSpecBrTarget = RegNext(specBrTarget)
 
   when(pipeSpecBr) {
