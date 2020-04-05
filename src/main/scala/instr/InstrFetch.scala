@@ -89,10 +89,10 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
   ICQueue.io.enq.bits.addr := pipePc
   ICQueue.io.enq.bits.pred := toBPU.results
   ICQueue.io.enq.valid := !toIC.stall && !toIC.vacant
-  
-  val specBr = Wire(Bool())
 
-  val haltIC = ICQueue.io.count >= 1.U && !toCtrl.ctrl.flush && !specBr
+  val pipeSpecBr = Wire(Bool())
+
+  val haltIC = ICQueue.io.count >= 1.U && !toCtrl.ctrl.flush && !pipeSpecBr
   toIC.read := !haltIC
   toIC.addr := pc
   toIC.rst := toCtrl.ctrl.flush && toCtrl.irst
@@ -204,23 +204,27 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
 
   // Speculative branch
   val specBrMask = decoded.zipWithIndex.map({ case (instr, idx) => idx.U < stepping && instr.taken })
-  specBr := VecInit(specBrMask).asUInt.orR()
+  val specBr = VecInit(specBrMask).asUInt.orR()
   val specBrTarget = MuxLookup(
     true.B,
     0.U,
     specBrMask.zip(brTargets)
   )
 
-  when(specBr) {
+  pipeSpecBr := RegNext(specBr && !toCtrl.ctrl.flush)
+  val pipeSpecBrTarget = RegNext(specBrTarget)
+
+  when(pipeSpecBr) {
     pendingIRST := false.B
 
     ICQueue.io.flush := true.B
     ICHead.io.flush := true.B
-    // Do not flush issue fifo
+    // Do not push into issue fifo in this cycle
+    issueFifo.writer.cnt := 0.U
 
     val ICAlign = log2Ceil(coredef.L1I.TRANSFER_SIZE / 8)
-    headPtr := specBrTarget(ICAlign-1, log2Ceil(Const.INSTR_MIN_WIDTH / 8))
-    val rawbpc = specBrTarget(coredef.XLEN-1, ICAlign) ## 0.U(ICAlign.W)
+    headPtr := pipeSpecBrTarget(ICAlign-1, log2Ceil(Const.INSTR_MIN_WIDTH / 8))
+    val rawbpc = pipeSpecBrTarget(coredef.XLEN-1, ICAlign) ## 0.U(ICAlign.W)
     val bpc = WireDefault(rawbpc)
 
     when(toIC.stall) {
