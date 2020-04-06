@@ -165,10 +165,10 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with ExecUnitInt 
   // Let's do this without helper
 
   // Utils
-  def isInvalAddr(addr: UInt) = if(coredef.XLEN == coredef.VADDR_WIDTH) { // TODO: physical mode
+  def isInvalAddr(addr: UInt) = if(coredef.XLEN <= coredef.PADDR_WIDTH + 1) { // TODO: physical mode
     false.B
   } else {
-    addr(coredef.XLEN-1, coredef.VADDR_WIDTH).orR
+    addr(coredef.XLEN-1, coredef.PADDR_WIDTH + 1).orR
   }
 
   /**
