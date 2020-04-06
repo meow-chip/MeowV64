@@ -334,7 +334,6 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with ExecUnitInt 
       is(Decoder.STORE_FUNC("SD")) { mem.len := DelayedMemLen.D }
     }
     mem.offset := pipeOffset
-    // TODO: mask uncached bit
     mem.addr := pipeAligned
     mem.sext := false.B
 
@@ -379,7 +378,7 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with ExecUnitInt 
     toMem.uncached.write := pendingHead.op === DelayedMemOp.us
   }
 
-  release.bits.data := toMem.uncached.rdata
+  release.bits.data := pendingHead.getSlice(toMem.uncached.rdata)
   release.bits.isLoad := pendingHead.op === DelayedMemOp.ul
 
   val finished = (
