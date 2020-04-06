@@ -12,96 +12,96 @@ class CSRExt(implicit val coredef: CoreDef) extends Bundle {
   var written = Bool()
 }
 
-class CSR(override implicit val coredef: CoreDef)
-  extends ExecUnit(0, new CSRExt) with WithCSRWriter with WithPrivPort with WithStatus
+class CSR(implicit val coredef: CoreDef)
+  extends MultiIOModule with ExecUnitInt with WithCSRWriter with WithPrivPort with WithStatus
 {
+  val DEPTH: Int = 0
+
+  val io = IO(new ExecUnitPort)
   val priv = IO(Input(PrivLevel()))
   val status = IO(Input(new Status))
   val writer = IO(new CSRWriter(coredef.XLEN))
+
+  assert(!io.flush || io.next.instr.vacant) // CSR operations cannot happen when the pipeline is not empty
+  val instr = io.next.instr
+  val addr = instr.instr.funct7 ## instr.instr.rs2
+  writer.addr := addr
+
+  // Check privileges
+  val ro = addr(11, 10) === 3.U
+  val minPriv = addr(9, 8).asTypeOf(PrivLevel())
+
+  val op = WireDefault(CSROp.rs)
+  val wdata = WireDefault(0.U)
+
   writer.op := CSROp.rs
-  writer.addr := 0.U
   writer.wdata := 0.U
-
-  override def map(stage: Int, pipe: PipeInstr, ext: Option[CSRExt]): (CSRExt, Bool) = {
-    // Asserts pipe.op === SYSTEM
-
-    val ext = Wire(new CSRExt)
-    val addr = pipe.instr.instr.funct7 ## pipe.instr.instr.rs2
-    writer.addr := addr
-
-    // Check privileges
-    val ro = addr(11, 10) === 3.U
-    val minPriv = addr(9, 8).asTypeOf(PrivLevel())
-
-    val op = Wire(CSROp())
-    val wdata = Wire(UInt(coredef.XLEN.W))
-    op := CSROp.rs
-    wdata := 0.U
-
-    switch(pipe.instr.instr.funct3) {
-      is(Decoder.SYSTEM_FUNC("CSRRW")) {
-        op := CSROp.rw
-        wdata := pipe.rs1val
-      }
-
-      is(Decoder.SYSTEM_FUNC("CSRRWI")) {
-        op := CSROp.rw
-        wdata := pipe.instr.instr.rs1
-      }
-
-      is(Decoder.SYSTEM_FUNC("CSRRS")) {
-        op := CSROp.rs
-        wdata := pipe.rs1val
-      }
-
-      is(Decoder.SYSTEM_FUNC("CSRRSI")) {
-        op := CSROp.rs
-        wdata := pipe.instr.instr.rs1
-      }
-
-      is(Decoder.SYSTEM_FUNC("CSRRC")) {
-        op := CSROp.rc
-        wdata := pipe.rs1val
-      }
-
-      is(Decoder.SYSTEM_FUNC("CSRRCI")) {
-        op := CSROp.rc
-        wdata := pipe.instr.instr.rs1
-      }
+  
+  switch(instr.instr.funct3) {
+    is(Decoder.SYSTEM_FUNC("CSRRW")) {
+      op := CSROp.rw
+      wdata := io.next.rs1val
     }
 
-    ext.written := op === CSROp.rw || wdata =/= 0.U
-    when((ro && ext.written) || priv < minPriv) {
-      ext.fault := true.B
-      ext.rdata := DontCare
-    }.elsewhen((addr === 0x180.U) && status.tvm) { // SATP trap
-      ext.fault := true.B
-      ext.rdata := DontCare
-    }.otherwise {
-      ext.fault := false.B
-      writer.wdata := wdata
-      writer.op := op
-      ext.rdata := writer.rdata
+    is(Decoder.SYSTEM_FUNC("CSRRWI")) {
+      op := CSROp.rw
+      wdata := instr.instr.rs1
     }
 
-    (ext, false.B)
+    is(Decoder.SYSTEM_FUNC("CSRRS")) {
+      op := CSROp.rs
+      wdata := io.next.rs1val
+    }
+
+    is(Decoder.SYSTEM_FUNC("CSRRSI")) {
+      op := CSROp.rs
+      wdata := instr.instr.rs1
+    }
+
+    is(Decoder.SYSTEM_FUNC("CSRRC")) {
+      op := CSROp.rc
+      wdata := io.next.rs1val
+    }
+
+    is(Decoder.SYSTEM_FUNC("CSRRCI")) {
+      op := CSROp.rc
+      wdata := instr.instr.rs1
+    }
   }
 
-  override def finalize(pipe: PipeInstr, ext: CSRExt): RetireInfo = {
-    val info = WireDefault(RetireInfo.vacant)
-
-    when(ext.fault) {
-      info.branch.ex(ExType.ILLEGAL_INSTR)
-    }.elsewhen(ext.written) {
-      info.branch.fire(pipe.instr.addr + 4.U)
-      info.wb := ext.rdata
-    } otherwise {
-      info.branch.nofire()
-      info.wb := ext.rdata
-    }
-
-    info
+  val written = op === CSROp.rw || wdata =/= 0.U
+  val fault = WireDefault(false.B)
+  val rdata = Wire(UInt(coredef.XLEN.W))
+  when((ro && written) || priv < minPriv) {
+    fault := true.B
+    rdata := DontCare
+  }.elsewhen((addr === 0x180.U) && status.tvm) { // SATP trap
+    fault := true.B
+    rdata := DontCare
+  }.otherwise {
+    fault := false.B
+    rdata := writer.rdata
   }
 
-  init()
+  when(!fault && !io.next.instr.vacant) {
+    writer.wdata := wdata
+    writer.op := op
+  }
+
+  val info = WireDefault(RetireInfo.vacant)
+
+  when(fault) {
+    info.branch.ex(ExType.ILLEGAL_INSTR)
+  }.elsewhen(written) {
+    info.branch.fire(instr.addr + 4.U)
+    info.wb := rdata
+  } otherwise {
+    info.branch.nofire()
+    info.wb := rdata
+  }
+
+  io.retired := io.next
+  io.retirement := info
+  io.flush := DontCare
+  io.stall := false.B
 }

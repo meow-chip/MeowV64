@@ -430,7 +430,7 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
     val isBranch = Wire(Vec(coredef.RETIRE_NUM, Bool()))
 
     val mask = blocked.asUInt
-    retireNum := Mux(
+    val retireNumFast = Mux(
       mask === 0.U,
       coredef.RETIRE_NUM.U,
       OHToUInt(
@@ -439,6 +439,7 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
         )
       )
     )
+    retireNum := retireNumFast
 
     // First only not memory operation, possible to do multiple retirement
     // Compute if we can retire a certain instruction
@@ -493,7 +494,7 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
     }
 
     toCtrl.branch := BranchResult.empty
-    when(pendingBr && pendingBrTag -% retirePtr < retireNum) {
+    when(pendingBr && pendingBrTag -% retirePtr < retireNumFast) {
       toCtrl.branch := pendingBrResult
     }
   }
