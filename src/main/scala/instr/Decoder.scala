@@ -426,9 +426,16 @@ object Decoder {
               result.imm := DontCare
               result.funct3 := OP_FUNC("OR")
             }
-            // TODO: EBREAK, maybe?
           }.otherwise {
-            when(rs2e === 0.U) { // JALR
+            when(rs2e === 0.U && rs1e === 0.U) { // EBREAK
+              result.op := Op("SYSTEM").ident
+              result.rs1 := 0.U
+              result.rs2 := PRIV_RS2("EBREAK")
+              result.rd := 0.U
+              result.imm := 0.S
+              result.funct3 := 0.U
+              result.funct7 := 0.U
+            }.elsewhen(rs2e === 0.U) { // JALR
               result.op := Op("JALR").ident
               result.rs1 := rs1e
               result.rs2 := DontCare
