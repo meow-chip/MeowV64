@@ -9,6 +9,7 @@ object ExecSpec {
   val cases = List(
     ("OP-IMM instructions", "./testcases/meow/bin/op-imm.bin"),
     ("Load/Store", "./testcases/meow/bin/load-store.bin"),
+    ("Uncached Load/Store", "./testcases/meow/bin/load-store-uncached.bin"),
     ("Write-merge", "./testcases/meow/bin/write-merge.bin"),
     ("Unconditional jumps", "./testcases/meow/bin/jump.bin"),
     ("Branches", "./testcases/meow/bin/branch.bin"),
