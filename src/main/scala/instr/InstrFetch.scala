@@ -90,9 +90,9 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
   ICQueue.io.enq.bits.pred := toBPU.results
   ICQueue.io.enq.valid := !toIC.stall && !toIC.vacant
 
-  val specBr = Wire(Bool())
+  val pipeSpecBr = Wire(Bool())
 
-  val haltIC = ICQueue.io.count >= 1.U && !toCtrl.ctrl.flush && !specBr
+  val haltIC = ICQueue.io.count >= 1.U && !toCtrl.ctrl.flush && !pipeSpecBr
   toIC.read := !haltIC
   toIC.addr := pc
   toIC.rst := toCtrl.ctrl.flush && toCtrl.irst
@@ -204,26 +204,28 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
   issueFifo.flush := false.B
 
   // Speculative branch
-  val taken = VecInit(decoded.map(_.taken))
-  val specBrMask = taken.zipWithIndex.map({ case (taken, idx) => idx.U < stepping && taken })
-  val specBrTarget = MuxLookup(
+  val pipeStepping = RegNext(stepping)
+  val pipeTaken = RegNext(VecInit(decoded.map(_.taken)))
+  val pipeSpecBrTargets = RegNext(brTargets)
+  val pipeSpecBrMask = pipeTaken.zipWithIndex.map({ case (taken, idx) => idx.U < pipeStepping && taken })
+  val pipeSpecBrTarget = MuxLookup(
     true.B,
     0.U,
-    specBrMask.zip(brTargets)
+    pipeSpecBrMask.zip(pipeSpecBrTargets)
   )
-  specBr := VecInit(specBrMask).asUInt.orR && RegNext(!toCtrl.ctrl.flush && !specBr)
+  pipeSpecBr := VecInit(pipeSpecBrMask).asUInt.orR && RegNext(!toCtrl.ctrl.flush && !pipeSpecBr)
 
-  when(specBr) {
+  when(pipeSpecBr) {
     pendingIRST := false.B
 
     ICQueue.io.flush := true.B
     ICHead.io.flush := true.B
     // Do not push into issue fifo in this cycle
-    // issueFifo.writer.cnt := 0.U
+    issueFifo.writer.cnt := 0.U
 
     val ICAlign = log2Ceil(coredef.L1I.TRANSFER_SIZE / 8)
-    headPtr := specBrTarget(ICAlign-1, log2Ceil(Const.INSTR_MIN_WIDTH / 8))
-    val rawbpc = specBrTarget(coredef.XLEN-1, ICAlign) ## 0.U(ICAlign.W)
+    headPtr := pipeSpecBrTarget(ICAlign-1, log2Ceil(Const.INSTR_MIN_WIDTH / 8))
+    val rawbpc = pipeSpecBrTarget(coredef.XLEN-1, ICAlign) ## 0.U(ICAlign.W)
     val bpc = WireDefault(rawbpc)
 
     when(toIC.stall) {
