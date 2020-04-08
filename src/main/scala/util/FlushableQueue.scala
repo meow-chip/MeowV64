@@ -33,9 +33,9 @@ class FlushableQueue[T <: Data](gen: T,
 
   val io = IO(new FlushableQueueIO(genType, entries))
 
-  private val ram = Mem(entries, genType)
+  private val ram = SyncReadMem(entries, genType)
   private val enq_ptr = Counter(entries)
-  private val deq_ptr = Counter(entries)
+  private val deq_ptr = new PreviewCounter(entries)
   private val maybe_full = RegInit(false.B)
 
   private val ptr_match = enq_ptr.value === deq_ptr.value
@@ -55,9 +55,12 @@ class FlushableQueue[T <: Data](gen: T,
     maybe_full := do_enq
   }
 
+  val lastCycleRAW = RegNext(deq_ptr.preview === enq_ptr.value && do_enq)
+  val lastCycleData = RegNext(io.enq.bits)
+
   io.deq.valid := !empty
   io.enq.ready := !full
-  io.deq.bits := ram(deq_ptr.value)
+  io.deq.bits := Mux(lastCycleRAW, lastCycleData, ram(deq_ptr.preview))
 
   if (flow) {
     when (io.enq.valid) { io.deq.valid := true.B }
