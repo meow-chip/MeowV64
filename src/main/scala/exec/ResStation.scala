@@ -6,6 +6,7 @@ import chisel3.util.log2Ceil
 import chisel3.util.MuxCase
 import instr.Decoder
 import cache.DCFenceStatus
+import chisel3.util.PriorityEncoder
 
 class ResStationExgress(implicit val coredef: CoreDef) extends Bundle {
   val instr = Output(new ReservedInstr)
@@ -66,16 +67,9 @@ class OoOResStation(val idx: Int)(implicit val coredef: CoreDef) extends MultiIO
   defIdx := DontCare
 
   // Exgress part
-  exgress.valid := store.zip(occupied).foldLeft(false.B)((acc, grp) => grp match {
-    case (instr, valid) => acc || (valid && instr.ready)
-  })
-  // MuxCase can handle multiple enabled cases
-  val exgIdx = MuxCase(
-    defIdx,
-    store.zip(occupied).zipWithIndex.map({
-      case ((instr, valid), idx) => (valid && instr.ready, idx.U(log2Ceil(DEPTH).W))
-    })
-  )
+  val exgMask = store.zip(occupied).map({ case (instr, valid) => valid && instr.ready })
+  exgress.valid := VecInit(exgMask).asUInt.orR
+  val exgIdx = PriorityEncoder(exgMask)
   exgress.instr := store(exgIdx)
   when(exgress.pop) {
     occupied(exgIdx) := false.B
@@ -113,13 +107,10 @@ class OoOResStation(val idx: Int)(implicit val coredef: CoreDef) extends MultiIO
   //
   // Placed after CDB fetch to avoid being overwritten after a flush,
   // when a pending instruction may lies in the store
-  ingress.free := occupied.foldLeft(false.B)((acc, valid) => acc || !valid)
-  val ingIdx = MuxCase(
-    defIdx,
-    occupied.zipWithIndex.map({
-      case (valid, idx) => (!valid, idx.U(log2Ceil(DEPTH).W))
-    })
-  )
+  val freeMask = occupied.map(!_)
+  ingress.free := VecInit(freeMask).asUInt().orR
+  val ingIdx = PriorityEncoder(freeMask)
+
   when(ingress.push) {
     occupied(ingIdx) := true.B
     store(ingIdx) := ingress.instr

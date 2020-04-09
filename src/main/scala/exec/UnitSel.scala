@@ -206,11 +206,9 @@ class UnitSel(
     println("UnitSel: All units have 0 delay")
     val pipeRetire = RegInit(Retirement.empty)
     retire := pipeRetire
-    pipeRetire := MuxCase(Retirement.empty, units.map(u => (
-      !u.io.stall && !u.io.retired.instr.vacant, Retirement.from(u.io)
-    )))
-
-    when(ctrl.flush) {
+    val validMap = units.map(u => !u.io.stall && !u.io.retired.instr.vacant)
+    pipeRetire := Mux1H(validMap.zip(units.map(u => Retirement.from(u.io))))
+    when(!VecInit(validMap).asUInt.orR || ctrl.flush) {
       pipeRetire := Retirement.empty
     }
   } else {

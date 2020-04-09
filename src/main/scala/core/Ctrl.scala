@@ -306,12 +306,8 @@ class Ctrl(implicit coredef: CoreDef) extends MultiIOModule {
 
   // Interrupts
   val intMask: UInt = (ie.asUInt & ip.asUInt())
-  val intCause: UInt = MuxLookup(
-    true.B,
-    0.U,
-    intMask.asBools().zipWithIndex.map({ case (bit, idx) => (bit, idx.U)})
-  )
-  val intDeleg = mideleg(intCause)
+  val intCause = PriorityEncoder(intMask)
+  val intDeleg = mideleg(intCause).orR
   val intEnabled = Mux(
     intDeleg,
     priv < PrivLevel.S || status.sie,

@@ -44,10 +44,12 @@ class TLB(implicit coredef: CoreDef) extends MultiIOModule {
   }
 
   val random = LFSR(log2Ceil(coredef.TLB_SIZE))
-  val victim = MuxLookup(
-    false.B,
-    random,
-    storage.zipWithIndex.map({ case (entry, idx) => (entry.v, idx.U)})
+  val invalids = storage.map(!_.v)
+  val hasInvalid = VecInit(invalids).asUInt().orR
+  val victim = Mux(
+    hasInvalid,
+    PriorityEncoder(invalids),
+    random
   )
 
   // PTW has a latency much greater than 1, so we can use an RegNext here

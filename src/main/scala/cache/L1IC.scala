@@ -184,13 +184,13 @@ class L1IC(opts: L1Opts) extends MultiIOModule {
         written.valid := true.B
 
         val victim = rand(ASSOC_IDX_WIDTH-1, 0)
-        val mask = (0 until opts.ASSOC).map(_.U === victim)
+        val mask = UIntToOH(victim)
 
         val dataView = toL2.data.asTypeOf(writerData)
 
         writerAddr := getIndex(pipeAddr)
         writerDir := written
-        writerMask := mask
+        writerMask := mask.asBools()
         writerData := dataView
 
         pipeOutput := dataView(getTransferOffset(pipeAddr))
