@@ -148,12 +148,10 @@ object CSR {
     val csr = new CSR(XLEN)
     val endpoint = Wire(Flipped(new CSRWriter(csr.XLEN)))
 
-    val data = MuxLookup[UInt, UInt](
-      endpoint.addr,
-      0.U,
+    val data = Mux1H(
       addrMap.mapValues(value => value match {
         case (name, _) => csr.readers(name)
-      }).toSeq.map(_ match { case (addr, r) => (addr.U, r) })
+      }).toSeq.map(_ match { case (addr, r) => (endpoint.addr === addr.U, r) })
     )
 
     endpoint.rdata := data
