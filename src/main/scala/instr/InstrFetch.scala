@@ -115,7 +115,6 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
   val decodable = Wire(Vec(coredef.FETCH_NUM, Bool()))
   val decodePtr = Wire(Vec(coredef.FETCH_NUM + 1, UInt(log2Ceil(coredef.L1I.TRANSFER_SIZE * 2 / 16).W)))
   val decoded = Wire(Vec(coredef.FETCH_NUM, new InstrExt))
-  val brTargets = Wire(Vec(coredef.FETCH_NUM, UInt(coredef.XLEN.W)))
   decodePtr(0) := headPtr
 
   for(i <- 0 until coredef.FETCH_NUM) {
@@ -156,8 +155,6 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
         decoded(i).forcePred := true.B
       }
     }
-
-    brTargets(i) := (instr.imm +% decoded(i).addr.asSInt()).asUInt
   }
 
   val issueFifo = Module(new MultiQueue(new InstrExt, coredef.ISSUE_FIFO_DEPTH, coredef.FETCH_NUM, coredef.ISSUE_NUM))
@@ -206,7 +203,9 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
   // Speculative branch
   val pipeStepping = RegNext(stepping)
   val pipeTaken = RegNext(VecInit(decoded.map(_.taken)))
-  val pipeSpecBrTargets = RegNext(brTargets)
+  val pipeAddrs = RegNext(VecInit(decoded.map(_.addr.asSInt())))
+  val pipeImms = RegNext(VecInit(decoded.map(_.instr.imm)))
+  val pipeSpecBrTargets = pipeAddrs.zip(pipeImms).map({ case (addr, imm) => (addr +% imm).asUInt })
   val pipeSpecBrMask = pipeTaken.zipWithIndex.map({ case (taken, idx) => idx.U < pipeStepping && taken })
   val pipeSpecBrTarget = MuxLookup(
     true.B,

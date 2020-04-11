@@ -101,8 +101,8 @@ class L1IC(opts: L1Opts) extends MultiIOModule {
   val dataReadouts = stores.read(getIndex(readingAddr))
   val hitMap = VecInit(readouts.map(r => r.valid && r.tag === getTag(readingAddr)))
   val pipeReadouts = RegNext(readouts)
-  val pipeHitMap = RegNext(hitMap)
-  assert((hitMap.asUInt() & (hitMap.asUInt() -% 1.U)) === 0.U)
+  val pipeHitMap = VecInit(pipeReadouts.map(r => r.valid && r.tag === getTag(pipeAddr)))
+  assert(PopCount(hitMap) <= 1.U)
 
   // Stage 2, data mux, refilling, reset
   val state = RegInit(S2State.rst)
