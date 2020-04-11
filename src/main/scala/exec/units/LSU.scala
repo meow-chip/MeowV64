@@ -233,9 +233,6 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with ExecUnitInt 
 
   io.retired := pipeInstr
   io.stall := stall
-  when(io.flush) {
-    io.retired.instr.vacant := true.B
-  }
 
   // Reader
   toMem.reader.addr := aligned
@@ -351,7 +348,7 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with ExecUnitInt 
     io.retirement.wb := DontCare
   }
 
-  val push = mem.op =/= DelayedMemOp.no && !io.retired.instr.vacant
+  val push = mem.op =/= DelayedMemOp.no && !pipeInstr.instr.vacant
   io.retirement.hasMem := push
   pendings.io.enq.bits := mem
   pendings.io.enq.valid := push
