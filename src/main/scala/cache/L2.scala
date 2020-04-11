@@ -82,8 +82,7 @@ object L2MainState extends ChiselEnum {
     hit,
     refilled,
     waitFlush,
-    waitInval,
-    write
+    waitInval
     = Value
 }
 
@@ -261,30 +260,28 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
   val targetIndex = targetAddr(INDEX_OFFSET_LENGTH-1, OFFSET_LENGTH)
   val pipeTargetAddr = RegNext(targetAddr)
 
-  val sameAddrRefilling = (0 until opts.CORE_COUNT * 2).foldLeft(false.B)(
-    (acc, idx) => acc || (misses(idx) && !refilled(idx) && addrs(idx) === targetAddr)
-  )
+  val sameAddrRefilling = VecInit((0 until opts.CORE_COUNT * 2).map(
+    idx => misses(idx) && !refilled(idx) && addrs(idx) === targetAddr
+  )).asUInt().orR
 
   // Compute directory lookups & delayed data fetch
   val lookups = directories.read(targetIndex)
   val datas = stores.read(targetIndex)
   val pipeLookups = RegNext(lookups)
-  val hit = lookups.foldLeft(false.B)((acc, l) => acc || l.hit(targetAddr))
+  val hits = lookups.map(_.hit(targetAddr))
+  val hit = VecInit(hits).asUInt().orR
   val pipeHit = RegNext(hit)
-  val hitCount = lookups.foldLeft(0.U((ASSOC_IDX_WIDTH+1).W))((acc, l) => acc + Mux(l.hit(targetAddr), 1.U, 0.U))
+  val hitCount = PopCount(hits)
   assert(hitCount <= 1.U)
-  val hitIdx = lookups.zipWithIndex.foldLeft(0.U(ASSOC_IDX_WIDTH.W))(
-    (acc, l) => Mux(l._1.hit(targetAddr), l._2.U, acc)
-  )
+  val hitIdx = OHToUInt(hits)
   val pipeHitIdx = RegNext(hitIdx)
 
   // Refilling from FIFO
-  val fifoHit = wbFifo.foldLeft(false.B)(
-    (acc, ent) => acc || ent.valid && ent.lineaddr === targetAddr >> OFFSET_LENGTH
-  )
-  val fifoHitData = wbFifo.foldLeft(0.U)(
-    (acc, ent) => acc | Mux(ent.lineaddr === targetAddr >> OFFSET_LENGTH, ent.data, 0.U)
-  )
+  val fifoHits = wbFifo.map(ent => ent.valid && ent.lineaddr === targetAddr >> OFFSET_LENGTH)
+  val fifoHitCnt = PopCount(fifoHits)
+  assert(fifoHitCnt <= 1.U)
+  val fifoHit = VecInit(fifoHits).asUInt().orR
+  val fifoHitData = Mux1H(fifoHits, wbFifo.map(_.data))
 
   // Randomly picks victim, even if it's not full yet, because I'm lazy
   // TODO: PLRU, and fill in blanks
@@ -293,7 +290,7 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
 
   // Downlink requests
   val pendings = RegInit(VecInit(Seq.fill(opts.CORE_COUNT)(L1DCPort.L2Req.idle)))
-  val pending = pendings.foldLeft(false.B)((acc, req) => acc || req =/= L1DCPort.L2Req.idle)
+  val pending = VecInit(pendings.map(_ =/= L1DCPort.L2Req.idle)).asUInt.orR
   val pendingVictim = RegInit(false.B)
 
   for((d, p) <- dc.iterator.zip(pendings.iterator)) {
@@ -432,12 +429,10 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
       val data = datas(pipeHitIdx)
       val isDC = target < opts.CORE_COUNT.U
 
-      val hasDirty = lookups(pipeHitIdx).states.zipWithIndex.foldLeft(false.B)(
-        (acc, s) => acc || s._1 === L2DirState.modified && s._2.U =/= target
-      )
-      val hasShared = lookups(pipeHitIdx).states.zipWithIndex.foldLeft(false.B)(
-        (acc, s) => acc || s._1 =/= L2DirState.vacant && s._2.U =/= target
-      )
+      val dirtyMap = VecInit(lookups(pipeHitIdx).states.map(_ === L2DirState.modified)).asUInt.orR
+      val sharedMap = VecInit(lookups(pipeHitIdx).states.map(_ =/= L2DirState.vacant)).asUInt.orR
+      val hasDirty = (dirtyMap & ~UIntToOH(target)).asUInt.orR
+      val hasShared = (sharedMap & ~UIntToOH(target)).asUInt.orR
 
       when(!hasShared) {
         assert(!misses(target))
@@ -552,8 +547,8 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
       when(!lookups(victim).valid) {
         commit()
       }.otherwise {
-        val hasDirty = lookups(victim).states.foldLeft(false.B)((acc, s) => acc || s === L2DirState.modified)
-        val hasShared = lookups(victim).states.foldLeft(false.B)((acc, s) => acc || s =/= L2DirState.vacant)
+        val hasDirty = VecInit(lookups(victim).states.map(_ === L2DirState.modified)).asUInt().orR
+        val hasShared = VecInit(lookups(victim).states.map(_ =/= L2DirState.vacant)).asUInt().orR
 
         when(hasDirty) {
           pendingVictim := true.B
@@ -666,7 +661,7 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
       when(!pending) {
         when(pendingVictim) { // Refilled
           // Was dirty
-          val hasDirty = pipeLookups(victim).states.foldLeft(false.B)((acc, s) => acc || s === L2DirState.modified)
+          val hasDirty = VecInit(pipeLookups(victim).states.map(_ === L2DirState.modified)).asUInt.orR
           val isDC = target < opts.CORE_COUNT.U
 
           def commit() = {

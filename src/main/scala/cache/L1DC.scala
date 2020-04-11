@@ -191,8 +191,10 @@ class L1DC(val opts: L1DOpts)(implicit coredef: CoreDef) extends MultiIOModule {
   }
 
   val wlookups = stores.read(getIndex(wlookupAddr))
-  val whit = wlookups.foldLeft(false.B)((acc, line) => acc || (line.valid && line.tag === getTag(waddr)))
-  val wdirtyHit = wlookups.foldLeft(false.B)((acc, line) => acc || (line.valid && line.tag === getTag(waddr) && line.dirty))
+  val whits = wlookups.map(line => line.valid && line.tag === getTag(waddr))
+  val whit = VecInit(whits).asUInt.orR
+  val wdirtyHits = wlookups.map(line => line.valid && line.tag === getTag(waddr) && line.dirty)
+  val wdirtyHit = VecInit(wdirtyHits).asUInt.orR
 
   val rand = chisel3.util.random.LFSR(8)
   val victim = RegInit(0.U(ASSOC_IDX_WIDTH.W))
@@ -393,9 +395,8 @@ class L1DC(val opts: L1DOpts)(implicit coredef: CoreDef) extends MultiIOModule {
 
   // Handle write interface
   // This operates synchronizely
-  val wmHit = wbuf.foldLeft(false.B)(
-    (acc, ev) => ev.valid && ev.addr === w.addr
-  )
+  val wmHits = wbuf.map(ev => ev.valid && ev.addr === w.addr)
+  val wmHit = VecInit(wmHits).asUInt().orR
   val wmHitHead = wbuf(wbufHead).valid && wbuf(wbufHead).addr === w.addr
 
   when(!w.write) {
@@ -406,7 +407,7 @@ class L1DC(val opts: L1DOpts)(implicit coredef: CoreDef) extends MultiIOModule {
     w.stall := true.B
   }.otherwise {
     for(buf <- wbuf) {
-      when(buf.valid && buf.addr === w.addr) {
+      when(buf.addr === w.addr) {
         buf.wdata := muxBE(w.be, w.data, buf.wdata)
         buf.be := buf.be | w.be
       }
@@ -437,22 +438,18 @@ class L1DC(val opts: L1DOpts)(implicit coredef: CoreDef) extends MultiIOModule {
   val hitCount = PopCount(lookups.map(line => line.valid && line.tag === getTag(pipeAddr)))
   assert(hitCount <= 1.U)
 
-  val hit = lookups.foldLeft(false.B)((acc, line) => acc || (line.valid && line.tag === getTag(pipeAddr)))
-  val lookupRdata = MuxCase(0.U, lookups.map(line => (
+  val hits = lookups.map(line => line.valid && line.tag === getTag(pipeAddr))
+  val hit = VecInit(hits).asUInt().orR
+  val lookupRdata = Mux1H(lookups.map(line => (
     line.valid && line.tag === getTag(pipeAddr),
     line.data(getSublineIdx(pipeAddr))
   )))
 
-  val pendingWdata = MuxCase(0.U, wbuf.map(buf => (
-    buf.valid && buf.addr === getLineAddr(pipeAddr),
-    buf.wdata
-  )))
-  val pendingBe = MuxCase(0.U, wbuf.map(buf => (
-    buf.valid && buf.addr === getLineAddr(pipeAddr),
-    buf.be
-  )))
+  val pendingWHits= wbuf.map(buf => buf.valid && buf.addr === getLineAddr(pipeAddr))
+  val pendingWdata = Mux1H(pendingWHits, wbuf.map(_.wdata))
+  val pendingBe = Mux1H(pendingWHits, wbuf.map(_.be))
 
-  val rdata = muxBE(pendingBe, pendingWdata, lookupRdata)
+  val rdata = Mux(VecInit(pendingWHits).asUInt.orR, muxBE(pendingBe, pendingWdata, lookupRdata), lookupRdata)
 
   when(!r.stall) {
     pipeRead := r.read
