@@ -97,7 +97,7 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
   toIC.addr := pc
   toIC.rst := toCtrl.ctrl.flush && toCtrl.irst
 
-  val ICHead = Module(new FlushableQueue(new ICData, 1, true, true))
+  val ICHead = Module(new FlushableSlot(new ICData, true, true))
   ICHead.io.enq <> ICQueue.io.deq
   ICHead.io.deq.nodeq() // Default
 

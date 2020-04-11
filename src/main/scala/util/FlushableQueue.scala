@@ -95,3 +95,62 @@ class FlushableQueue[T <: Data](gen: T,
   }
 }
 
+/**
+  * Copied from chisel3.util.Queue
+  */
+@chiselName
+class FlushableSlot[T <: Data](gen: T,
+                       pipe: Boolean = false,
+                       flow: Boolean = false)
+                      (implicit compileOptions: chisel3.CompileOptions)
+    extends Module() {
+  val genType = if (compileOptions.declaredTypeMustBeUnbound) {
+    requireIsChiselType(gen)
+    gen
+  } else {
+    if (DataMirror.internal.isSynthesizable(gen)) {
+      chiselTypeOf(gen)
+    } else {
+      gen
+    }
+  }
+
+  val io = IO(new FlushableQueueIO(genType, 1))
+
+  private val slot = Reg(genType)
+  private val occupied = RegInit(false.B)
+  private val do_enq = WireDefault(io.enq.fire())
+  private val do_deq = WireDefault(io.deq.fire())
+
+  when(do_enq) {
+    slot := io.enq.bits
+  }
+
+  when (do_enq =/= do_deq) {
+    occupied := do_enq
+  }
+
+  io.deq.valid := occupied
+  io.enq.ready := !occupied
+  io.deq.bits := slot
+
+  if(flow) {
+    when(io.enq.valid) { io.deq.valid := true.B }
+    when(!occupied) {
+      io.deq.bits := io.enq.bits
+      do_deq := false.B
+      when(io.deq.ready) { do_enq := false.B }
+    }
+  }
+
+  if (pipe) {
+    when (io.deq.ready) { io.enq.ready := true.B }
+  }
+
+  io.count := Mux(occupied, 1.U, 0.U)
+
+  when(io.flush) {
+    occupied := false.B
+  }
+}
+
