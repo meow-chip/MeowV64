@@ -2,6 +2,7 @@ package exec.units
 
 import chisel3._
 import chisel3.util._
+import chisel3.experimental._
 import instr.Decoder
 import _root_.core._
 import exec._
@@ -17,10 +18,18 @@ class CSR(implicit val coredef: CoreDef)
 {
   val DEPTH: Int = 0
 
+  object CSRState extends ChiselEnum {
+    val read, write = Value
+  }
+
   val io = IO(new ExecUnitPort)
   val priv = IO(Input(PrivLevel()))
   val status = IO(Input(new Status))
   val writer = IO(new CSRWriter(coredef.XLEN))
+
+  val state = RegInit(CSRState.read)
+  val nstate = WireDefault(state)
+  state := nstate
 
   assert(!io.flush || io.next.instr.vacant) // CSR operations cannot happen when the pipeline is not empty
   val instr = io.next.instr
@@ -31,45 +40,39 @@ class CSR(implicit val coredef: CoreDef)
   val ro = addr(11, 10) === 3.U
   val minPriv = addr(9, 8).asTypeOf(PrivLevel())
 
-  val op = WireDefault(CSROp.rs)
-  val wdata = WireDefault(0.U)
+  val wdata = RegInit(0.U(coredef.XLEN.W))
+  val wdiff = Wire(UInt(coredef.XLEN.W))
+  wdiff := DontCare
 
-  writer.op := CSROp.rs
-  writer.wdata := 0.U
+  writer.write := false.B
+  writer.wdata := wdata
   
   switch(instr.instr.funct3) {
-    is(Decoder.SYSTEM_FUNC("CSRRW")) {
-      op := CSROp.rw
-      wdata := io.next.rs1val
+    is(Decoder.SYSTEM_FUNC("CSRRW"), Decoder.SYSTEM_FUNC("CSRRS"), Decoder.SYSTEM_FUNC("CSRRC")) {
+      wdiff := io.next.rs1val
     }
 
-    is(Decoder.SYSTEM_FUNC("CSRRWI")) {
-      op := CSROp.rw
-      wdata := instr.instr.rs1
-    }
-
-    is(Decoder.SYSTEM_FUNC("CSRRS")) {
-      op := CSROp.rs
-      wdata := io.next.rs1val
-    }
-
-    is(Decoder.SYSTEM_FUNC("CSRRSI")) {
-      op := CSROp.rs
-      wdata := instr.instr.rs1
-    }
-
-    is(Decoder.SYSTEM_FUNC("CSRRC")) {
-      op := CSROp.rc
-      wdata := io.next.rs1val
-    }
-
-    is(Decoder.SYSTEM_FUNC("CSRRCI")) {
-      op := CSROp.rc
-      wdata := instr.instr.rs1
+    is(Decoder.SYSTEM_FUNC("CSRRWI"), Decoder.SYSTEM_FUNC("CSRRSI"), Decoder.SYSTEM_FUNC("CSRRCI")) {
+      wdiff := instr.instr.rs1
     }
   }
 
-  val written = op === CSROp.rw || wdata =/= 0.U
+  val written = WireDefault(wdiff =/= 0.U)
+  switch(instr.instr.funct3) {
+    is(Decoder.SYSTEM_FUNC("CSRRW"), Decoder.SYSTEM_FUNC("CSRRWI")) {
+      wdata := wdiff
+      written := true.B
+    }
+
+    is(Decoder.SYSTEM_FUNC("CSRRS"), Decoder.SYSTEM_FUNC("CSRRSI")) {
+      wdata := writer.rdata | wdiff
+    }
+
+    is(Decoder.SYSTEM_FUNC("CSRRC"), Decoder.SYSTEM_FUNC("CSRRCI")) {
+      wdata := writer.rdata & (~wdiff)
+    }
+  }
+
   val fault = WireDefault(false.B)
   val rdata = Wire(UInt(coredef.XLEN.W))
   when((ro && written) || priv < minPriv) {
@@ -84,8 +87,15 @@ class CSR(implicit val coredef: CoreDef)
   }
 
   when(!fault && !io.next.instr.vacant) {
-    writer.wdata := wdata
-    writer.op := op
+    nstate := CSRState.write
+  }
+
+  /* Write wait */
+  val pipeAddr = RegNext(addr)
+  when(state === CSRState.write) {
+    writer.addr := pipeAddr
+    writer.write := true.B
+    nstate := CSRState.read
   }
 
   val info = WireDefault(RetireInfo.vacant)
@@ -102,6 +112,9 @@ class CSR(implicit val coredef: CoreDef)
 
   io.retired := io.next
   io.retirement := info
-  io.flush := DontCare
-  io.stall := false.B
+
+  io.stall := state === CSRState.write
+  when(io.flush) {
+    nstate := CSRState.read
+  }
 }

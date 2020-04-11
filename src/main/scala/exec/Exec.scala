@@ -15,7 +15,6 @@ import exec.units._
 import exec.UnitSel.Retirement
 import _root_.core.Core
 import exec.Exec.ROBEntry
-import _root_.core.CSROp
 import cache.L1UCPort
 import _root_.core.ExReq
 import Chisel.experimental.chiselName

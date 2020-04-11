@@ -84,15 +84,11 @@ class CSR(val XLEN: Int) {
   }
 }
 
-object CSROp extends ChiselEnum {
-  val rw, rs, rc = Value
-}
-
 class CSRWriter(val XLEN: Int) extends Bundle {
   val addr = Output(UInt(12.W))
-  val op = Output(CSROp())
   val rdata = Input(UInt(XLEN.W))
   val wdata = Output(UInt(XLEN.W))
+  val write = Output(Bool())
 }
 
 object CSR {
@@ -155,38 +151,17 @@ object CSR {
     )
 
     endpoint.rdata := data
-    val wdata = Wire(UInt(csr.XLEN.W))
-    val wcommit = Wire(Bool())
-    wdata := DontCare
-    wcommit := false.B
-
-    switch(endpoint.op) {
-      is(CSROp.rw) {
-        wdata := endpoint.wdata
-        wcommit := true.B
-      }
-
-      is(CSROp.rs) {
-        wdata := data | endpoint.wdata
-        wcommit := true.B
-      }
-
-      is(CSROp.rc) {
-        wdata := data & (~endpoint.wdata)
-        wcommit := true.B
-      }
-    }
 
     for((d, e) <- csr.writers.values) {
       e := false.B
       d := DontCare
     }
 
-    when(wcommit) {
+    when(endpoint.write) {
       for((addr, (name, isMut)) <- addrMap) {
         if(isMut) {
           when(addr.U === endpoint.addr) {
-            csr.writers(name)._1 := wdata
+            csr.writers(name)._1 := endpoint.wdata
             csr.writers(name)._2 := true.B
           }
         }
