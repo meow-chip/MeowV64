@@ -7,6 +7,7 @@ import chisel3.util.MuxCase
 import instr.Decoder
 import cache.DCFenceStatus
 import chisel3.util.PriorityEncoder
+import _root_.util.FlushableSlot
 
 class ResStationExgress(implicit val coredef: CoreDef) extends Bundle {
   val instr = Output(new ReservedInstr)
@@ -67,27 +68,24 @@ class OoOResStation(val idx: Int)(implicit val coredef: CoreDef) extends MultiIO
   defIdx := DontCare
 
   // Exgress part
-  val exgMask = store.zip(occupied).map({ case (instr, valid) => valid && instr.ready })
-  exgress.valid := VecInit(exgMask).asUInt.orR
-  val exgNext = PriorityEncoder(exgMask)
-  val exgIdx = WireDefault(exgNext)
-  val exgHeld = RegNext(exgIdx)
-  val exgHolding = RegInit(false.B)
+  val exgMask = WireDefault(VecInit(store.zip(occupied).map({ case (instr, valid) => valid && instr.ready })))
+  val exgIdx = PriorityEncoder(exgMask)
+  val maskedStore = WireDefault(store)
 
-  when(exgHolding) {
-    exgIdx := exgHeld
-    assert(VecInit(exgMask)(exgHeld))
-  }
+  val exgSlot = Module(new FlushableSlot(new ReservedInstr(), true, false))
 
-  exgHolding := exgress.valid && !exgress.pop
+  exgress.instr := exgSlot.io.deq.bits
+  exgress.valid := exgSlot.io.deq.valid
+  exgSlot.io.deq.ready := exgress.pop
 
-  exgress.instr := store(exgIdx)
-  when(exgress.pop) {
+  exgSlot.io.enq.bits := maskedStore(exgIdx)
+  exgSlot.io.enq.valid := exgMask.asUInt().orR
+  when(exgSlot.io.enq.fire()) {
     occupied(exgIdx) := false.B
   }
 
   // CDB data fetch
-  for(instr <- store) {
+  for((instr, idx) <- store.zipWithIndex) {
     // Later entries takes priority
     for(ent <- cdb.entries) {
       when(ent.name === instr.rs1name && ent.valid) {
@@ -101,7 +99,10 @@ class OoOResStation(val idx: Int)(implicit val coredef: CoreDef) extends MultiIO
         when(!instr.rs1ready) {
           instr.rs1ready := true.B
           instr.rs1val := ent.data
+          maskedStore(idx).rs1val := ent.data
         }
+
+        exgMask(idx) := occupied(idx) && instr.rs2ready
       }
 
       when(ent.name === instr.rs2name && ent.valid) {
@@ -109,7 +110,10 @@ class OoOResStation(val idx: Int)(implicit val coredef: CoreDef) extends MultiIO
         when(!instr.rs2ready) {
           instr.rs2ready := true.B
           instr.rs2val := ent.data
+          maskedStore(idx).rs2val := ent.data
         }
+
+        exgMask(idx) := occupied(idx) && instr.rs1ready
       }
     }
   }
@@ -129,15 +133,20 @@ class OoOResStation(val idx: Int)(implicit val coredef: CoreDef) extends MultiIO
 
   assert(!(
     ingress.push &&
-    exgress.pop &&
+    exgSlot.io.enq.fire() &&
     ingIdx === exgIdx
   ))
+
+  assert(!(
+    exgress.pop && !exgSlot.io.deq.valid
+  ))
+
+  exgSlot.io.flush := ctrl.flush
 
   when(ctrl.flush) {
     // We don't need to reset store
     // store := VecInit(Seq.fill(DEPTH)(ReservedInstr.empty))
     occupied := VecInit(Seq.fill(DEPTH)(false.B))
-    exgHolding := false.B
   }
 }
 
