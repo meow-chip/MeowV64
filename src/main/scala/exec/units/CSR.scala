@@ -19,7 +19,7 @@ class CSR(implicit val coredef: CoreDef)
   val DEPTH: Int = 0
 
   object CSRState extends ChiselEnum {
-    val read, write = Value
+    val read, pipe = Value
   }
 
   val io = IO(new ExecUnitPort)
@@ -87,12 +87,14 @@ class CSR(implicit val coredef: CoreDef)
   }
 
   when(!fault && !io.next.instr.vacant) {
-    nstate := CSRState.write
+    nstate := CSRState.pipe
   }
 
-  /* Write wait */
+  /* Stage 2 */
   val pipeAddr = RegNext(addr)
-  when(state === CSRState.write) {
+  val pipeRdata = RegNext(rdata)
+  val pipeWritten = RegNext(fault)
+  when(state === CSRState.pipe) {
     writer.addr := pipeAddr
     writer.write := true.B
     nstate := CSRState.read
@@ -102,18 +104,18 @@ class CSR(implicit val coredef: CoreDef)
 
   when(fault) {
     info.branch.ex(ExType.ILLEGAL_INSTR)
-  }.elsewhen(written) {
+  }.elsewhen(pipeWritten) {
     info.branch.fire(instr.addr + 4.U)
-    info.wb := rdata
+    info.wb := pipeRdata
   } otherwise {
     info.branch.nofire()
-    info.wb := rdata
+    info.wb := pipeRdata
   }
 
   io.retired := io.next
   io.retirement := info
 
-  io.stall := state === CSRState.write
+  io.stall := nstate === CSRState.pipe
   when(io.flush) {
     nstate := CSRState.read
   }
