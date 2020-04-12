@@ -69,7 +69,18 @@ class OoOResStation(val idx: Int)(implicit val coredef: CoreDef) extends MultiIO
   // Exgress part
   val exgMask = store.zip(occupied).map({ case (instr, valid) => valid && instr.ready })
   exgress.valid := VecInit(exgMask).asUInt.orR
-  val exgIdx = PriorityEncoder(exgMask)
+  val exgNext = PriorityEncoder(exgMask)
+  val exgIdx = WireDefault(exgNext)
+  val exgHeld = RegNext(exgIdx)
+  val exgHolding = RegInit(false.B)
+
+  when(exgHolding) {
+    exgIdx := exgHeld
+    assert(VecInit(exgMask)(exgHeld))
+  }
+
+  exgHolding := exgress.valid && !exgress.pop
+
   exgress.instr := store(exgIdx)
   when(exgress.pop) {
     occupied(exgIdx) := false.B
@@ -126,6 +137,7 @@ class OoOResStation(val idx: Int)(implicit val coredef: CoreDef) extends MultiIO
     // We don't need to reset store
     // store := VecInit(Seq.fill(DEPTH)(ReservedInstr.empty))
     occupied := VecInit(Seq.fill(DEPTH)(false.B))
+    exgHolding := false.B
   }
 }
 
