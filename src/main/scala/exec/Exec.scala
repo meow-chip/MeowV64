@@ -391,6 +391,8 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
   cdb.entries(coredef.UNIT_COUNT) := DontCare
   cdb.entries(coredef.UNIT_COUNT).valid := false.B
 
+  // TODO: send memory reqeust one tick before its turn
+
   when(!rob(retirePtr).valid) {
     // First one invalid, cannot retire anything
     retireNum := 0.U
@@ -407,9 +409,11 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
       rwp.data := DontCare
     }
 
-    val memResult = releaseMem.deq()
+    releaseMem.ready := !RegNext(releaseMem.fire())
+    val memResult = RegNext(releaseMem.bits)
+    val memFired = RegNext(releaseMem.fire())
 
-    when(releaseMem.fire()) {
+    when(memFired) {
       retireNum := 1.U
       rob(retirePtr).valid := false.B
       retirePtr := retirePtr +% 1.U
