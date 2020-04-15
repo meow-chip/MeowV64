@@ -6,6 +6,7 @@ import _root_.instr._
 import _root_.cache._
 import _root_.reg._
 import exec.Exec
+import paging.PTW
 
 class Core(implicit val coredef: CoreDef = DefaultDef) extends Module {
   val io = IO(new Bundle {
@@ -31,8 +32,10 @@ class Core(implicit val coredef: CoreDef = DefaultDef) extends Module {
   l2.ic(0) <> l1i.toL2
   l2.dc(0) <> l1d.toL2
 
-  // TODO: attach TLB/PTW
-  l1d.ptw.req.noenq()
+  // TODO: attach DTLB
+  val ptw = Module(new PTW)
+  l1d.ptw <> ptw.dc
+  ptw.dtlb.req.noenq()
 
   val fetch = Module(new InstrFetch)
   val bpu = Module(new BPU)
@@ -43,6 +46,7 @@ class Core(implicit val coredef: CoreDef = DefaultDef) extends Module {
 
   fetch.toIC <> l1i.toCPU
   fetch.toCtrl <> ctrl.toIF
+  fetch.toPTW <> ptw.itlb
 
   bpu.toExec <> exec.toBPU
   bpu.toFetch <> fetch.toBPU
@@ -102,8 +106,11 @@ class Core(implicit val coredef: CoreDef = DefaultDef) extends Module {
   val sscratch = RegInit(0.U(coredef.XLEN.W))
   csr.attach("sscratch").connect(CSRPort.fromReg(coredef.XLEN, sscratch))
 
-  val satp = RegInit(0.U(coredef.XLEN.W))
-  csr.attach("satp").connect(CSRPort.fromReg(coredef.XLEN, satp))
+  val satp = RegInit(Satp.empty)
+  csr.attach("satp").connect(satp.port)
+
+  fetch.toCore.satp := satp
+  ptw.satp := satp
 
   io.mcycle := ctrl.csr.mcycle.rdata
   io.minstret := ctrl.csr.minstret.rdata

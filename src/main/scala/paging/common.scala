@@ -50,14 +50,15 @@ class TLBEntry(implicit val coredef: CoreDef) extends Bundle {
 
   def intermediate() = v && !w && !r && !x
   def hit(req: UInt) = {
+    val qvpn = req.head(coredef.vpnWidth)
     var result = v
     for(i <- 0 until MAX_VPN_SEG) {
       val ignore = i.U > level
-      val base = 12 + 9 * i
+      val base = 9 * i
       result = Mux(
         ignore,
         result,
-        result && vpn(base+8, base) === req(base+8, base)
+        result && vpn(base+8, base) === qvpn(base+8, base)
       )
     }
     result

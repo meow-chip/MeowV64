@@ -5,18 +5,20 @@ import chisel3.util._
 import chisel3.util.random.LFSR
 import chisel3.experimental.ChiselEnum
 import _root_.core.CoreDef
+import _root_.core.Satp
+import _root_.core.SatpMode
 
 class TLB(implicit coredef: CoreDef) extends MultiIOModule {
-  val ignored = IO(Input(Bool()))
-
   val ptw = IO(new TLBExt)
+
+  val satp = IO(Input(new Satp))
 
   val query = IO(new Bundle {
     val vpn = Input(UInt(coredef.vpnWidth.W))
     val ppn = Output(UInt(coredef.ppnWidth.W))
 
     val query = Input(Bool())
-    val ready = Input(Bool())
+    val ready = Output(Bool())
   })
 
   // TODO: check for privilege, validness, etc...
@@ -24,24 +26,15 @@ class TLB(implicit coredef: CoreDef) extends MultiIOModule {
   val storage = RegInit(VecInit(Seq.fill(coredef.TLB_SIZE)(TLBEntry.empty)))
 
   val hitMap = storage.map(_.hit(query.vpn))
+  assert(PopCount(hitMap) <= 1.U)
   val hitResult = Mux1H(hitMap, storage.map(_.ppn))
 
   val inStore = VecInit(hitMap).asUInt().orR()
-
-  when(ignored) {
-    query.ready := query.query
-    query.ppn := query.vpn
-  } otherwise {
-    query.ready := inStore && query.query
-    query.ppn := hitResult
-  }
+  query.ready := inStore && query.query
+  query.ppn := hitResult
 
   // Refilling
-  when(!ignored && query.query && !inStore) {
-    ptw.req.enq(query.vpn)
-  } otherwise {
-    ptw.req.noenq()
-  }
+  ptw.req.noenq()
 
   val random = LFSR(log2Ceil(coredef.TLB_SIZE))
   val invalids = storage.map(!_.v)

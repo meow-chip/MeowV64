@@ -5,6 +5,7 @@ import chisel3.util._
 import chisel3.experimental._
 import chisel3.util.RRArbiter
 import _root_.core.CoreDef
+import _root_.core.Satp
 
 object PTWState extends ChiselEnum {
   val idle, reading = Value
@@ -14,12 +15,15 @@ class PTW(implicit coredef: CoreDef) extends MultiIOModule {
   val itlb = IO(Flipped(new TLBExt))
   val dtlb = IO(Flipped(new TLBExt))
 
-  val satp = IO(Input(UInt(coredef.PADDR_WIDTH.W)))
+
+  val satp = IO(Input(new Satp))
   val dc = IO(new PTWExt)
+  dc.req.noenq()
 
   val arbiter = Module(new RRArbiter(UInt(coredef.vpnWidth.W), 2))
   arbiter.io.in(0) <> itlb.req
   arbiter.io.in(1) <> dtlb.req
+  arbiter.io.out.nodeq()
 
   val state = RegInit(PTWState.idle)
   val level = RegInit(0.U)
@@ -31,9 +35,9 @@ class PTW(implicit coredef: CoreDef) extends MultiIOModule {
   }}))
   val seg = segs(level)
 
-  val raddr = RegInit(UInt(coredef.PADDR_WIDTH.W))
+  val raddr = RegInit(0.U(coredef.PADDR_WIDTH.W))
 
-  val resp = Wire(new TLBEntry)
+  val resp = Wire(new PTE)
   resp := DontCare
   itlb.resp := resp
   dtlb.resp := resp
@@ -43,11 +47,9 @@ class PTW(implicit coredef: CoreDef) extends MultiIOModule {
 
   switch(state) {
     is(PTWState.idle) {
-      dc.req.noenq()
-
       when(arbiter.io.out.valid) {
         level := 0.U
-        raddr := satp(43, 0) ## segs(0) ## 0.U(3.W) // PTE are aligned in 64-bits
+        raddr := satp.ppn ## segs(0) ## 0.U(3.W) // PTE are aligned in 64-bits
         state := PTWState.reading
       }
     }

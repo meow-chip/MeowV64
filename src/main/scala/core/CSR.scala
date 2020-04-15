@@ -347,3 +347,42 @@ object IntConf{
     result
   }
 }
+
+object SatpMode extends ChiselEnum {
+  val bare = Value(0.U(4.W))
+  val sv39 = Value(8.U(4.W))
+  val sv48 = Value(9.U(4.W))
+}
+
+class Satp extends Bundle {
+  val mode = SatpMode()
+  val asic = UInt(16.W)
+  val ppn = UInt(44.W)
+
+  def port = {
+    val port = Wire(new CSRPort(64))
+    port.rdata := this.asTypeOf(port.rdata)
+    val casted = port.wdata.asTypeOf(this)
+    val modeValid = casted.mode.isValid
+
+    when(port.write) {
+      asic := casted.asic
+      ppn := casted.ppn
+      when(modeValid) {
+        mode := casted.mode
+      }
+    }
+
+    port
+  }
+}
+
+object Satp {
+  def empty = {
+    val ret = Wire(new Satp)
+    ret.asic := 0.U
+    ret.ppn := 0.U
+    ret.mode := SatpMode.bare
+    ret
+  }
+}

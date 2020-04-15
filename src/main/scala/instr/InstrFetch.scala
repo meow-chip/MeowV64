@@ -8,6 +8,8 @@ import _root_.data._
 import chisel3.util._
 import chisel3.experimental.chiselName
 import _root_.util._
+import paging.TLB
+import paging.TLBExt
 
 class InstrExt(implicit val coredef: CoreDef) extends Bundle {
   val addr = UInt(coredef.XLEN.W)
@@ -62,6 +64,11 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
   val debug = IO(new Bundle {
     val pc = Output(UInt(coredef.XLEN.W))
   })
+
+  val toPTW = IO(new TLBExt)
+  val toCore = IO(new Bundle {
+    val satp = Input(new Satp)
+  })
   
   val pc = RegInit(coredef.INIT_VEC.U(coredef.XLEN.W)) // This should be aligned
   val pipePc = RegInit(0.U(coredef.XLEN.W))
@@ -73,7 +80,14 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
     }
   }
 
-  toBPU.pc := RegNext(pc)
+  val tlb = Module(new TLB)
+  tlb.ptw <> toPTW
+  tlb.satp := toCore.satp
+  tlb.query.vpn := pc(47, 12) // TODO: judge on SATP
+  tlb.query.query := toCore.satp.mode =/= SatpMode.bare
+
+  toBPU.pc := RegNext(pc) // Perdict by virtual memory
+  // TODO: flush BPU on context switch
 
   // TODO: BHT
 
@@ -93,8 +107,15 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
   val pipeSpecBr = Wire(Bool())
 
   val haltIC = ICQueue.io.count >= 1.U && !toCtrl.ctrl.flush && !pipeSpecBr
-  toIC.read := !haltIC
-  toIC.addr := pc
+  val fpc = WireDefault(pc)
+  val icAddr = WireDefault(fpc)
+  val icRead = WireDefault(!haltIC)
+  when(toCore.satp.mode =/= SatpMode.bare) {
+    icAddr := tlb.query.ppn ## fpc(11, 0)
+    icRead := !haltIC && tlb.query.ready
+  }
+  toIC.read := icRead
+  toIC.addr := icAddr
   toIC.rst := toCtrl.ctrl.flush && toCtrl.irst
 
   val ICHead = Module(new FlushableSlot(new ICData, true, true))
@@ -235,8 +256,7 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
     }
 
     pc := bpc
-
-    toIC.addr := rawbpc
+    fpc := rawbpc
     toBPU.pc := rawbpc
     when(!toIC.stall) {
       pipePc := rawbpc
@@ -266,7 +286,7 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
     pc := bpc
     headPtr := toCtrl.pc(ICAlign-1, log2Ceil(Const.INSTR_MIN_WIDTH / 8))
 
-    toIC.addr := rawbpc
+    fpc := rawbpc
     toBPU.pc := rawbpc
     when(!toIC.stall) {
       pipePc := rawbpc
