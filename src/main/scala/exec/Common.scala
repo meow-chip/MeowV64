@@ -22,6 +22,8 @@ import cache.L1UCPort
 import instr.Decoder
 import instr.BHTPrediction
 import instr.BPUResult
+import paging.TLBExt
+import _root_.core.Satp
 
 /**
   * Branch result
@@ -443,6 +445,9 @@ trait WithLSUPort {
     val writer: DCWriter
     val uncached: L1UCPort
   }
+
+  val ptw: TLBExt
+  val satp: Satp
 
   val hasPending: Bool
 

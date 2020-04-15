@@ -65,9 +65,9 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
     val pc = Output(UInt(coredef.XLEN.W))
   })
 
-  val toPTW = IO(new TLBExt)
   val toCore = IO(new Bundle {
     val satp = Input(new Satp)
+    val ptw = new TLBExt
   })
   
   val pc = RegInit(coredef.INIT_VEC.U(coredef.XLEN.W)) // This should be aligned
@@ -81,7 +81,7 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
   }
 
   val tlb = Module(new TLB)
-  tlb.ptw <> toPTW
+  tlb.ptw <> toCore.ptw
   tlb.satp := toCore.satp
   tlb.query.vpn := pc(47, 12) // TODO: judge on SATP
   tlb.query.query := toCore.satp.mode =/= SatpMode.bare

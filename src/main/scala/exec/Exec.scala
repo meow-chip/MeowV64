@@ -22,6 +22,8 @@ import cache.DCFenceStatus
 import _root_.core.Const
 import _root_.core.PrivLevel
 import _root_.core.Status
+import _root_.core.Satp
+import paging.TLBExt
 
 /**
  * Out-of-order exection (Tomasulo's algorithm)
@@ -54,6 +56,11 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
     val lpc = Output(UInt(coredef.XLEN.W))
     val taken = Output(Bool())
     val hist = Output(new BPUResult)
+  })
+
+  val toCore = IO(new Bundle {
+    val satp = Input(new Satp)
+    val ptw = new TLBExt
   })
 
   val csrWriter = IO(new CSRWriter(coredef.XLEN))
@@ -174,6 +181,8 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
   units(2).extras("release") <> releaseMem
   units(0).extras("priv") := toCtrl.priv
   units(0).extras("status") := toCtrl.status
+  units(2).extras("ptw") <> toCore.ptw
+  units(2).extras("satp") := toCore.satp
   val hasPendingMem = units(2).extras("hasPending")
 
   assume(units.length == coredef.UNIT_COUNT)

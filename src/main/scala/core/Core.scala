@@ -35,7 +35,6 @@ class Core(implicit val coredef: CoreDef = DefaultDef) extends Module {
   // TODO: attach DTLB
   val ptw = Module(new PTW)
   l1d.ptw <> ptw.dc
-  ptw.dtlb.req.noenq()
 
   val fetch = Module(new InstrFetch)
   val bpu = Module(new BPU)
@@ -46,7 +45,7 @@ class Core(implicit val coredef: CoreDef = DefaultDef) extends Module {
 
   fetch.toIC <> l1i.toCPU
   fetch.toCtrl <> ctrl.toIF
-  fetch.toPTW <> ptw.itlb
+  fetch.toCore.ptw <> ptw.itlb
 
   bpu.toExec <> exec.toBPU
   bpu.toFetch <> fetch.toBPU
@@ -62,6 +61,8 @@ class Core(implicit val coredef: CoreDef = DefaultDef) extends Module {
   exec.toDC.u <> l2.directs(0)
   
   exec.toCtrl.ctrl <> ctrl.toExec.ctrl
+
+  exec.toCore.ptw <> ptw.dtlb
 
   ctrl.br.req <> exec.toCtrl.branch
   ctrl.br.tval <> exec.toCtrl.tval
@@ -109,8 +110,9 @@ class Core(implicit val coredef: CoreDef = DefaultDef) extends Module {
   val satp = RegInit(Satp.empty)
   csr.attach("satp").connect(satp.port)
 
-  fetch.toCore.satp := satp
   ptw.satp := satp
+  fetch.toCore.satp := satp
+  exec.toCore.satp := satp
 
   io.mcycle := ctrl.csr.mcycle.rdata
   io.minstret := ctrl.csr.minstret.rdata

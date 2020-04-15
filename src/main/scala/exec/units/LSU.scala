@@ -10,6 +10,10 @@ import _root_.core.CoreDef
 import _root_.core.ExType
 import _root_.core.ExReq
 import _root_.util.FlushableQueue
+import paging.TLB
+import _root_.core.Satp
+import _root_.core.SatpMode
+import paging.TLBExt
 
 /**
  * DelayedMem = Delayed memory access, memory accesses that have side-effects and thus
@@ -141,6 +145,14 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with ExecUnitInt 
     val uncached = new L1UCPort(coredef.L1D)
   })
 
+  val satp = IO(Input(new Satp))
+  val ptw = IO(new TLBExt)
+
+  val tlb = Module(new TLB)
+  tlb.satp := satp
+  tlb.ptw <> ptw
+  tlb.query.query := satp.mode =/= SatpMode.bare
+
   val flushed = RegInit(false.B)
 
   val hasPending = IO(Output(Bool()))
@@ -190,13 +202,19 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with ExecUnitInt 
     )
   )
 
-  val stall = toMem.reader.stall
+  val stall = WireDefault(toMem.reader.stall)
 
   /**
    * Stage 1 state
    */ 
   assert(coredef.PADDR_WIDTH > coredef.VADDR_WIDTH)
-  val addr = (io.next.rs1val.asSInt + io.next.instr.instr.imm).asUInt
+  val rawAddr = (io.next.rs1val.asSInt + io.next.instr.instr.imm).asUInt
+  tlb.query.vpn := rawAddr(47, 12)
+  val addr = WireDefault(rawAddr)
+  when(satp.mode =/= SatpMode.bare) {
+    addr := tlb.query.ppn ## rawAddr(11, 0)
+  }
+
   val aligned = addr(coredef.PADDR_WIDTH - 1, 3) ## 0.U(3.W)
   val offset = addr(2, 0)
   val uncached = addr(coredef.PADDR_WIDTH) // Use bit 56 to denote uncached
@@ -206,18 +224,30 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with ExecUnitInt 
   val invalAddr = isInvalAddr(addr)
   val misaligned = isMisaligned(offset, io.next.instr.instr.funct3)
 
+  toMem.reader.addr := aligned
+  toMem.reader.read := read && !uncached && !invalAddr && !misaligned && !io.flush
+
+  when(satp.mode =/= SatpMode.bare) {
+    when(!tlb.query.ready) {
+      toMem.reader.read := true.B
+      stall := true.B
+    }
+  }
+
   /**
    * Stage 2 state
    */
   val pipeInstr = RegInit(PipeInstr.empty)
+  val pipeAddr = Reg(UInt(coredef.XLEN.W))
   when(!stall) {
     pipeInstr := io.next
+    pipeAddr := addr
   }
+
   when(io.flush) {
     pipeInstr.instr.vacant := true.B
   }
 
-  val pipeAddr = (pipeInstr.rs1val.asSInt + pipeInstr.instr.instr.imm).asUInt
   val pipeAligned = pipeAddr(coredef.PADDR_WIDTH - 1, 3) ## 0.U(3.W)
   val pipeOffset = pipeAddr(2, 0)
   val pipeUncached = pipeAddr(coredef.PADDR_WIDTH) // Use bit 56 to denote uncached
@@ -233,10 +263,6 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with ExecUnitInt 
 
   io.retired := pipeInstr
   io.stall := stall
-
-  // Reader
-  toMem.reader.addr := aligned
-  toMem.reader.read := read && !uncached && !invalAddr && !misaligned && !io.flush
 
   val shifted = toMem.reader.data >> (pipeOffset << 3) // TODO: use lookup table?
   val signedResult = Wire(SInt(coredef.XLEN.W)).suggestName("signedResult")

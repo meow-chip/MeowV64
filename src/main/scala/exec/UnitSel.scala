@@ -21,6 +21,8 @@ import cache.L1UCPort
 import cache.DCWriter
 import chisel3.util.EnqIO
 import chisel3.util.Mux1H
+import _root_.core.Satp
+import paging.TLBExt
 
 /**
  * Read instructions from reservation stations, and send them into (probably one of multiple) exec unit
@@ -60,25 +62,33 @@ class UnitSel(
     }
 
     if(u.isInstanceOf[WithLSUPort]) {
+      val casted = u.asInstanceOf[WithLSUPort]
       println("Found extra port: LSU")
       val reader = IO(new DCReader(coredef.L1D))
       val writer = IO(new DCWriter(coredef.L1D))
       val uncached = IO(new L1UCPort(coredef.L1D))
-      u.asInstanceOf[WithLSUPort].toMem.reader <> reader
-      u.asInstanceOf[WithLSUPort].toMem.writer <> writer
-      u.asInstanceOf[WithLSUPort].toMem.uncached <> uncached
+      casted.toMem.reader <> reader
+      casted.toMem.writer <> writer
+      casted.toMem.uncached <> uncached
 
       val hasPending = IO(Output(Bool()))
-      hasPending := u.asInstanceOf[WithLSUPort].hasPending
+      hasPending := casted.hasPending
 
       val release = IO(EnqIO(new DelayedMemResult))
-      release <> u.asInstanceOf[WithLSUPort].release
+      release <> casted.release
+
+      val satp = IO(Input(new Satp))
+      val ptw = IO(new TLBExt)
+      casted.ptw <> ptw
+      casted.satp := satp
 
       extras.put("reader", reader)
       extras.put("writer", writer)
       extras.put("uncached", uncached)
       extras.put("hasPending", hasPending)
       extras.put("release", release)
+      extras.put("satp", satp)
+      extras.put("ptw", ptw)
     }
 
     if(u.isInstanceOf[WithPrivPort]) {
