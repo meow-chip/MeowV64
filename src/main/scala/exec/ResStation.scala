@@ -205,7 +205,7 @@ class LSBuf(val idx: Int)(implicit val coredef: CoreDef) extends MultiIOModule w
   }
 
   exgress.instr := store(head)
-  when(exgress.pop) {
+  when(exgress.pop && exgress.valid) { // FIXME: check exgress.valid on regular ResStation
     head := head +% 1.U
   }
 

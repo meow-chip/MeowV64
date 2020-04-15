@@ -100,6 +100,7 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
   releaseMem.nodeq()
 
   // Units
+  val lsu = Module(new LSU).suggestName("LSU");
   val units = Seq(
     Module(new UnitSel(
       Seq(
@@ -163,27 +164,21 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
       },
       hasPipe = false
     )),
-    Module(new UnitSel(
-      Seq(
-        Module(new LSU).suggestName("LSU")
-      ),
-      instr => Seq(true.B),
-      hasPipe = false
-    ))
-
+    lsu,
   )
+
+  lsu.toMem.reader <> toDC.r
+  lsu.toMem.writer <> toDC.w
+  lsu.toMem.uncached <> toDC.u
+  lsu.release <> releaseMem
+  lsu.ptw <> toCore.ptw
+  lsu.satp := toCore.satp
+  val hasPendingMem = lsu.hasPending
 
   // Connect extra ports
   units(0).extras("CSR") <> csrWriter
-  units(2).extras("reader") <> toDC.r
-  units(2).extras("writer") <> toDC.w
-  units(2).extras("uncached") <> toDC.u
-  units(2).extras("release") <> releaseMem
   units(0).extras("priv") := toCtrl.priv
   units(0).extras("status") := toCtrl.status
-  units(2).extras("ptw") <> toCore.ptw
-  units(2).extras("satp") := toCore.satp
-  val hasPendingMem = units(2).extras("hasPending")
 
   assume(units.length == coredef.UNIT_COUNT)
   // TODO: asserts Bypass is in unit 0
@@ -213,7 +208,7 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
   }
 
   for(u <- units) {
-    u.ctrl.flush := toCtrl.ctrl.flush
+    u.flush := toCtrl.ctrl.flush
   }
 
   // ROB & ptrs
@@ -367,12 +362,12 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
       u.retire.instr.instr.taken,
       u.retire.instr.instr.npc
     )
-    val canBr = !u.ctrl.stall && !u.retire.instr.instr.vacant && normalized.branched()
+    val canBr = !u.retire.instr.instr.vacant && normalized.branched()
     brMask(idx) := Mux(canBr, oh, 0.U)
     brSeled(idx) := brSel === oh && canBr
     brNormlalized(idx) := normalized
 
-    when(!u.ctrl.stall && !u.retire.instr.instr.vacant) {
+    when(!u.retire.instr.instr.vacant) {
       when(!u.retire.info.hasMem) {
         ent.name := u.retire.instr.rdname
         ent.valid := true.B

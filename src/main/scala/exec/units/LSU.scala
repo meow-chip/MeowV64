@@ -14,6 +14,8 @@ import paging.TLB
 import _root_.core.Satp
 import _root_.core.SatpMode
 import paging.TLBExt
+import exec.UnitSel.Retirement
+import scala.collection.mutable
 
 /**
  * DelayedMem = Delayed memory access, memory accesses that have side-effects and thus
@@ -134,10 +136,17 @@ class DelayedMem(implicit val coredef: CoreDef) extends Bundle {
   }
 }
 
-class LSU(implicit val coredef: CoreDef) extends MultiIOModule with ExecUnitInt with exec.WithLSUPort {
-  val DEPTH = 1
+class LSU(implicit val coredef: CoreDef) extends MultiIOModule with UnitSelIO with exec.WithLSUPort {
+  val flush = IO(Input(Bool()))
+  val rs = IO(Flipped(new ResStationExgress))
+  val retire = IO(Output(new Retirement))
+  val extras = new mutable.HashMap[String, Data]()
 
-  val io = IO(new ExecUnitPort)
+  val hasNext = rs.valid // TODO: merge into rs.instr
+  val next = WireDefault(rs.instr)
+  when(!rs.valid) {
+    next.instr.vacant := true.B
+  }
 
   val toMem = IO(new Bundle {
     val reader = new DCReader(coredef.L1D)
@@ -151,7 +160,7 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with ExecUnitInt 
   val tlb = Module(new TLB)
   tlb.satp := satp
   tlb.ptw <> ptw
-  tlb.query.query := satp.mode =/= SatpMode.bare
+  tlb.query.query := satp.mode =/= SatpMode.bare && !next.instr.vacant
 
   val flushed = RegInit(false.B)
 
@@ -161,18 +170,21 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with ExecUnitInt 
   val pendings = Module(new FlushableQueue(new DelayedMem, coredef.INFLIGHT_INSTR_LIMIT))
   hasPending := pendings.io.count > 0.U || pendings.io.enq.fire()
 
+  val l2stall = toMem.reader.stall
+  val l1stall = WireDefault(l2stall)
+
   toMem.reader := DontCare
   toMem.reader.read := false.B
 
-  when(io.flush && toMem.reader.stall) {
+  when(flush && toMem.reader.stall) {
     flushed := true.B
   }
 
-  when(!toMem.reader.stall) {
+  when(!l2stall) {
     flushed := false.B
   }
 
-  pendings.io.flush := io.flush
+  pendings.io.flush := flush
 
   // Let's do this without helper
 
@@ -202,13 +214,11 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with ExecUnitInt 
     )
   )
 
-  val stall = WireDefault(toMem.reader.stall)
-
   /**
    * Stage 1 state
    */ 
   assert(coredef.PADDR_WIDTH > coredef.VADDR_WIDTH)
-  val rawAddr = (io.next.rs1val.asSInt + io.next.instr.instr.imm).asUInt
+  val rawAddr = (next.rs1val.asSInt + next.instr.instr.imm).asUInt
   tlb.query.vpn := rawAddr(47, 12)
   val addr = WireDefault(rawAddr)
   when(satp.mode =/= SatpMode.bare) {
@@ -218,33 +228,43 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with ExecUnitInt 
   val aligned = addr(coredef.PADDR_WIDTH - 1, 3) ## 0.U(3.W)
   val offset = addr(2, 0)
   val uncached = addr(coredef.PADDR_WIDTH) // Use bit 56 to denote uncached
-  val read = io.next.instr.instr.op === Decoder.Op("LOAD").ident && !io.next.instr.vacant
-  val write = io.next.instr.instr.op === Decoder.Op("STORE").ident && !io.next.instr.vacant
+  val read = next.instr.instr.op === Decoder.Op("LOAD").ident && !next.instr.vacant
+  val write = next.instr.instr.op === Decoder.Op("STORE").ident && !next.instr.vacant
 
   val invalAddr = isInvalAddr(addr)
-  val misaligned = isMisaligned(offset, io.next.instr.instr.funct3)
+  val misaligned = isMisaligned(offset, next.instr.instr.funct3)
 
   toMem.reader.addr := aligned
-  toMem.reader.read := read && !uncached && !invalAddr && !misaligned && !io.flush
-
+  toMem.reader.read := read && !uncached && !invalAddr && !misaligned && !flush
   when(satp.mode =/= SatpMode.bare) {
     when(!tlb.query.ready) {
-      toMem.reader.read := true.B
-      stall := true.B
+      toMem.reader.read := false.B
     }
   }
+
+  when(satp.mode =/= SatpMode.bare) {
+    when(!tlb.query.ready && tlb.query.query) {
+      toMem.reader.read := true.B
+      l1stall := true.B
+    }
+  }
+
+  rs.pop := !l1stall
 
   /**
    * Stage 2 state
    */
   val pipeInstr = RegInit(PipeInstr.empty)
   val pipeAddr = Reg(UInt(coredef.XLEN.W))
-  when(!stall) {
-    pipeInstr := io.next
+  when(!l1stall) {
+    pipeInstr := next
     pipeAddr := addr
+    assert(!l2stall)
+  }.elsewhen(!l2stall) {
+    pipeInstr.instr.vacant := true.B
   }
 
-  when(io.flush) {
+  when(flush) {
     pipeInstr.instr.vacant := true.B
   }
 
@@ -261,8 +281,10 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with ExecUnitInt 
   val pipeInvalAddr = isInvalAddr(pipeAddr)
   val pipeMisaligned = isMisaligned(pipeOffset, pipeInstr.instr.instr.funct3)
 
-  io.retired := pipeInstr
-  io.stall := stall
+  retire.instr := pipeInstr
+  when(l2stall) {
+    retire.instr.instr.vacant := true.B
+  }
 
   val shifted = toMem.reader.data >> (pipeOffset << 3) // TODO: use lookup table?
   val signedResult = Wire(SInt(coredef.XLEN.W)).suggestName("signedResult")
@@ -286,27 +308,27 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with ExecUnitInt 
   mem.noop() // By default
 
   when(pipeFenceI) {
-    io.retirement.wb := DontCare
-    io.retirement.branch.ifence(pipeInstr.instr.addr + 4.U)
+    retire.info.wb := DontCare
+    retire.info.branch.ifence(pipeInstr.instr.addr + 4.U)
   }.elsewhen(pipeInvalAddr) {
-    io.retirement.wb := pipeAddr
-    io.retirement.branch.ex(Mux(
+    retire.info.wb := pipeAddr
+    retire.info.branch.ex(Mux(
       pipeRead,
       ExType.LOAD_ACCESS_FAULT,
       ExType.STORE_ACCESS_FAULT
     ))
   }.elsewhen(pipeMisaligned) {
-    io.retirement.wb := pipeAddr
-    io.retirement.branch.ex(Mux(
+    retire.info.wb := pipeAddr
+    retire.info.branch.ex(Mux(
       pipeRead,
       ExType.LOAD_ADDR_MISALIGN,
       ExType.STORE_ADDR_MISALIGN
     ))
   }.elsewhen(pipeRead && !pipeUncached) {
-    io.retirement.branch.nofire()
-    io.retirement.wb := result
+    retire.info.branch.nofire()
+    retire.info.wb := result
   }.elsewhen(pipeRead) {
-    io.retirement.branch.nofire()
+    retire.info.branch.nofire()
 
     mem.op := DelayedMemOp.ul
     mem.addr := pipeAligned
@@ -344,10 +366,10 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with ExecUnitInt 
       }
     }
 
-    io.retirement.wb := DontCare
+    retire.info.wb := DontCare
     mem.data := DontCare
   }.elsewhen(pipeWrite) {
-    io.retirement.branch.nofire()
+    retire.info.branch.nofire()
 
     mem.len := DontCare
     switch(pipeInstr.instr.instr.funct3) {
@@ -366,16 +388,19 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with ExecUnitInt 
       mem.op := DelayedMemOp.s
     }
 
-    io.retirement.wb := DontCare
+    retire.info.wb := DontCare
     mem.data := pipeInstr.rs2val << (pipeOffset << 3)
   }.otherwise {
     // Inval instr?
-    io.retirement.branch.ex(ExType.ILLEGAL_INSTR)
-    io.retirement.wb := DontCare
+    retire.info.branch.ex(ExType.ILLEGAL_INSTR)
+    retire.info.wb := DontCare
   }
 
   val push = mem.op =/= DelayedMemOp.no && !pipeInstr.instr.vacant
-  io.retirement.hasMem := push
+  when(push) {
+    assert(!l2stall)
+  }
+  retire.info.hasMem := push
   pendings.io.enq.bits := mem
   pendings.io.enq.valid := push
   assert(pendings.io.enq.ready)

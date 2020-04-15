@@ -24,6 +24,13 @@ import chisel3.util.Mux1H
 import _root_.core.Satp
 import paging.TLBExt
 
+trait UnitSelIO {
+  val flush: Bool
+  val rs: ResStationExgress
+  val retire: Retirement
+  val extras: mutable.HashMap[String, Data]
+}
+
 /**
  * Read instructions from reservation stations, and send them into (probably one of multiple) exec unit
  * 
@@ -38,17 +45,11 @@ class UnitSel(
   arbitration: Instr => Seq[Bool],
   bypassIdx: Option[Int] = None,
   hasPipe: Boolean = true
-)(implicit val coredef: CoreDef) extends MultiIOModule {
+)(implicit val coredef: CoreDef) extends MultiIOModule with UnitSelIO {
   val units = gen
 
-  val ctrl = IO(new Bundle {
-    val stall = Output(Bool())
-    // You may never intentionally pause an exec unit
-    val flush = Input(Bool())
-  })
-
+  val flush = IO(Input(Bool()))
   val rs = IO(Flipped(new ResStationExgress))
-
   val retire = IO(Output(new Retirement))
 
   // Extra ports
@@ -59,36 +60,6 @@ class UnitSel(
       val csr = IO(new CSRWriter(coredef.XLEN))
       u.asInstanceOf[WithCSRWriter].writer <> csr
       extras.put("CSR", csr)
-    }
-
-    if(u.isInstanceOf[WithLSUPort]) {
-      val casted = u.asInstanceOf[WithLSUPort]
-      println("Found extra port: LSU")
-      val reader = IO(new DCReader(coredef.L1D))
-      val writer = IO(new DCWriter(coredef.L1D))
-      val uncached = IO(new L1UCPort(coredef.L1D))
-      casted.toMem.reader <> reader
-      casted.toMem.writer <> writer
-      casted.toMem.uncached <> uncached
-
-      val hasPending = IO(Output(Bool()))
-      hasPending := casted.hasPending
-
-      val release = IO(EnqIO(new DelayedMemResult))
-      release <> casted.release
-
-      val satp = IO(Input(new Satp))
-      val ptw = IO(new TLBExt)
-      casted.ptw <> ptw
-      casted.satp := satp
-
-      extras.put("reader", reader)
-      extras.put("writer", writer)
-      extras.put("uncached", uncached)
-      extras.put("hasPending", hasPending)
-      extras.put("release", release)
-      extras.put("satp", satp)
-      extras.put("ptw", ptw)
     }
 
     if(u.isInstanceOf[WithPrivPort]) {
@@ -122,12 +93,8 @@ class UnitSel(
     }
   }
 
-  val stall = false.B
-  ctrl.stall := stall
-
   for(u <- units) {
-    u.io.flush := ctrl.flush
-    u.io.pause := false.B
+    u.io.flush := flush
   }
 
   // Arbitration
@@ -209,7 +176,7 @@ class UnitSel(
     }.otherwise {
       pipeRetire := Retirement.from(units(0).io)
     }
-    when(ctrl.flush) {
+    when(flush) {
       pipeRetire := Retirement.empty
     }
   } else if(maxDepth == 0) {
@@ -218,7 +185,7 @@ class UnitSel(
     retire := pipeRetire
     val validMap = units.map(u => !u.io.stall && !u.io.retired.instr.vacant)
     pipeRetire := Mux1H(validMap.zip(units.map(u => Retirement.from(u.io))))
-    when(!VecInit(validMap).asUInt.orR || ctrl.flush) {
+    when(!VecInit(validMap).asUInt.orR || flush) {
       pipeRetire := Retirement.empty
     }
   } else {
@@ -251,14 +218,14 @@ class UnitSel(
       retireHead := Mux(retireHead === (fifoDepth-1).U, 0.U, retireHead +% 1.U)
     }
 
-    when(ctrl.flush) {
+    when(flush) {
       retireHead := 0.U
       retireTail := 0.U
     }
   }
 
   // Flush
-  when(ctrl.flush) {
+  when(flush) {
     pipeInstrValid := false.B
   }
 }

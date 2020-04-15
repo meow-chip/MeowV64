@@ -268,7 +268,6 @@ class ExecUnitPort(implicit val coredef: CoreDef) extends Bundle {
   val next = Input(new PipeInstr)
 
   val stall = Output(Bool())
-  val pause = Input(Bool())
   val flush = Input(Bool())
 
   val retirement = Output(new RetireInfo)
@@ -333,14 +332,14 @@ abstract class ExecUnit[T <: Data](
       val (fExt, fStall) = connectStage(0, io.next, None)
       var stall = fStall
 
-      when(!io.stall && !io.pause) {
+      when(!io.stall) {
         current(0).pipe := io.next
         current(0).ext := fExt
       }
 
       for(i <- (1 until DEPTH)) {
         val (nExt, sStall) = connectStage(i, current(i-1).pipe, Some(current(i-1).ext))
-        when(!io.stall && !io.pause) {
+        when(!io.stall) {
           current(i).pipe := current(i-1).pipe
           current(i).ext := nExt
         }
