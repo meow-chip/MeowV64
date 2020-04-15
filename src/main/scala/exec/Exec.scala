@@ -193,7 +193,7 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
       lsb
     }
     rs.cdb := cdb
-    rs.exgress <> u.rs
+    rs.egress <> u.rs
 
     rs
   }})
