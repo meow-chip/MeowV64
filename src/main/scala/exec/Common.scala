@@ -42,6 +42,7 @@ import _root_.core.Satp
 class BranchResult(implicit val coredef: CoreDef) extends Bundle {
   val branch = Bool()
   val irst = Bool()
+  val tlbrst = Bool()
   val target = UInt(coredef.XLEN.W)
 
   val ex = ExReq()
@@ -51,6 +52,7 @@ class BranchResult(implicit val coredef: CoreDef) extends Bundle {
     branch := false.B
     target := DontCare
     irst := false.B
+    tlbrst := false.B
 
     ex := ExReq.none
     extype := DontCare
@@ -60,6 +62,7 @@ class BranchResult(implicit val coredef: CoreDef) extends Bundle {
     branch := true.B
     target := addr
     irst := false.B
+    tlbrst := false.B
 
     ex := ExReq.none
     extype := DontCare
@@ -69,6 +72,17 @@ class BranchResult(implicit val coredef: CoreDef) extends Bundle {
     branch := true.B
     target := addr
     irst := true.B
+    tlbrst := false.B
+
+    ex := ExReq.none
+    extype := DontCare
+  }
+
+  def sfence(addr: UInt) = {
+    branch := true.B
+    target := addr
+    irst := false.B
+    tlbrst := true.B
 
     ex := ExReq.none
     extype := DontCare
@@ -436,21 +450,6 @@ class CDB(implicit val coredef: CoreDef) extends Bundle {
 class DelayedMemResult(implicit val coredef: CoreDef) extends Bundle {
   val isLoad = Bool()
   val data = UInt(coredef.XLEN.W)
-}
-
-trait WithLSUPort {
-  val toMem: Bundle {
-    val reader: DCReader
-    val writer: DCWriter
-    val uncached: L1UCPort
-  }
-
-  val ptw: TLBExt
-  val satp: Satp
-
-  val hasPending: Bool
-
-  val release: DecoupledIO[DelayedMemResult]
 }
 
 trait WithCSRWriter {

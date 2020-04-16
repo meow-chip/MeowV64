@@ -51,6 +51,9 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
 
     val ctrl = StageCtrl.stage()
     val irst = Input(Bool())
+    val tlbrst = Input(Bool())
+
+    val priv = PrivLevel()
   })
 
   val toIC = IO(Flipped(new ICPort(coredef.L1I)))
@@ -81,10 +84,12 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
   }
 
   val tlb = Module(new TLB)
+  val requiresTranslate = toCore.satp.mode =/= SatpMode.bare && toCtrl.priv <= PrivLevel.S
   tlb.ptw <> toCore.ptw
   tlb.satp := toCore.satp
   tlb.query.vpn := pc(47, 12) // TODO: judge on SATP
-  tlb.query.query := toCore.satp.mode =/= SatpMode.bare
+  tlb.query.query := requiresTranslate
+  tlb.flush := toCtrl.tlbrst
 
   toBPU.pc := RegNext(pc) // Perdict by virtual memory
   // TODO: flush BPU on context switch
@@ -110,7 +115,7 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
   val fpc = WireDefault(pc)
   val icAddr = WireDefault(fpc)
   val icRead = WireDefault(!haltIC)
-  when(toCore.satp.mode =/= SatpMode.bare) {
+  when(requiresTranslate) {
     icAddr := tlb.query.ppn ## fpc(11, 0)
     icRead := !haltIC && tlb.query.ready
   }
@@ -214,7 +219,8 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
 
   toCtrl.ctrl.stall := haltIC || toIC.stall
 
-  val pendingIRST = RegInit(false.B)
+  val pendingIRst = RegInit(false.B)
+  val pendingTLBRst = RegInit(false.B)
   val pendingFlush = RegInit(false.B)
 
   ICQueue.io.flush := false.B
@@ -235,9 +241,10 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
   )
   pipeSpecBr := VecInit(pipeSpecBrMask).asUInt.orR && RegNext(!toCtrl.ctrl.flush && !pipeSpecBr)
 
-  when(pipeSpecBr) {
-    pendingIRST := false.B
+  // TODO: this will cause the flush to be sent one more tick
+  val readStalled = toIC.stall || !tlb.query.ready
 
+  when(pipeSpecBr) {
     ICQueue.io.flush := true.B
     ICHead.io.flush := true.B
     // Do not push into issue fifo in this cycle
@@ -248,8 +255,10 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
     val rawbpc = pipeSpecBrTarget(coredef.XLEN-1, ICAlign) ## 0.U(ICAlign.W)
     val bpc = WireDefault(rawbpc)
 
-    when(toIC.stall) {
-      pendingIRST := false.B
+    pendingIRst := false.B
+    pendingTLBRst := toCtrl.tlbrst
+
+    when(readStalled) {
       pendingFlush := true.B
     }.otherwise {
       bpc := rawbpc + (1.U << ICAlign)
@@ -258,7 +267,7 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
     pc := bpc
     fpc := rawbpc
     toBPU.pc := rawbpc
-    when(!toIC.stall) {
+    when(!readStalled) {
       pipePc := rawbpc
     }
   }
@@ -276,9 +285,11 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
     val rawbpc = toCtrl.pc(coredef.XLEN-1, ICAlign) ## 0.U(ICAlign.W)
     val bpc = WireDefault(rawbpc)
 
-    when(toIC.stall) {
+    pendingIRst := toCtrl.irst
+    pendingTLBRst := toCtrl.tlbrst
+
+    when(readStalled) {
       pendingFlush := true.B
-      pendingIRST := toCtrl.irst
     }.otherwise {
       bpc := rawbpc + (1.U << ICAlign)
     }
@@ -288,15 +299,16 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
 
     fpc := rawbpc
     toBPU.pc := rawbpc
-    when(!toIC.stall) {
+    when(!readStalled) {
       pipePc := rawbpc
     }
   }
 
   when(pendingFlush) {
-    toIC.rst := pendingIRST
+    toIC.rst := pendingIRst
+    tlb.flush := pendingTLBRst
     ICQueue.io.enq.noenq()
-    when(!toIC.stall) {
+    when(!toIC.stall) { // TLB will flush within one tick
       pendingFlush := false.B
     }
   }

@@ -133,7 +133,11 @@ class Branch(override implicit val coredef: CoreDef)
       // info.wb := 0.U // tval
       info.branch.ex(ext.extype)
     }.elsewhen(pipe.instr.instr.op === Decoder.Op("SYSTEM").ident) {
-      info.branch.nofire()
+      when(pipe.instr.instr.funct7 === Decoder.PRIV_FUNCT7("SFENCE.VMA")) {
+        info.branch.sfence(pipe.instr.addr +% 4.U)
+      }.otherwise {
+        info.branch.nofire()
+      }
     }.elsewhen(pipe.instr.instr.op === Decoder.Op("BRANCH").ident) {
       // info.regWaddr := 0.U
       when(ext.branched) {

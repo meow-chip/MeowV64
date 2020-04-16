@@ -16,6 +16,7 @@ import _root_.core.SatpMode
 import paging.TLBExt
 import exec.UnitSel.Retirement
 import scala.collection.mutable
+import _root_.core.PrivLevel
 
 /**
  * DelayedMem = Delayed memory access, memory accesses that have side-effects and thus
@@ -136,7 +137,7 @@ class DelayedMem(implicit val coredef: CoreDef) extends Bundle {
   }
 }
 
-class LSU(implicit val coredef: CoreDef) extends MultiIOModule with UnitSelIO with exec.WithLSUPort {
+class LSU(implicit val coredef: CoreDef) extends MultiIOModule with UnitSelIO {
   val flush = IO(Input(Bool()))
   val rs = IO(Flipped(new ResStationExgress))
   val retire = IO(Output(new Retirement))
@@ -156,11 +157,15 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with UnitSelIO wi
 
   val satp = IO(Input(new Satp))
   val ptw = IO(new TLBExt)
+  val tlbrst = IO(Input(Bool()))
+  val priv = IO(Input(PrivLevel()))
 
   val tlb = Module(new TLB)
+  val requiresTranslate = satp.mode =/= SatpMode.bare && priv <= PrivLevel.S
   tlb.satp := satp
   tlb.ptw <> ptw
-  tlb.query.query := satp.mode =/= SatpMode.bare && !next.instr.vacant
+  tlb.query.query := requiresTranslate && !next.instr.vacant
+  tlb.flush := tlbrst
 
   val flushed = RegInit(false.B)
 
@@ -221,7 +226,7 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with UnitSelIO wi
   val rawAddr = (next.rs1val.asSInt + next.instr.instr.imm).asUInt
   tlb.query.vpn := rawAddr(47, 12)
   val addr = WireDefault(rawAddr)
-  when(satp.mode =/= SatpMode.bare) {
+  when(requiresTranslate) {
     addr := tlb.query.ppn ## rawAddr(11, 0)
   }
 
@@ -236,13 +241,13 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with UnitSelIO wi
 
   toMem.reader.addr := aligned
   toMem.reader.read := read && !uncached && !invalAddr && !misaligned && !flush
-  when(satp.mode =/= SatpMode.bare) {
+  when(requiresTranslate) {
     when(!tlb.query.ready) {
       toMem.reader.read := false.B
     }
   }
 
-  when(satp.mode =/= SatpMode.bare) {
+  when(requiresTranslate) {
     when(!tlb.query.ready && tlb.query.query) {
       toMem.reader.read := true.B
       l1stall := true.B

@@ -19,9 +19,13 @@ class TLB(implicit coredef: CoreDef) extends MultiIOModule {
 
     val query = Input(Bool())
     val ready = Output(Bool())
+    val fault = Output(Bool())
   })
 
+  val flush = IO(Input(Bool()))
+
   // TODO: check for privilege, validness, etc...
+  // TODO: state machine
 
   val storage = RegInit(VecInit(Seq.fill(coredef.TLB_SIZE)(TLBEntry.empty)))
 
@@ -30,11 +34,16 @@ class TLB(implicit coredef: CoreDef) extends MultiIOModule {
   val hitResult = Mux1H(hitMap, storage.map(_.ppn))
 
   val inStore = VecInit(hitMap).asUInt().orR()
-  query.ready := inStore && query.query
+  val faulted = RegNext(ptw.fault && ptw.req.fire())
+  query.ready := (inStore || faulted) && !flush
   query.ppn := hitResult
+  query.fault := faulted
 
   // Refilling
   ptw.req.noenq()
+  when(query.query && !faulted && !inStore) {
+    ptw.req.enq(query.vpn)
+  }
 
   val random = LFSR(log2Ceil(coredef.TLB_SIZE))
   val invalids = storage.map(!_.v)
@@ -48,8 +57,13 @@ class TLB(implicit coredef: CoreDef) extends MultiIOModule {
   // PTW has a latency much greater than 1, so we can use an RegNext here
   val written = TLBEntry.fromPTE(RegNext(query.vpn), ptw.level, ptw.resp)
 
-  when(ptw.req.fire()) {
+  when(ptw.req.fire() && !ptw.fault) {
     storage(victim) := written
-    // TODO: handles fault
+  }
+
+  when(flush) {
+    for(slot <- storage) {
+      slot.v := false.B
+    }
   }
 }

@@ -49,6 +49,9 @@ class Ctrl(implicit coredef: CoreDef) extends MultiIOModule {
 
     val pc = Output(UInt(coredef.XLEN.W))
     val irst = Output(Bool())
+    val tlbrst = Output(Bool())
+
+    val priv = Output(PrivLevel())
   })
 
   val br = IO(new Bundle {
@@ -67,6 +70,8 @@ class Ctrl(implicit coredef: CoreDef) extends MultiIOModule {
 
     val priv = Output(PrivLevel())
     val status = Output(new Status)
+
+    val tlbrst = Output(Bool())
   })
 
   val eint = IO(Input(Bool()))
@@ -94,12 +99,19 @@ class Ctrl(implicit coredef: CoreDef) extends MultiIOModule {
     val stval = new CSRPort(coredef.XLEN)
   });
 
+  // Privilege level
+  val priv = RegInit(PrivLevel.M);
+  toExec.priv := priv;
+
   val snepc = RegInit(coredef.INIT_VEC.U(coredef.XLEN.W))
 
   toIF.ctrl.flush := false.B
   toExec.ctrl.flush := false.B
+  toExec.tlbrst := false.B
   toIF.irst := DontCare
+  toIF.tlbrst := false.B
   toIF.pc := DontCare
+  toIF.priv := priv
 
   val branch = Wire(Bool())
   val baddr = Wire(UInt(coredef.XLEN.W))
@@ -107,10 +119,6 @@ class Ctrl(implicit coredef: CoreDef) extends MultiIOModule {
   // xEPC in the front!
   val mepc = RegInit(0.U(coredef.XLEN.W))
   val sepc = RegInit(0.U(coredef.XLEN.W))
-
-  // Privilege level
-  val priv = RegInit(PrivLevel.M);
-  toExec.priv := priv;
 
   // Next retired instruction
   val nepc = Wire(UInt(coredef.XLEN.W))
@@ -132,7 +140,6 @@ class Ctrl(implicit coredef: CoreDef) extends MultiIOModule {
   }
 
   // Rst comes together with an branch
-  // TODO: impl rst (a.k.a. FENCE.I)
 
   // IF control && PC controllert
   when(branch) {
@@ -146,6 +153,9 @@ class Ctrl(implicit coredef: CoreDef) extends MultiIOModule {
     // pc := alignedPC + (Const.INSTR_MIN_WIDTH / 8 * coredef.FETCH_NUM).U
     toIF.pc := baddr
     toIF.irst := br.req.irst
+    toIF.tlbrst := br.req.tlbrst
+
+    toExec.tlbrst := br.req.tlbrst
 
     snepc := baddr
   }

@@ -49,6 +49,8 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
 
     val priv = Input(PrivLevel())
     val status = Input(new Status)
+
+    val tlbrst = Input(Bool())
   })
 
   val toBPU = IO(new Bundle {
@@ -173,6 +175,7 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
   lsu.release <> releaseMem
   lsu.ptw <> toCore.ptw
   lsu.satp := toCore.satp
+  lsu.priv := toCtrl.priv
   val hasPendingMem = lsu.hasPending
 
   // Connect extra ports

@@ -97,6 +97,7 @@ object TLBEntry {
 class TLBExt(implicit val coredef: CoreDef) extends Bundle {
   val req = DecoupledIO(UInt(coredef.vpnWidth.W))
   val resp = Input(new PTE)
+  val fault = Input(Bool())
   val level = Input(UInt(2.W)) // TODO: change into config
 }
 

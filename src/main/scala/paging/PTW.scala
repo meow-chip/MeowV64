@@ -38,9 +38,12 @@ class PTW(implicit coredef: CoreDef) extends MultiIOModule {
   val raddr = RegInit(0.U(coredef.PADDR_WIDTH.W))
 
   val resp = Wire(new PTE)
+  val fault = WireDefault(false.B)
   resp := DontCare
   itlb.resp := resp
   dtlb.resp := resp
+  itlb.fault := fault
+  dtlb.fault := fault
 
   itlb.level := level
   dtlb.level := level
@@ -68,6 +71,7 @@ class PTW(implicit coredef: CoreDef) extends MultiIOModule {
               // Reached last level
               state := PTWState.idle
               resp := pte
+              fault := true.B
               arbiter.io.out.deq()
             } otherwise {
               // Continue searching
@@ -82,6 +86,7 @@ class PTW(implicit coredef: CoreDef) extends MultiIOModule {
         } otherwise {
           state := PTWState.idle
           resp := PTE.empty
+          fault := true.B
           arbiter.io.out.deq()
         }
       }
