@@ -151,7 +151,7 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with UnitSelIO {
 
   // FIXME: ValidIO resp
   val toMem = IO(new Bundle {
-    val reader = new DCReader(coredef.L1D)
+    val reader = new DCReader
     val writer = new DCWriter(coredef.L1D)
     val uncached = new L1UCPort(coredef.L1D)
   })
@@ -176,19 +176,8 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with UnitSelIO {
   val pendings = Module(new FlushableQueue(new DelayedMem, coredef.INFLIGHT_INSTR_LIMIT))
   hasPending := pendings.io.count > 0.U || pendings.io.enq.fire()
 
-  val l2stall = toMem.reader.stall
-  val l1stall = WireDefault(l2stall)
-
-  toMem.reader := DontCare
-  toMem.reader.read := false.B
-
-  when(flush && toMem.reader.stall) {
-    flushed := true.B
-  }
-
-  when(!l2stall) {
-    flushed := false.B
-  }
+  val l2stall = Wire(Bool())
+  val l1pass = Wire(Bool())
 
   pendings.io.flush := flush
 
@@ -240,32 +229,50 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with UnitSelIO {
   val invalAddr = isInvalAddr(addr)
   val misaligned = isMisaligned(offset, next.instr.instr.funct3)
 
-  toMem.reader.addr := aligned
-  toMem.reader.read := read && !uncached && !invalAddr && !misaligned && !flush
+  // Maybe we can let flushed request go through
+  val canRead = WireDefault(read && !uncached && !invalAddr && !misaligned && !flush)
   when(requiresTranslate) {
     when(!tlb.query.ready) {
-      toMem.reader.read := false.B
+      canRead := false.B
     }
   }
 
-  when(requiresTranslate) {
-    when(!tlb.query.ready && tlb.query.query) {
-      toMem.reader.read := true.B
-      l1stall := true.B
-    }
+  when(canRead) {
+    toMem.reader.req.enq(aligned)
+  }.otherwise {
+    toMem.reader.req.noenq()
   }
 
-  rs.pop := !l1stall
+  when(next.instr.vacant) {
+    l1pass := false.B
+  }.elsewhen(requiresTranslate && !tlb.query.ready) {
+    l1pass := false.B
+  }.elsewhen(toMem.reader.req.valid) {
+    l1pass := toMem.reader.req.ready
+  }.otherwise {
+    l1pass := true.B
+  }
+
+  when(l2stall) {
+    assert(!toMem.reader.req.ready) // req.ready must be false
+  }
+
+  rs.pop := l1pass
 
   /**
    * Stage 2 state
    */
   val pipeInstr = RegInit(PipeInstr.empty)
   val pipeAddr = Reg(UInt(coredef.XLEN.W))
-  when(!l1stall) {
+  val pipeDCRead = Reg(Bool())
+  l2stall := !toMem.reader.resp.valid && !pipeInstr.instr.vacant && pipeDCRead
+  when(l1pass) {
     pipeInstr := next
     pipeAddr := addr
-    assert(!l2stall)
+    pipeDCRead := toMem.reader.req.fire()
+    when(!flush) {
+      assert(!l2stall)
+    }
   }.elsewhen(!l2stall) {
     pipeInstr.instr.vacant := true.B
   }
@@ -288,11 +295,18 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with UnitSelIO {
   val pipeMisaligned = isMisaligned(pipeOffset, pipeInstr.instr.instr.funct3)
 
   retire.instr := pipeInstr
+  /*
+   * We should be able to ignore keeping track of flushed here
+   * Because if there was an flush, and an corresponding request is running inside DC,
+   * then stage 1 requests will never be able to enter stage 2, because DC read ops are in-order
+   * 
+   * If we add MSHR, then we need to keep track of flushed requests
+   */
   when(l2stall) {
     retire.instr.instr.vacant := true.B
   }
 
-  val shifted = toMem.reader.data >> (pipeOffset << 3) // TODO: use lookup table?
+  val shifted = toMem.reader.resp.bits >> (pipeOffset << 3) // TODO: use lookup table?
   val signedResult = Wire(SInt(coredef.XLEN.W)).suggestName("signedResult")
   val result = Wire(UInt(coredef.XLEN.W)).suggestName("result")
   shifted.suggestName("shifted")

@@ -7,6 +7,7 @@ import chisel3.util.RRArbiter
 import _root_.core.CoreDef
 import _root_.core.Satp
 import _root_.util.FlushableSlot
+import cache.DCReader
 
 object PTWState extends ChiselEnum {
   val idle, reading, read = Value
@@ -17,7 +18,7 @@ class PTW(implicit coredef: CoreDef) extends MultiIOModule {
   val dtlb = IO(Flipped(new TLBExt))
 
   val satp = IO(Input(new Satp))
-  val dc = IO(new PTWExt)
+  val dc = IO(new DCReader)
   dc.req.noenq()
 
   val arbiter = Module(new RRArbiter(UInt(coredef.vpnWidth.W), 2))

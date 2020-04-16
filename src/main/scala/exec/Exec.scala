@@ -76,7 +76,7 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
   val toIF = IO(new MultiQueueIO(new InstrExt, coredef.ISSUE_NUM))
 
   val toDC = IO(new Bundle {
-    val r = new DCReader(coredef.L1D)
+    val r = new DCReader
     val w = new DCWriter(coredef.L1D)
     val fs = new DCFenceStatus(coredef.L1D)
     val u = new L1UCPort(coredef.L1D)

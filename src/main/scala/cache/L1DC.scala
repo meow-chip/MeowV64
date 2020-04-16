@@ -8,10 +8,15 @@ import chisel3.util._
 import Chisel.experimental.chiselName
 import cache.L1DCPort.L2Req
 import cache.L1DCPort.L1Req
-import paging.PTWExt
 import _root_.core.CoreDef
+import _root_.util.FlushableSlot
 
-class DCReader(val opts: L1DOpts) extends Bundle {
+class DCReader(implicit val coredef: CoreDef) extends Bundle {
+  val req = DecoupledIO(UInt(coredef.PADDR_WIDTH.W))
+  val resp = Input(ValidIO(UInt(coredef.XLEN.W)))
+}
+
+class DCInnerReader(val opts: L1DOpts) extends Bundle {
   val addr = Output(UInt(opts.ADDR_WIDTH.W))
   val read = Output(Bool())
   val data = Input(UInt(opts.TRANSFER_SIZE.W))
@@ -82,26 +87,30 @@ class L1DC(val opts: L1DOpts)(implicit coredef: CoreDef) extends MultiIOModule {
   val stores = SyncReadMem(LINE_PER_ASSOC, Vec(opts.ASSOC, new DLine(opts)))
 
   // Ports, mr = Memory read, ptw = Page table walker
-  val mr = IO(Flipped(new DCReader(opts)))
-  val ptw = IO(Flipped(new PTWExt))
+  val mr = IO(Flipped(new DCReader))
+  val ptw = IO(Flipped(new DCReader))
   val w = IO(Flipped(new DCWriter(opts)))
   val fs = IO(Flipped(new DCFenceStatus(opts)))
   val toL2 = IO(new L1DCPort(opts))
 
   // Convert mr + ptw to r
-  val rarbiter = Module(new RRArbiter(UInt(coredef.PADDR_WIDTH.W), 2))
-  val r = Wire(new DCReader(opts))
-  r.read := rarbiter.io.out.valid
-  rarbiter.io.out.ready := !r.stall
-  r.addr := rarbiter.io.out.bits
+  val rArbiter = Module(new RRArbiter(UInt(coredef.PADDR_WIDTH.W), 2))
+  class RReq extends Bundle {
+    val addr = UInt(coredef.PADDR_WIDTH.W)
+    val chosen = UInt()
+  }
 
-  rarbiter.io.in(0) <> ptw.req
-  rarbiter.io.in(1).valid := mr.read
-  rarbiter.io.in(1).bits := mr.addr
+  val r = Wire(new DCInnerReader(opts))
+  r.read := rArbiter.io.out.valid
+  rArbiter.io.out.ready := !r.stall
+  r.addr := rArbiter.io.out.bits
+
+  rArbiter.io.in(0) <> ptw.req
+  rArbiter.io.in(1) <> mr.req
 
   val current = Reg(UInt())
-  when(rarbiter.io.out.fire()) {
-    current := rarbiter.io.chosen
+  when(rArbiter.io.out.fire()) {
+    current := rArbiter.io.chosen
   }
 
   // Asserting that in-line offset is 0
@@ -116,11 +125,10 @@ class L1DC(val opts: L1DOpts)(implicit coredef: CoreDef) extends MultiIOModule {
   val pipeRead = RegInit(false.B)
   val pipeAddr = RegInit(0.U(opts.ADDR_WIDTH.W))
 
-  // TODO: convert MR into ValidIO
-  mr.stall := !rarbiter.io.in(1).ready
-  mr.data := r.data
   ptw.resp.bits := r.data
   ptw.resp.valid := pipeRead && !r.stall && current === 0.U
+  mr.resp.bits := r.data
+  mr.resp.valid := pipeRead && !r.stall && current === 1.U
 
   val queryAddr = Wire(UInt(opts.ADDR_WIDTH.W))
   val lookups = stores.read(getIndex(queryAddr))

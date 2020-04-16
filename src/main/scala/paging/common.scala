@@ -100,8 +100,3 @@ class TLBExt(implicit val coredef: CoreDef) extends Bundle {
   val fault = Input(Bool())
   val level = Input(UInt(2.W)) // TODO: change into config
 }
-
-class PTWExt(implicit val coredef: CoreDef) extends Bundle {
-  val req = DecoupledIO(UInt(coredef.PADDR_WIDTH.W))
-  val resp = Input(ValidIO(UInt(coredef.XLEN.W)))
-}

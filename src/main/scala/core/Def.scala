@@ -61,7 +61,7 @@ abstract class CoreDef {
     val ASSOC: Int = 2
     val LINE_WIDTH: Int = outer.L12_LINE_WIDTH
     val SIZE: Int = 2048 // 4K L1 D
-    val TRANSFER_SIZE: Int = outer.XLEN
+    val TRANSFER_SIZE: Int = outer.XLEN // Currently, this is required
     val XLEN: Int = outer.XLEN
 
     val WRITE_BUF_DEPTH: Int = 4
