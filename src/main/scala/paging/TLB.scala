@@ -25,7 +25,8 @@ class TLB(implicit coredef: CoreDef) extends MultiIOModule {
   val flush = IO(Input(Bool()))
 
   // TODO: check for privilege, validness, etc...
-  // TODO: state machine
+  // FIXME: state machine
+  // IF can be flushed during a blocked TLB refill, so we need to ensure that we properly handles it
 
   val storage = RegInit(VecInit(Seq.fill(coredef.TLB_SIZE)(TLBEntry.empty)))
 

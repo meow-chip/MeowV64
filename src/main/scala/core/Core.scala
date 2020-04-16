@@ -61,6 +61,7 @@ class Core(implicit val coredef: CoreDef = DefaultDef) extends Module {
   exec.toDC.u <> l2.directs(0)
   
   exec.toCtrl.ctrl <> ctrl.toExec.ctrl
+  exec.toCtrl.tlbrst := ctrl.toExec.tlbrst
 
   exec.toCore.ptw <> ptw.dtlb
 

@@ -149,6 +149,7 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with UnitSelIO {
     next.instr.vacant := true.B
   }
 
+  // FIXME: ValidIO resp
   val toMem = IO(new Bundle {
     val reader = new DCReader(coredef.L1D)
     val writer = new DCWriter(coredef.L1D)

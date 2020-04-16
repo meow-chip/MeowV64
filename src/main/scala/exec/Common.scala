@@ -92,6 +92,7 @@ class BranchResult(implicit val coredef: CoreDef) extends Bundle {
     branch := false.B
     target := DontCare
     irst := false.B
+    tlbrst := false.B
 
     ex := ExReq.ex
     extype := et
@@ -101,6 +102,7 @@ class BranchResult(implicit val coredef: CoreDef) extends Bundle {
     branch := false.B
     target := DontCare
     irst := false.B
+    tlbrst := false.B
 
     ex := ExReq.mret
     extype := DontCare

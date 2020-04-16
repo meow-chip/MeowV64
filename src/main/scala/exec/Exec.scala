@@ -176,6 +176,7 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
   lsu.ptw <> toCore.ptw
   lsu.satp := toCore.satp
   lsu.priv := toCtrl.priv
+  lsu.tlbrst := toCtrl.tlbrst
   val hasPendingMem = lsu.hasPending
 
   // Connect extra ports
@@ -425,7 +426,6 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
       rob(retirePtr).valid := false.B
       retirePtr := retirePtr +% 1.U
       when(memResult.isLoad) {
-        // TODO: FIXME
         cdb.entries(coredef.UNIT_COUNT).name := retirePtr // tag === rdname
         cdb.entries(coredef.UNIT_COUNT).data := memResult.data
         cdb.entries(coredef.UNIT_COUNT).valid := true.B

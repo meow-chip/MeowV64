@@ -53,7 +53,7 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
     val irst = Input(Bool())
     val tlbrst = Input(Bool())
 
-    val priv = PrivLevel()
+    val priv = Input(PrivLevel())
   })
 
   val toIC = IO(Flipped(new ICPort(coredef.L1I)))
@@ -74,24 +74,31 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
   })
   
   val pc = RegInit(coredef.INIT_VEC.U(coredef.XLEN.W)) // This should be aligned
+  val fpc = WireDefault(pc)
+  pc := fpc
   val pipePc = RegInit(0.U(coredef.XLEN.W))
-  when(!toIC.stall) {
-    pipePc := pc
-
-    when(toIC.read) {
-      pc := pc + (coredef.L1I.TRANSFER_SIZE / 8).U
-    }
-  }
 
   val tlb = Module(new TLB)
   val requiresTranslate = toCore.satp.mode =/= SatpMode.bare && toCtrl.priv <= PrivLevel.S
+  // TODO: this will cause the flush to be sent one more tick
+  val readStalled = toIC.stall || (requiresTranslate && !tlb.query.ready)
+
+  when(!readStalled) {
+    pipePc := fpc
+
+    when(toIC.read) {
+      pc := fpc + (coredef.L1I.TRANSFER_SIZE / 8).U
+    }
+  }
+
   tlb.ptw <> toCore.ptw
   tlb.satp := toCore.satp
-  tlb.query.vpn := pc(47, 12) // TODO: judge on SATP
+  tlb.query.vpn := pc(47, 12)
   tlb.query.query := requiresTranslate
   tlb.flush := toCtrl.tlbrst
 
-  toBPU.pc := RegNext(pc) // Perdict by virtual memory
+  // FIXME: This one was RegNect(pc). Why regnext?
+  toBPU.pc := fpc // Perdict by virtual memory
   // TODO: flush BPU on context switch
 
   // TODO: BHT
@@ -112,7 +119,6 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
   val pipeSpecBr = Wire(Bool())
 
   val haltIC = ICQueue.io.count >= 1.U && !toCtrl.ctrl.flush && !pipeSpecBr
-  val fpc = WireDefault(pc)
   val icAddr = WireDefault(fpc)
   val icRead = WireDefault(!haltIC)
   when(requiresTranslate) {
@@ -241,9 +247,6 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
   )
   pipeSpecBr := VecInit(pipeSpecBrMask).asUInt.orR && RegNext(!toCtrl.ctrl.flush && !pipeSpecBr)
 
-  // TODO: this will cause the flush to be sent one more tick
-  val readStalled = toIC.stall || !tlb.query.ready
-
   when(pipeSpecBr) {
     ICQueue.io.flush := true.B
     ICHead.io.flush := true.B
@@ -251,56 +254,34 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
     issueFifo.writer.cnt := 0.U
 
     val ICAlign = log2Ceil(coredef.L1I.TRANSFER_SIZE / 8)
+    fpc := pipeSpecBrTarget(coredef.XLEN-1, ICAlign) ## 0.U(ICAlign.W)
     headPtr := pipeSpecBrTarget(ICAlign-1, log2Ceil(Const.INSTR_MIN_WIDTH / 8))
-    val rawbpc = pipeSpecBrTarget(coredef.XLEN-1, ICAlign) ## 0.U(ICAlign.W)
-    val bpc = WireDefault(rawbpc)
 
     pendingIRst := false.B
     pendingTLBRst := toCtrl.tlbrst
 
     when(readStalled) {
       pendingFlush := true.B
-    }.otherwise {
-      bpc := rawbpc + (1.U << ICAlign)
-    }
-
-    pc := bpc
-    fpc := rawbpc
-    toBPU.pc := rawbpc
-    when(!readStalled) {
-      pipePc := rawbpc
     }
   }
 
   // Flushing
+
   when(toCtrl.ctrl.flush) {
     issueFifo.flush := true.B
     ICQueue.io.flush := true.B
     ICHead.io.flush := true.B
     toCtrl.ctrl.stall := false.B
-  }
 
-  when(toCtrl.ctrl.flush) {
     val ICAlign = log2Ceil(coredef.L1I.TRANSFER_SIZE / 8)
-    val rawbpc = toCtrl.pc(coredef.XLEN-1, ICAlign) ## 0.U(ICAlign.W)
-    val bpc = WireDefault(rawbpc)
+    fpc := toCtrl.pc(coredef.XLEN-1, ICAlign) ## 0.U(ICAlign.W)
+    headPtr := toCtrl.pc(ICAlign-1, log2Ceil(Const.INSTR_MIN_WIDTH / 8))
 
     pendingIRst := toCtrl.irst
     pendingTLBRst := toCtrl.tlbrst
 
     when(readStalled) {
       pendingFlush := true.B
-    }.otherwise {
-      bpc := rawbpc + (1.U << ICAlign)
-    }
-
-    pc := bpc
-    headPtr := toCtrl.pc(ICAlign-1, log2Ceil(Const.INSTR_MIN_WIDTH / 8))
-
-    fpc := rawbpc
-    toBPU.pc := rawbpc
-    when(!readStalled) {
-      pipePc := rawbpc
     }
   }
 
@@ -317,5 +298,5 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
 
   // TODO: asserts that decodable is shaped like [true, ..., true, false, ..., false] when there is no BPU
 
-  debug.pc := toIC.addr
+  debug.pc := fpc
 }

@@ -54,7 +54,7 @@ class TLBEntry(implicit val coredef: CoreDef) extends Bundle {
     var result = v
     for(i <- 0 until MAX_VPN_SEG) {
       val ignore = i.U > level
-      val base = 9 * i
+      val base = coredef.vpnWidth - 9 * (i+1)
       result = Mux(
         ignore,
         result,
@@ -103,5 +103,5 @@ class TLBExt(implicit val coredef: CoreDef) extends Bundle {
 
 class PTWExt(implicit val coredef: CoreDef) extends Bundle {
   val req = DecoupledIO(UInt(coredef.PADDR_WIDTH.W))
-  val resp = Input(UInt(coredef.XLEN.W))
+  val resp = Input(ValidIO(UInt(coredef.XLEN.W)))
 }

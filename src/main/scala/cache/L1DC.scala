@@ -98,9 +98,11 @@ class L1DC(val opts: L1DOpts)(implicit coredef: CoreDef) extends MultiIOModule {
   rarbiter.io.in(0) <> ptw.req
   rarbiter.io.in(1).valid := mr.read
   rarbiter.io.in(1).bits := mr.addr
-  mr.stall := !rarbiter.io.in(1).ready
-  ptw.resp := r.data
-  mr.data := r.data
+
+  val current = Reg(UInt())
+  when(rarbiter.io.out.fire()) {
+    current := rarbiter.io.chosen
+  }
 
   // Asserting that in-line offset is 0
   assert((!r.read) || r.addr(IGNORED_WIDTH-1, 0) === 0.U)
@@ -113,6 +115,12 @@ class L1DC(val opts: L1DOpts)(implicit coredef: CoreDef) extends MultiIOModule {
   // Read pipes
   val pipeRead = RegInit(false.B)
   val pipeAddr = RegInit(0.U(opts.ADDR_WIDTH.W))
+
+  // TODO: convert MR into ValidIO
+  mr.stall := !rarbiter.io.in(1).ready
+  mr.data := r.data
+  ptw.resp.bits := r.data
+  ptw.resp.valid := pipeRead && !r.stall && current === 0.U
 
   val queryAddr = Wire(UInt(opts.ADDR_WIDTH.W))
   val lookups = stores.read(getIndex(queryAddr))
