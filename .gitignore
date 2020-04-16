@@ -346,3 +346,6 @@ hs_err_pid*
 test_run_dir
 
 .vscode
+
+.jvmopts
+.sbtopts
