@@ -1,6 +1,7 @@
 SRCS:=$(wildcard src/*.S)
 BINS:=$(patsubst src/%.S,bin/%.bin,$(SRCS))
-TMPS:=$(patsubst src/%.S,bin/%.bin.tmp,$(SRCS))
+LINKEDS:=$(patsubst src/%.S,bin/%.bin.linked,$(SRCS))
+ASSEMBLED:=$(patsubst src/%.S,bin/%.bin.assembled,$(SRCS))
 HEXS:=$(patsubst src/%.S,hex/%.hex,$(SRCS))
 
 CSRCS:=$(wildcard c/*.c)
@@ -14,8 +15,9 @@ all: $(BINS) $(HEXS)
 
 bin/%.bin: src/%.S Makefile
 	mkdir -p bin
-	$(PREFIX)as -march=rv64imc $< -o $@.tmp
-	$(PREFIX)ld $@.tmp -o $@
+	$(PREFIX)as -march=rv64imc $< -o $@.assembled
+	$(PREFIX)ld $@.assembled -o $@.linked
+	cp $@.linked $@
 	$(PREFIX)objcopy -O binary $@
 
 hex/%.hex: bin/%.bin Makefile
