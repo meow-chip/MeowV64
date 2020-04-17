@@ -99,13 +99,13 @@ class BranchResult(implicit val coredef: CoreDef) extends Bundle {
     extype := et
   }
 
-  def mret() {
+  def ret(req: ExReq.Type) {
     branch := false.B
     target := DontCare
     irst := false.B
     tlbrst := false.B
 
-    ex := ExReq.mret
+    ex := req
     extype := DontCare
   }
 

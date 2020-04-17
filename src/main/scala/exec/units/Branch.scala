@@ -125,13 +125,13 @@ class Branch(override implicit val coredef: CoreDef)
   def finalize(pipe: PipeInstr, ext: BranchExt): RetireInfo = {
     val info = WireDefault(RetireInfo.vacant)
 
-    when(ext.ex === ExReq.mret) {
-      // info.regWaddr := 0.U
-      info.branch.mret()
-    }.elsewhen(ext.ex === ExReq.ex) {
+    when(ext.ex === ExReq.ex) {
       // info.regWaddr := 0.U
       // info.wb := 0.U // tval
       info.branch.ex(ext.extype)
+    }.elsewhen(ext.ex =/= ExReq.none) {
+      // info.regWaddr := 0.U
+      info.branch.ret(ext.ex)
     }.elsewhen(pipe.instr.instr.op === Decoder.Op("SYSTEM").ident) {
       when(pipe.instr.instr.funct7 === Decoder.PRIV_FUNCT7("SFENCE.VMA")) {
         info.branch.sfence(pipe.instr.addr +% 4.U)
