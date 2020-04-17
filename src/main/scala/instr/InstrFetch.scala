@@ -9,8 +9,7 @@ import chisel3.util._
 import chisel3.experimental.chiselName
 import chisel3.experimental.ChiselEnum
 import _root_.util._
-import paging.TLB
-import paging.TLBExt
+import paging._
 
 object FetchEx extends ChiselEnum {
   val none, invalAddr, pageFault = Value
@@ -101,7 +100,7 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
   tlb.query.vpn := pc(47, 12)
   tlb.query.query := requiresTranslate && !toCtrl.ctrl.flush
   tlb.query.isModify := false.B
-  tlb.query.isUser := toCtrl.priv === PrivLevel.U
+  tlb.query.mode := Mux(toCtrl.priv === PrivLevel.U, TLBLookupMode.U, TLBLookupMode.S)
   tlb.flush := toCtrl.tlbrst
 
   // FIXME: This one was RegNect(pc). Why regnext?

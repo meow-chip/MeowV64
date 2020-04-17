@@ -178,6 +178,7 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
   lsu.satp := toCore.satp
   lsu.priv := toCtrl.priv
   lsu.tlbrst := toCtrl.tlbrst
+  lsu.status := toCtrl.status
   val hasPendingMem = lsu.hasPending
 
   // Connect extra ports

@@ -8,6 +8,13 @@ import _root_.core.CoreDef
 import _root_.core.Satp
 import _root_.core.SatpMode
 
+/**
+  * Lookup privilege mode. send both if its in supervisor and SUM = true
+  */
+object TLBLookupMode extends ChiselEnum {
+  val U, S, both = Value
+}
+
 class TLB(implicit coredef: CoreDef) extends MultiIOModule {
   val ptw = IO(new TLBExt)
 
@@ -22,7 +29,7 @@ class TLB(implicit coredef: CoreDef) extends MultiIOModule {
     val fault = Output(Bool())
     val uncached = Output(Bool())
 
-    val isUser = Input(Bool())
+    val mode = Input(TLBLookupMode())
     val isModify = Input(Bool())
   })
 
@@ -43,11 +50,15 @@ class TLB(implicit coredef: CoreDef) extends MultiIOModule {
 
   val inStore = VecInit(hitMap).asUInt().orR()
   val ptwFaulted = RegInit(false.B)
-  val accessFault = query.isUser && !hit.u || query.isModify && !hit.d || !hit.a
-  val fault = (ptwFaulted && refilling === query.vpn) || accessFault
-  query.ppn := hit.ppn
+  val modeMismatch = MuxLookup(query.mode.asUInt(), false.B, Seq(
+    TLBLookupMode.S.asUInt -> hit.u,
+    TLBLookupMode.U.asUInt -> !hit.u
+  ))
+  val accessFault = modeMismatch || query.isModify && !hit.d || !hit.a
+  val fault = (ptwFaulted && refilling === query.vpn) || inStore && accessFault
+  query.ppn := hit.fromVPN(query.vpn)
   query.uncached := hit.u
-  query.fault := ptwFaulted && refilling === query.vpn
+  query.fault := fault
   query.ready := (inStore || fault) && !flush
 
   when(inStore && accessFault) {

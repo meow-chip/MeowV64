@@ -364,6 +364,7 @@ class Ctrl(implicit coredef: CoreDef) extends MultiIOModule {
 
       status.spie := status.sie
       status.sie := false.B
+      status.spp := priv === PrivLevel.U
 
       priv := PrivLevel.S
     } otherwise {
@@ -373,6 +374,7 @@ class Ctrl(implicit coredef: CoreDef) extends MultiIOModule {
 
       status.mpie := status.mie
       status.mie := false.B
+      status.mpp := priv.asUInt()
 
       priv := PrivLevel.M
     }
@@ -382,6 +384,7 @@ class Ctrl(implicit coredef: CoreDef) extends MultiIOModule {
 
     status.mie := status.mpie
     status.mpie := true.B
+    status.mpp := PrivLevel.U.asUInt()
 
     priv := status.mpp.asTypeOf(PrivLevel.Type())
   }.elsewhen(br.req.ex === ExReq.sret) {
@@ -390,6 +393,7 @@ class Ctrl(implicit coredef: CoreDef) extends MultiIOModule {
 
     status.sie := status.spie
     status.spie := true.B
+    status.spp := PrivLevel.U.asUInt()
 
     priv := status.spp.asTypeOf(PrivLevel.Type())
   }

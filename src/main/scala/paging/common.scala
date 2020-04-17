@@ -18,6 +18,20 @@ class PTE(implicit val coredef: CoreDef) extends Bundle {
 
   def intermediate = v && !w && !r && !x
   def valid = v && !((!r) && x)
+  def misaligned(level: UInt)(implicit coredef: CoreDef) = {
+    val MAX_SEG = coredef.vpnWidth / 9
+    // Current at level, we have MAX_SEG segments
+    val segMisaligned = Wire(Vec(MAX_SEG-1, Bool()))
+    for(i <- (0 until MAX_SEG-1)) {
+      segMisaligned(i) := ppn(i*9+8, i*9).orR
+    }
+
+    MuxLookup(
+      level,
+      true.B, // If level == MAX_SEG - 1, then this is not a super page
+      (0 until (MAX_SEG - 1)).map(i => i.U -> segMisaligned.asUInt()(MAX_SEG-2-i, 0).orR)
+    )
+  }
 }
 
 object PTE {
@@ -62,6 +76,19 @@ class TLBEntry(implicit val coredef: CoreDef) extends Bundle {
       )
     }
     result
+  }
+  
+  def fromVPN(vpn: UInt) = {
+    val VPN_SEG = coredef.vpnWidth / 9
+    Mux1H(
+      (0 until VPN_SEG).map(
+        i => (level === i.U) -> (if(i == VPN_SEG - 1) {
+          ppn
+        } else {
+          ppn.head(coredef.ppnWidth - (VPN_SEG - 1 - i) * 9) ## vpn.tail((VPN_SEG - 1 - i) * 9)
+        })
+      )
+    )
   }
 }
 

@@ -183,6 +183,7 @@ class Status(implicit val coredef: CoreDef) extends Bundle {
   val tsr = Bool()
   val tw = Bool()
   val tvm = Bool()
+
   val mxr = Bool()
   val sum = Bool()
   val mprv = Bool()

@@ -27,10 +27,10 @@ class PTW(implicit coredef: CoreDef) extends MultiIOModule {
   arbiter.io.in(1) <> dtlb.req
   arbiter.io.out.nodeq()
 
-  val state = RegInit(PTWState.idle)
-  val level = RegInit(0.U)
-
   val MAX_SEG = coredef.vpnWidth / 9
+
+  val state = RegInit(PTWState.idle)
+  val level = RegInit(0.U(log2Ceil(MAX_SEG).W))
 
   val segs = VecInit((0 until MAX_SEG).map({ case idx => {
     arbiter.io.out.bits((MAX_SEG-idx)*9 - 1, (MAX_SEG - idx-1)*9)
@@ -100,6 +100,8 @@ class PTW(implicit coredef: CoreDef) extends MultiIOModule {
             }
           }
         } otherwise {
+          // Validate superpage alignment
+          fault := pte.misaligned(level)
           state := PTWState.idle
           resp := pte
           arbiter.io.out.deq()

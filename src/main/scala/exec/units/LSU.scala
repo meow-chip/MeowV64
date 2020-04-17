@@ -10,13 +10,13 @@ import _root_.core.CoreDef
 import _root_.core.ExType
 import _root_.core.ExReq
 import _root_.util.FlushableQueue
-import paging.TLB
+import paging._
 import _root_.core.Satp
 import _root_.core.SatpMode
-import paging.TLBExt
 import exec.UnitSel.Retirement
 import scala.collection.mutable
 import _root_.core.PrivLevel
+import _root_.core.Status
 
 /**
  * DelayedMem = Delayed memory access, memory accesses that have side-effects and thus
@@ -157,18 +157,30 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with UnitSelIO {
   })
 
   val satp = IO(Input(new Satp))
+  val status = IO(Input(new Status))
   val ptw = IO(new TLBExt)
   val tlbrst = IO(Input(Bool()))
   val priv = IO(Input(PrivLevel()))
 
   val tlb = Module(new TLB)
-  val requiresTranslate = satp.mode =/= SatpMode.bare && priv <= PrivLevel.S
+  val requiresTranslate = satp.mode =/= SatpMode.bare && (
+    priv <= PrivLevel.S
+    || status.mprv && (status.mpp =/= PrivLevel.M.asUInt())
+  )
+  val tlbEffectivePriv = Mux(priv === PrivLevel.M, status.mpp.asTypeOf(PrivLevel.M), priv)
+  val tlbMode = Wire(TLBLookupMode())
+  when(tlbEffectivePriv === PrivLevel.U) {
+    tlbMode := TLBLookupMode.U
+  }.otherwise {
+    tlbMode := Mux(status.sum, TLBLookupMode.both, TLBLookupMode.S)
+  }
+
   val tlbRequestModify = WireDefault(false.B)
   tlb.satp := satp
   tlb.ptw <> ptw
   tlb.query.query := requiresTranslate && !next.instr.vacant
   tlb.query.isModify := tlbRequestModify
-  tlb.query.isUser := priv === PrivLevel.U
+  tlb.query.mode := tlbMode
   tlb.flush := tlbrst
 
   val flushed = RegInit(false.B)
@@ -294,7 +306,7 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with UnitSelIO {
   val pipeDCRead = Reg(Bool())
   l2stall := !toMem.reader.resp.valid && !pipeInstr.instr.vacant && pipeDCRead
   when(l1pass) {
-    pipeFault := tlb.query.fault
+    pipeFault := tlb.query.query && tlb.query.fault
     pipeInstr := next
     pipeAddr := addr
     pipeDCRead := toMem.reader.req.fire()
