@@ -110,9 +110,14 @@ class ExecTest(dut: Core, file: String) extends PeekPokeTester(dut) {
           mem.put(ptr, muxed)
 
           writing match {
-            case Some((addr, _)) if addr == 0xFFFF10000000L => {
+            case Some((addr, _)) if addr == 0xFFFFFF10000000L => {
               // Print to serial
               print((wdata & 0xFF).toChar)
+            }
+            case Some((addr, _)) if addr == 0xFFFFFF80000000L => {
+              // tohost in ISA testsuite
+              val data = (wdata & 0xFFFFFFFF).toLong // SW
+              println(s"ISA testsuite tohost: ${data}")
             }
             case _ => {}
           }
