@@ -24,9 +24,13 @@ class TLB(implicit coredef: CoreDef) extends MultiIOModule {
 
   val flush = IO(Input(Bool()))
 
+  object TLBState extends ChiselEnum {
+    val idle, refill = Value
+  }
+
+  val state = RegInit(TLBState.idle)
+
   // TODO: check for privilege, validness, etc...
-  // FIXME: state machine
-  // IF can be flushed during a blocked TLB refill, so we need to ensure that we properly handles it
 
   val storage = RegInit(VecInit(Seq.fill(coredef.TLB_SIZE)(TLBEntry.empty)))
 
@@ -34,32 +38,49 @@ class TLB(implicit coredef: CoreDef) extends MultiIOModule {
   assert(PopCount(hitMap) <= 1.U)
   val hitResult = Mux1H(hitMap, storage.map(_.ppn))
 
+  val refilling = Reg(UInt())
+
   val inStore = VecInit(hitMap).asUInt().orR()
-  val faulted = RegNext(ptw.fault && ptw.req.fire())
-  query.ready := (inStore || faulted) && !flush
+  val faulted = RegNext(ptw.fault)
   query.ppn := hitResult
-  query.fault := faulted
+  query.fault := faulted && refilling === query.vpn
+  query.ready := (inStore || faulted) && !flush
 
-  // Refilling
   ptw.req.noenq()
-  when(query.query && !faulted && !inStore) {
+
+  // IF can be flushed during a blocked TLB refill, so we need to ensure that we properly handles it
+  // This is done by using a state machine
+  when(state === TLBState.idle) {
+    query.ready := false.B
+    when(!flush && query.query) {
+      query.ready := inStore || faulted
+
+      when(!query.ready) {
+        state := TLBState.refill
+        refilling := query.vpn
+      }
+    }
+  }.otherwise {
+    query.ready := false.B
     ptw.req.enq(query.vpn)
-  }
 
-  val random = LFSR(log2Ceil(coredef.TLB_SIZE))
-  val invalids = storage.map(!_.v)
-  val hasInvalid = VecInit(invalids).asUInt().orR
-  val victim = Mux(
-    hasInvalid,
-    PriorityEncoder(invalids),
-    random
-  )
+    val random = LFSR(log2Ceil(coredef.TLB_SIZE))
+    val invalids = storage.map(!_.v)
+    val hasInvalid = VecInit(invalids).asUInt().orR
+    val victim = Mux(
+      hasInvalid,
+      PriorityEncoder(invalids),
+      random
+    )
 
-  // PTW has a latency much greater than 1, so we can use an RegNext here
-  val written = TLBEntry.fromPTE(RegNext(query.vpn), ptw.level, ptw.resp)
+    val written = TLBEntry.fromPTE(refilling, ptw.level, ptw.resp)
 
-  when(ptw.req.fire() && !ptw.fault) {
-    storage(victim) := written
+    when(ptw.req.fire()) {
+      when(!ptw.fault) {
+        storage(victim) := written
+      }
+      state := TLBState.idle
+    }
   }
 
   when(flush) {

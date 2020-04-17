@@ -94,7 +94,7 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
   tlb.ptw <> toCore.ptw
   tlb.satp := toCore.satp
   tlb.query.vpn := pc(47, 12)
-  tlb.query.query := requiresTranslate
+  tlb.query.query := requiresTranslate && !toCtrl.ctrl.flush
   tlb.flush := toCtrl.tlbrst
 
   // FIXME: This one was RegNect(pc). Why regnext?
@@ -125,7 +125,7 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
     icAddr := tlb.query.ppn ## fpc(11, 0)
     icRead := !haltIC && tlb.query.ready
   }
-  toIC.read := icRead
+  toIC.read := icRead && !toCtrl.ctrl.flush
   toIC.addr := icAddr
   toIC.rst := toCtrl.ctrl.flush && toCtrl.irst
 
@@ -268,13 +268,16 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
   // Flushing
 
   when(toCtrl.ctrl.flush) {
+    // External flushing, wait for one tick
+    // This is to ensure priv level and other environment are set up correctly
     issueFifo.flush := true.B
     ICQueue.io.flush := true.B
     ICHead.io.flush := true.B
     toCtrl.ctrl.stall := false.B
 
     val ICAlign = log2Ceil(coredef.L1I.TRANSFER_SIZE / 8)
-    fpc := toCtrl.pc(coredef.XLEN-1, ICAlign) ## 0.U(ICAlign.W)
+    // Set pc directly, because we are waiting for one tick
+    pc := toCtrl.pc(coredef.XLEN-1, ICAlign) ## 0.U(ICAlign.W)
     headPtr := toCtrl.pc(ICAlign-1, log2Ceil(Const.INSTR_MIN_WIDTH / 8))
 
     pendingIRst := toCtrl.irst
@@ -285,6 +288,7 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
     }
   }
 
+  // Flush on IC stall tick
   when(pendingFlush) {
     toIC.rst := pendingIRst
     tlb.flush := pendingTLBRst
