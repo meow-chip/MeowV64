@@ -13,7 +13,7 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
 object ExecDef extends CoreDef {
-  override val INIT_VEC = BigInt(0)
+  override val INIT_VEC = BigInt(0x80000000L)
 }
 
 class ExecTest(dut: Core, file: String) extends PeekPokeTester(dut) {
@@ -33,7 +33,7 @@ class ExecTest(dut: Core, file: String) extends PeekPokeTester(dut) {
     val longs = buffer.asLongBuffer()
     var idx = 0
     while(longs.hasRemaining()) {
-      mem.put(idx * 8, longs.get())
+      mem.put(idx * 8 + 0x80000000L, longs.get())
       idx += 1
     }
     println(s"Initialized: $idx longs")
