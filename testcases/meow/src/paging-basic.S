@@ -14,8 +14,8 @@ _start:
 
   la t0, BEGIN
   csrw mepc, t0
-  li t0, (3 << 11)
-  csrc mstatus, t0 # Set MPP -> 0 = User mode
+  li t0, (1 << 11)
+  csrs mstatus, t0 # Set MPP -> 1 = Supervisor mode
   mret
 
   # Jump to first terrapage

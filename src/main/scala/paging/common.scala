@@ -85,7 +85,7 @@ class TLBEntry(implicit val coredef: CoreDef) extends Bundle {
         i => (level === i.U) -> (if(i == VPN_SEG - 1) {
           ppn
         } else {
-          ppn.head(coredef.ppnWidth - (VPN_SEG - 1 - i) * 9) ## vpn.tail((VPN_SEG - 1 - i) * 9)
+          ppn(coredef.ppnWidth-1, (VPN_SEG - 1 - i) * 9) ## vpn((VPN_SEG - 1 - i) * 9 - 1, 0)
         })
       )
     )
