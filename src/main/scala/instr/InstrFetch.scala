@@ -7,15 +7,20 @@ import _root_.core._
 import _root_.data._
 import chisel3.util._
 import chisel3.experimental.chiselName
+import chisel3.experimental.ChiselEnum
 import _root_.util._
 import paging.TLB
 import paging.TLBExt
+
+object FetchEx extends ChiselEnum {
+  val none, invalAddr, pageFault = Value
+}
 
 class InstrExt(implicit val coredef: CoreDef) extends Bundle {
   val addr = UInt(coredef.XLEN.W)
   val instr = new Instr
   val vacant = Bool()
-  val invalAddr = Bool()
+  val fetchEx = FetchEx()
   val pred = new BPUResult
   val forcePred = Bool() // RAS and missed branch
 
@@ -37,7 +42,7 @@ object InstrExt {
     ret.instr := DontCare
     ret.vacant := true.B
     ret.pred := DontCare
-    ret.invalAddr := DontCare
+    ret.fetchEx := DontCare
     ret.forcePred := DontCare
 
     ret
@@ -95,6 +100,8 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
   tlb.satp := toCore.satp
   tlb.query.vpn := pc(47, 12)
   tlb.query.query := requiresTranslate && !toCtrl.ctrl.flush
+  tlb.query.isModify := false.B
+  tlb.query.isUser := toCtrl.priv === PrivLevel.U
   tlb.flush := toCtrl.tlbrst
 
   // FIXME: This one was RegNect(pc). Why regnext?
@@ -108,13 +115,15 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
     val data = UInt(coredef.L1I.TRANSFER_SIZE.W)
     val addr = UInt(coredef.XLEN.W)
     val pred = Vec(coredef.L1I.TRANSFER_SIZE / Const.INSTR_MIN_WIDTH, new BPUResult)
+    val fault = Bool()
   }
 
   val ICQueue = Module(new FlushableQueue(new ICData, 2, false, false))
   ICQueue.io.enq.bits.data := toIC.data
   ICQueue.io.enq.bits.addr := pipePc
   ICQueue.io.enq.bits.pred := toBPU.results
-  ICQueue.io.enq.valid := !toIC.stall && !toIC.vacant
+  ICQueue.io.enq.bits.fault := tlb.query.fault
+  ICQueue.io.enq.valid := (!toIC.stall && !toIC.vacant) || (tlb.query.ready && tlb.fault)
 
   val pipeSpecBr = Wire(Bool())
 
@@ -123,7 +132,7 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
   val icRead = WireDefault(!haltIC)
   when(requiresTranslate) {
     icAddr := tlb.query.ppn ## fpc(11, 0)
-    icRead := !haltIC && tlb.query.ready
+    icRead := (!haltIC && tlb.query.ready) && !tlb.query.fault
   }
   toIC.read := icRead && !toCtrl.ctrl.flush
   toIC.addr := icAddr
@@ -169,12 +178,30 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
 
     decoded(i).instr := instr
     decoded(i).addr := ICHead.io.deq.bits.addr + (decodePtr(i) << log2Ceil((Const.INSTR_MIN_WIDTH / 8)))
-    decoded(i).invalAddr := (if(coredef.XLEN == coredef.VADDR_WIDTH) {
-      false.B
-    } else {
-      // TODO: check PADDR_WIDTH when SATP mode === no traslation
-      ICHead.io.deq.bits.addr(coredef.XLEN-1, coredef.VADDR_WIDTH).orR
-    })
+
+    decoded(i).fetchEx := FetchEx.none
+    assume(coredef.XLEN != coredef.VADDR_WIDTH)
+    val isInvalAddr = WireDefault(false.B)
+    switch(toCore.satp.mode) {
+      is(SatpMode.bare) {
+        isInvalAddr := ICHead.io.deq.bits.addr(coredef.XLEN-1, coredef.PADDR_WIDTH).orR // Fetch cannot be uncached
+      }
+
+      is(SatpMode.sv48) {
+        isInvalAddr := ICHead.io.deq.bits.addr(coredef.XLEN-1, coredef.VADDR_WIDTH).orR
+      }
+
+      is(SatpMode.sv39) {
+        isInvalAddr := ICHead.io.deq.bits.addr(coredef.XLEN-1, coredef.VADDR_WIDTH - 9).orR
+      }
+    }
+
+    when(ICHead.io.deq.bits.fault) {
+      decoded(i).fetchEx := FetchEx.pageFault
+    }.elsewhen(isInvalAddr) {
+      decoded(i).fetchEx := FetchEx.invalAddr
+    }
+
     decoded(i).vacant := false.B
     val pred = joinedPred(decodePtr(i+1) - 1.U)
     decoded(i).pred := pred

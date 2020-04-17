@@ -20,6 +20,9 @@ class TLB(implicit coredef: CoreDef) extends MultiIOModule {
     val query = Input(Bool())
     val ready = Output(Bool())
     val fault = Output(Bool())
+
+    val isUser = Input(Bool())
+    val isModify = Input(Bool())
   })
 
   val flush = IO(Input(Bool()))
@@ -30,21 +33,24 @@ class TLB(implicit coredef: CoreDef) extends MultiIOModule {
 
   val state = RegInit(TLBState.idle)
 
-  // TODO: check for privilege, validness, etc...
-
   val storage = RegInit(VecInit(Seq.fill(coredef.TLB_SIZE)(TLBEntry.empty)))
-
   val hitMap = storage.map(_.hit(query.vpn))
+  val hit = Mux1H(hitMap, storage)
   assert(PopCount(hitMap) <= 1.U)
-  val hitResult = Mux1H(hitMap, storage.map(_.ppn))
 
   val refilling = Reg(UInt())
 
   val inStore = VecInit(hitMap).asUInt().orR()
-  val faulted = RegNext(ptw.fault)
-  query.ppn := hitResult
-  query.fault := faulted && refilling === query.vpn
-  query.ready := (inStore || faulted) && !flush
+  val ptwFaulted = RegInit(false.B)
+  val accessFault = query.isUser && !hit.u || query.isModify && !hit.d || !hit.a
+  val fault = (ptwFaulted && refilling === query.vpn) || accessFault
+  query.ppn := hit.ppn
+  query.fault := ptwFaulted && refilling === query.vpn
+  query.ready := (inStore || fault) && !flush
+
+  when(inStore && accessFault) {
+    query.fault := true.B
+  }
 
   ptw.req.noenq()
 
@@ -53,11 +59,12 @@ class TLB(implicit coredef: CoreDef) extends MultiIOModule {
   when(state === TLBState.idle) {
     query.ready := false.B
     when(!flush && query.query) {
-      query.ready := inStore || faulted
+      query.ready := inStore || fault
 
       when(!query.ready) {
         state := TLBState.refill
         refilling := query.vpn
+        ptwFaulted := false.B
       }
     }
   }.otherwise {
@@ -79,6 +86,7 @@ class TLB(implicit coredef: CoreDef) extends MultiIOModule {
       when(!ptw.fault) {
         storage(victim) := written
       }
+      ptwFaulted := ptw.fault
       state := TLBState.idle
     }
   }

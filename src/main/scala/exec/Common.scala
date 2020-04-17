@@ -5,6 +5,7 @@ import chisel3._
 import chisel3.util._
 import chisel3.MultiIOModule
 import instr.InstrExt
+import instr.FetchEx
 import org.scalatest.tools.RerunningState
 import exec._
 import chisel3.util.log2Ceil
@@ -209,7 +210,7 @@ class ReservedInstr(override implicit val coredef: CoreDef) extends PipeInstr {
   val rs1ready = Bool()
   val rs2ready = Bool()
 
-  def inval = instr.invalAddr || instr.instr.base === InstrType.RESERVED
+  def inval = instr.fetchEx =/= FetchEx.none || instr.instr.base === InstrType.RESERVED
 
   def ready = (inval || rs1ready && rs2ready)
 }

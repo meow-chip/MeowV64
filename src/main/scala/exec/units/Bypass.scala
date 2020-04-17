@@ -3,6 +3,7 @@ package exec.units
 import chisel3._
 import chisel3.util._
 import instr.Decoder
+import instr.FetchEx
 import exec._
 import _root_.core.CoreDef
 import _root_.core.ExType
@@ -45,7 +46,10 @@ class Bypass(override implicit val coredef: CoreDef) extends ExecUnit(0, new Byp
   def finalize(pipe: PipeInstr, ext: BypassExt): RetireInfo = {
     val info = WireDefault(RetireInfo.vacant)
 
-    when(pipe.instr.invalAddr) {
+    when(pipe.instr.fetchEx === FetchEx.pageFault) {
+      info.branch.ex(ExType.INSTR_PAGE_FAULT)
+      info.wb := pipe.instr.addr
+    }.elsewhen(pipe.instr.fetchEx === FetchEx.invalAddr) {
       info.branch.ex(ExType.INSTR_ACCESS_FAULT)
       info.wb := pipe.instr.addr
     }.elsewhen(ext.inval) {

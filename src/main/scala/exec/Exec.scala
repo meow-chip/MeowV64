@@ -6,6 +6,7 @@ import instr._
 import chisel3.util._
 import _root_.core.StageCtrl
 import instr.Decoder.InstrType
+import instr.FetchEx
 import _root_.core.CSRWriter
 import _root_.core.CoreDef
 import _root_.util._
@@ -269,7 +270,7 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
       sending := 0.U
 
       when(
-        toIF.view(idx).invalAddr
+        toIF.view(idx).fetchEx =/= FetchEx.none
         || toIF.view(idx).instr.base === InstrType.RESERVED
         || !applicables.orR()
       ) {

@@ -163,9 +163,12 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with UnitSelIO {
 
   val tlb = Module(new TLB)
   val requiresTranslate = satp.mode =/= SatpMode.bare && priv <= PrivLevel.S
+  val tlbRequestModify = WireDefault(false.B)
   tlb.satp := satp
   tlb.ptw <> ptw
   tlb.query.query := requiresTranslate && !next.instr.vacant
+  tlb.query.isModify := tlbRequestModify
+  tlb.query.isUser := priv === PrivLevel.U
   tlb.flush := tlbrst
 
   val flushed = RegInit(false.B)
@@ -228,6 +231,8 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with UnitSelIO {
 
   val invalAddr = isInvalAddr(addr)
   val misaligned = isMisaligned(offset, next.instr.instr.funct3)
+
+  tlbRequestModify := write
 
   // Maybe we can let flushed request go through
   val canRead = WireDefault(read && !uncached && !invalAddr && !misaligned && !flush)
