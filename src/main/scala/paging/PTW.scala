@@ -8,6 +8,7 @@ import _root_.core.CoreDef
 import _root_.core.Satp
 import _root_.util.FlushableSlot
 import cache.DCReader
+import _root_.core.SatpMode
 
 object PTWState extends ChiselEnum {
   val idle, reading, read = Value
@@ -61,6 +62,13 @@ class PTW(implicit coredef: CoreDef) extends MultiIOModule {
       assert(!dcSlot.io.deq.valid)
       when(arbiter.io.out.valid) {
         level := 0.U
+
+        when(satp.mode === SatpMode.sv39) {
+          level := 1.U // Skip level 0 in sv39
+        }.otherwise {
+          level := 0.U
+        }
+
         dc.req.enq(satp.ppn ## segs(0) ## 0.U(3.W)) // PTE are aligned in 64-bits
         when(dc.req.fire()) {
           state := PTWState.reading
