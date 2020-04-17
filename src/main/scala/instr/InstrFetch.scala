@@ -123,7 +123,7 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
   ICQueue.io.enq.bits.addr := pipePc
   ICQueue.io.enq.bits.pred := toBPU.results
   ICQueue.io.enq.bits.fault := tlb.query.fault
-  ICQueue.io.enq.valid := (!toIC.stall && !toIC.vacant) || (tlb.query.ready && tlb.fault)
+  ICQueue.io.enq.valid := (!toIC.stall && !toIC.vacant) || (tlb.query.ready && tlb.query.fault)
 
   val pipeSpecBr = Wire(Bool())
 
@@ -181,18 +181,20 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
 
     decoded(i).fetchEx := FetchEx.none
     assume(coredef.XLEN != coredef.VADDR_WIDTH)
-    val isInvalAddr = WireDefault(false.B)
-    switch(toCore.satp.mode) {
-      is(SatpMode.bare) {
-        isInvalAddr := ICHead.io.deq.bits.addr(coredef.XLEN-1, coredef.PADDR_WIDTH).orR // Fetch cannot be uncached
-      }
+    val isInvalAddr = WireDefault(
+      // Fetch cannot be uncached. We are also ignoring tlb.query.uncached
+      ICHead.io.deq.bits.addr(coredef.XLEN-1, coredef.PADDR_WIDTH).orR
+    )
+    
+    when(requiresTranslate) {
+      switch(toCore.satp.mode) {
+        is(SatpMode.sv48) {
+          isInvalAddr := ICHead.io.deq.bits.addr(coredef.XLEN-1, coredef.VADDR_WIDTH).orR
+        }
 
-      is(SatpMode.sv48) {
-        isInvalAddr := ICHead.io.deq.bits.addr(coredef.XLEN-1, coredef.VADDR_WIDTH).orR
-      }
-
-      is(SatpMode.sv39) {
-        isInvalAddr := ICHead.io.deq.bits.addr(coredef.XLEN-1, coredef.VADDR_WIDTH - 9).orR
+        is(SatpMode.sv39) {
+          isInvalAddr := ICHead.io.deq.bits.addr(coredef.XLEN-1, coredef.VADDR_WIDTH - 9).orR
+        }
       }
     }
 

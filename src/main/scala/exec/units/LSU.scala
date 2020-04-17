@@ -187,10 +187,23 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with UnitSelIO {
   // Let's do this without helper
 
   // Utils
-  def isInvalAddr(addr: UInt) = if(coredef.XLEN <= coredef.PADDR_WIDTH + 1) { // TODO: physical mode
-    false.B
-  } else {
-    addr(coredef.XLEN-1, coredef.PADDR_WIDTH + 1).orR
+  def isInvalAddr(addr: UInt) = {
+    val inval = WireDefault(
+      addr(coredef.XLEN-1, coredef.PADDR_WIDTH+1).orR // addr(coredef.PADDR_WIDTH) denotes uncached in bare/M mode
+    )
+
+    when(requiresTranslate) {
+      switch(satp.mode) {
+        is(SatpMode.sv48) {
+          inval := addr(coredef.XLEN-1, coredef.VADDR_WIDTH).orR
+        }
+
+        is(SatpMode.sv39) {
+          inval := addr(coredef.XLEN-1, coredef.VADDR_WIDTH - 9).orR
+        }
+      }
+    }
+    inval
   }
 
   /**
@@ -225,9 +238,13 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with UnitSelIO {
 
   val aligned = addr(coredef.PADDR_WIDTH - 1, 3) ## 0.U(3.W)
   val offset = addr(2, 0)
-  val uncached = addr(coredef.PADDR_WIDTH) // Use bit 56 to denote uncached
+  val uncached = WireDefault(addr(coredef.PADDR_WIDTH)) // Use bit 56 to denote uncached in bare mode
   val read = next.instr.instr.op === Decoder.Op("LOAD").ident && !next.instr.vacant
   val write = next.instr.instr.op === Decoder.Op("STORE").ident && !next.instr.vacant
+
+  when(requiresTranslate) {
+    uncached := tlb.query.uncached
+  }
 
   val invalAddr = isInvalAddr(addr)
   val misaligned = isMisaligned(offset, next.instr.instr.funct3)
@@ -238,6 +255,10 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with UnitSelIO {
   val canRead = WireDefault(read && !uncached && !invalAddr && !misaligned && !flush)
   when(requiresTranslate) {
     when(!tlb.query.ready) {
+      canRead := false.B
+    }
+
+    when(tlb.query.fault) {
       canRead := false.B
     }
   }
@@ -269,9 +290,11 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with UnitSelIO {
    */
   val pipeInstr = RegInit(PipeInstr.empty)
   val pipeAddr = Reg(UInt(coredef.XLEN.W))
+  val pipeFault = Reg(Bool())
   val pipeDCRead = Reg(Bool())
   l2stall := !toMem.reader.resp.valid && !pipeInstr.instr.vacant && pipeDCRead
   when(l1pass) {
+    pipeFault := tlb.query.fault
     pipeInstr := next
     pipeAddr := addr
     pipeDCRead := toMem.reader.req.fire()
@@ -341,6 +364,13 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with UnitSelIO {
       pipeRead,
       ExType.LOAD_ACCESS_FAULT,
       ExType.STORE_ACCESS_FAULT
+    ))
+  }.elsewhen(pipeFault) {
+    retire.info.wb := pipeAddr
+    retire.info.branch.ex(Mux(
+      pipeRead,
+      ExType.LOAD_PAGE_FAULT,
+      ExType.STORE_PAGE_FAULT
     ))
   }.elsewhen(pipeMisaligned) {
     retire.info.wb := pipeAddr
