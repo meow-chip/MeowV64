@@ -97,7 +97,7 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
 
   tlb.ptw <> toCore.ptw
   tlb.satp := toCore.satp
-  tlb.query.vpn := pc(47, 12)
+  tlb.query.vpn := fpc(47, 12)
   tlb.query.query := requiresTranslate && !toCtrl.ctrl.flush
   tlb.query.isModify := false.B
   tlb.query.mode := Mux(toCtrl.priv === PrivLevel.U, TLBLookupMode.U, TLBLookupMode.S)
@@ -121,8 +121,8 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
   ICQueue.io.enq.bits.data := toIC.data
   ICQueue.io.enq.bits.addr := pipePc
   ICQueue.io.enq.bits.pred := toBPU.results
-  ICQueue.io.enq.bits.fault := tlb.query.fault
-  ICQueue.io.enq.valid := (!toIC.stall && !toIC.vacant) || (tlb.query.ready && tlb.query.fault)
+  ICQueue.io.enq.bits.fault := RegNext(tlb.query.fault)
+  ICQueue.io.enq.valid := (!toIC.stall && !toIC.vacant) || RegNext(tlb.query.ready && tlb.query.fault)
 
   val pipeSpecBr = Wire(Bool())
 
@@ -163,7 +163,6 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
     when(!overflowed) {
       decodable(i) := ICHead.io.deq.valid
     }.otherwise {
-      // FIXME: break at page border, so we can handle access errors & inval addr more conviently
       decodable(i) := ICHead.io.deq.valid && ICQueue.io.deq.valid && ICHead.io.count =/= 0.U
     }
 
@@ -178,21 +177,24 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
     decoded(i).instr := instr
     decoded(i).addr := ICHead.io.deq.bits.addr + (decodePtr(i) << log2Ceil((Const.INSTR_MIN_WIDTH / 8)))
 
+    // FIXME: If an instruction span across the page border
+    // We need to consider fault/inval addr from both the previous page and the next page
     decoded(i).fetchEx := FetchEx.none
     assume(coredef.XLEN != coredef.VADDR_WIDTH)
+    val headAddr = ICHead.io.deq.bits.addr
     val isInvalAddr = WireDefault(
       // Fetch cannot be uncached. We are also ignoring tlb.query.uncached
-      ICHead.io.deq.bits.addr(coredef.XLEN-1, coredef.PADDR_WIDTH).orR
+      headAddr(coredef.XLEN-1, coredef.PADDR_WIDTH).asSInt() =/= headAddr(coredef.PADDR_WIDTH-1).asSInt()
     )
     
     when(requiresTranslate) {
       switch(toCore.satp.mode) {
         is(SatpMode.sv48) {
-          isInvalAddr := ICHead.io.deq.bits.addr(coredef.XLEN-1, coredef.VADDR_WIDTH).orR
+          headAddr(coredef.XLEN-1, coredef.VADDR_WIDTH).asSInt() =/= headAddr(coredef.VADDR_WIDTH-1).asSInt()
         }
 
         is(SatpMode.sv39) {
-          isInvalAddr := ICHead.io.deq.bits.addr(coredef.XLEN-1, coredef.VADDR_WIDTH - 9).orR
+          headAddr(coredef.XLEN-1, coredef.VADDR_WIDTH-9).asSInt() =/= headAddr(coredef.VADDR_WIDTH-10).asSInt()
         }
       }
     }

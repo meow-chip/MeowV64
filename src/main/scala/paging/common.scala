@@ -5,8 +5,9 @@ import chisel3.util._
 import _root_.core.CoreDef
 
 class PTE(implicit val coredef: CoreDef) extends Bundle {
-  val ppn = UInt(54.W)
-  val RESERVED1 = UInt(2.W)
+  val RESERVED1 = UInt(10.W)
+  val ppn = UInt(coredef.ppnWidth.W)
+  val RESERVED2 = UInt(2.W)
   val d = Bool()
   val a = Bool()
   val g = Bool()

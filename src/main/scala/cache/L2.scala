@@ -641,7 +641,7 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
           misses(target) := false.B
           refilled(target) := false.B
 
-          writeDir(pipeHitIdx, targetAddr, lookups(target).editState(target, L2DirState.shared).withDirty())
+          writeDir(pipeHitIdx, targetAddr, lookups(pipeHitIdx).editState(target, L2DirState.shared).withDirty())
 
           nstate := L2MainState.idle
           step()

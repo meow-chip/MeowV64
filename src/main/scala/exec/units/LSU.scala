@@ -201,17 +201,17 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with UnitSelIO {
   // Utils
   def isInvalAddr(addr: UInt) = {
     val inval = WireDefault(
-      addr(coredef.XLEN-1, coredef.PADDR_WIDTH+1).orR // addr(coredef.PADDR_WIDTH) denotes uncached in bare/M mode
+      addr(coredef.XLEN-1, coredef.PADDR_WIDTH).asSInt() =/= addr(coredef.PADDR_WIDTH-1).asSInt()
     )
 
     when(requiresTranslate) {
       switch(satp.mode) {
         is(SatpMode.sv48) {
-          inval := addr(coredef.XLEN-1, coredef.VADDR_WIDTH).orR
+          inval := addr(coredef.XLEN-1, coredef.VADDR_WIDTH).asSInt() =/= addr(coredef.VADDR_WIDTH-1).asSInt()
         }
 
         is(SatpMode.sv39) {
-          inval := addr(coredef.XLEN-1, coredef.VADDR_WIDTH - 9).orR
+          inval := addr(coredef.XLEN-1, coredef.VADDR_WIDTH-9).asSInt() =/= addr(coredef.VADDR_WIDTH-10).asSInt()
         }
       }
     }
@@ -250,15 +250,11 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with UnitSelIO {
 
   val aligned = addr(coredef.PADDR_WIDTH - 1, 3) ## 0.U(3.W)
   val offset = addr(2, 0)
-  val uncached = WireDefault(addr(coredef.PADDR_WIDTH)) // Use bit 56 to denote uncached in bare mode
+  val uncached = WireDefault(addr(coredef.PADDR_WIDTH-1)) // Uncached if phys bit 56 = high
   val read = next.instr.instr.op === Decoder.Op("LOAD").ident && !next.instr.vacant
   val write = next.instr.instr.op === Decoder.Op("STORE").ident && !next.instr.vacant
 
-  when(requiresTranslate) {
-    uncached := tlb.query.uncached
-  }
-
-  val invalAddr = isInvalAddr(addr)
+  val invalAddr = isInvalAddr(rawAddr)
   val misaligned = isMisaligned(offset, next.instr.instr.funct3)
 
   tlbRequestModify := write
@@ -288,7 +284,7 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with UnitSelIO {
   }.elsewhen(toMem.reader.req.valid) {
     l1pass := toMem.reader.req.ready
   }.otherwise {
-    l1pass := true.B
+    l1pass := !l2stall // Not a DC access, has no waiting side effect, hence we can block indefinitely
   }
 
   when(l2stall) {
@@ -301,15 +297,22 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with UnitSelIO {
    * Stage 2 state
    */
   val pipeInstr = RegInit(PipeInstr.empty)
+  val pipeRawAddr = Reg(UInt(coredef.XLEN.W))
   val pipeAddr = Reg(UInt(coredef.XLEN.W))
   val pipeFault = Reg(Bool())
   val pipeDCRead = Reg(Bool())
+  val pipeInvalAddr = Reg(Bool())
+  val pipeMisaligned = Reg(Bool())
+
   l2stall := !toMem.reader.resp.valid && !pipeInstr.instr.vacant && pipeDCRead
   when(l1pass) {
     pipeFault := tlb.query.query && tlb.query.fault
     pipeInstr := next
     pipeAddr := addr
+    pipeRawAddr := rawAddr
     pipeDCRead := toMem.reader.req.fire()
+    pipeInvalAddr := invalAddr
+    pipeMisaligned := misaligned
     when(!flush) {
       assert(!l2stall)
     }
@@ -323,7 +326,7 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with UnitSelIO {
 
   val pipeAligned = pipeAddr(coredef.PADDR_WIDTH - 1, 3) ## 0.U(3.W)
   val pipeOffset = pipeAddr(2, 0)
-  val pipeUncached = pipeAddr(coredef.PADDR_WIDTH) // Use bit 56 to denote uncached
+  val pipeUncached = pipeAddr(coredef.PADDR_WIDTH-1)
   val pipeRead = pipeInstr.instr.instr.op === Decoder.Op("LOAD").ident && !pipeInstr.instr.vacant
   val pipeWrite = pipeInstr.instr.instr.op === Decoder.Op("STORE").ident && !pipeInstr.instr.vacant
   val pipeFenceI = (
@@ -331,8 +334,6 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with UnitSelIO {
     && pipeInstr.instr.instr.funct3 === Decoder.MEM_MISC_FUNC("FENCE.I")
     && !pipeInstr.instr.vacant
   )
-  val pipeInvalAddr = isInvalAddr(pipeAddr)
-  val pipeMisaligned = isMisaligned(pipeOffset, pipeInstr.instr.instr.funct3)
 
   retire.instr := pipeInstr
   /*
@@ -371,21 +372,21 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with UnitSelIO {
     retire.info.wb := DontCare
     retire.info.branch.ifence(pipeInstr.instr.addr + 4.U)
   }.elsewhen(pipeInvalAddr) {
-    retire.info.wb := pipeAddr
+    retire.info.wb := pipeRawAddr
     retire.info.branch.ex(Mux(
       pipeRead,
       ExType.LOAD_ACCESS_FAULT,
       ExType.STORE_ACCESS_FAULT
     ))
   }.elsewhen(pipeFault) {
-    retire.info.wb := pipeAddr
+    retire.info.wb := pipeRawAddr
     retire.info.branch.ex(Mux(
       pipeRead,
       ExType.LOAD_PAGE_FAULT,
       ExType.STORE_PAGE_FAULT
     ))
   }.elsewhen(pipeMisaligned) {
-    retire.info.wb := pipeAddr
+    retire.info.wb := pipeRawAddr
     retire.info.branch.ex(Mux(
       pipeRead,
       ExType.LOAD_ADDR_MISALIGN,

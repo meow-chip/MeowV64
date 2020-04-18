@@ -141,7 +141,8 @@ class Branch(override implicit val coredef: CoreDef)
     }.elsewhen(pipe.instr.instr.op === Decoder.Op("BRANCH").ident) {
       // info.regWaddr := 0.U
       when(ext.branched) {
-        val target = pipe.instr.instr.imm + pipe.instr.addr.asSInt
+        val target = Wire(SInt(coredef.XLEN.W))
+        target := pipe.instr.instr.imm + pipe.instr.addr.asSInt
         info.branch.fire(target.asUInt)
       }.otherwise {
         info.branch.nofire()

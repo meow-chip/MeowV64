@@ -27,7 +27,6 @@ class TLB(implicit coredef: CoreDef) extends MultiIOModule {
     val query = Input(Bool())
     val ready = Output(Bool())
     val fault = Output(Bool())
-    val uncached = Output(Bool())
 
     val mode = Input(TLBLookupMode())
     val isModify = Input(Bool())
@@ -59,7 +58,6 @@ class TLB(implicit coredef: CoreDef) extends MultiIOModule {
   val accessFault = modeMismatch || query.isModify && !hit.d || !hit.a
   val fault = (ptwFaulted && refilling === query.vpn) || inStore && accessFault
   query.ppn := hit.fromVPN(query.vpn)
-  query.uncached := hit.u
   query.fault := fault
   query.ready := (inStore || fault) && !flush
 

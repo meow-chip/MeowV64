@@ -339,6 +339,7 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
   val pendingBr = RegInit(false.B)
   val pendingBrTag = RegInit(0.U(log2Ceil(coredef.INFLIGHT_INSTR_LIMIT).W))
   val pendingBrResult = RegInit(BranchResult.empty)
+  val pendingBrTval = RegInit(0.U(coredef.XLEN.W))
   assert(!pendingBr || pendingBrResult.branched())
 
   val brMask = Wire(Vec(units.size, UInt(coredef.INFLIGHT_INSTR_LIMIT.W)))
@@ -347,11 +348,13 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
   val brSel = VecInit(PriorityEncoderOH(brMux.asBools())).asUInt()
   val brSeled = Wire(Vec(units.size, Bool()))
   val brNormlalized = Wire(Vec(units.size, new BranchResult))
+  val brTvals = Wire(Vec(units.size, UInt(coredef.XLEN.W)))
 
   when(brSeled.asUInt.orR()) {
     pendingBr := true.B
     pendingBrTag := OHToUInt(brSel) +% retirePtr // Actually this is always true
     pendingBrResult := Mux1H(brSeled, brNormlalized)
+    pendingBrTval := Mux1H(brSeled, brTvals)
   }
 
   // Filling ROB & CDB broadcast
@@ -372,6 +375,7 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
     brMask(idx) := Mux(canBr, oh, 0.U)
     brSeled(idx) := brSel === oh && canBr
     brNormlalized(idx) := normalized
+    brTvals(idx) := u.retire.info.wb
 
     when(!u.retire.instr.instr.vacant) {
       when(!u.retire.info.hasMem) {
@@ -494,7 +498,7 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
         }
 
         when(pendingBr && pendingBrTag === tag && pendingBrResult.ex === ExReq.ex) {
-          toCtrl.tval := renamer.toExec.releases(idx).value
+          toCtrl.tval := pendingBrTval
           toCtrl.nepc := inflight.addr
         }
 

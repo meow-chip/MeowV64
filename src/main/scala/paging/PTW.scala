@@ -63,13 +63,16 @@ class PTW(implicit coredef: CoreDef) extends MultiIOModule {
       when(arbiter.io.out.valid) {
         level := 0.U
 
+        val initSeg = Wire(UInt())
         when(satp.mode === SatpMode.sv39) {
           level := 1.U // Skip level 0 in sv39
+          initSeg := segs(1)
         }.otherwise {
           level := 0.U
+          initSeg := segs(0)
         }
 
-        dc.req.enq(satp.ppn ## segs(0) ## 0.U(3.W)) // PTE are aligned in 64-bits
+        dc.req.enq(satp.ppn ## initSeg ## 0.U(3.W)) // PTE are aligned in 64-bits
         when(dc.req.fire()) {
           state := PTWState.reading
         }
