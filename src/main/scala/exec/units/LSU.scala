@@ -329,9 +329,8 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with UnitSelIO {
   val pipeUncached = pipeAddr(coredef.PADDR_WIDTH-1)
   val pipeRead = pipeInstr.instr.instr.op === Decoder.Op("LOAD").ident && !pipeInstr.instr.vacant
   val pipeWrite = pipeInstr.instr.instr.op === Decoder.Op("STORE").ident && !pipeInstr.instr.vacant
-  val pipeFenceI = (
+  val pipeFenceLike = (
     pipeInstr.instr.instr.op === Decoder.Op("MEM-MISC").ident
-    && pipeInstr.instr.instr.funct3 === Decoder.MEM_MISC_FUNC("FENCE.I")
     && !pipeInstr.instr.vacant
   )
 
@@ -368,9 +367,13 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with UnitSelIO {
   val mem = Wire(new DelayedMem)
   mem.noop() // By default
 
-  when(pipeFenceI) {
+  when(pipeFenceLike) {
     retire.info.wb := DontCare
-    retire.info.branch.ifence(pipeInstr.instr.addr + 4.U)
+    when(pipeInstr.instr.instr.funct3 === Decoder.MEM_MISC_FUNC("FENCE.I")) {
+      retire.info.branch.ifence(pipeInstr.instr.addr + 4.U)
+    }.otherwise {
+      retire.info.branch.nofire()
+    }
   }.elsewhen(pipeInvalAddr) {
     retire.info.wb := pipeRawAddr
     retire.info.branch.ex(Mux(
