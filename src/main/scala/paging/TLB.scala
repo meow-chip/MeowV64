@@ -33,6 +33,8 @@ class TLB(implicit coredef: CoreDef) extends MultiIOModule {
     val isModify = Input(Bool())
   })
 
+  // TODO: check RWX permission, and MXR
+
   val flush = IO(Input(Bool()))
 
   object TLBState extends ChiselEnum {

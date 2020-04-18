@@ -366,21 +366,27 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
             // hit == false && missed == false
             // Init a refill
 
+            refilled(target) := false.B
+
             when(fifoHit) {
               // Refill from FIFO
               bufs(target) := fifoHitData.asTypeOf(bufs(target))
-              misses(target) := true.B
               missesAddr(target) := addrs(target)
-              refilled(target) := true.B
+
+              misses(target) := true.B
+              sent(target) := true.B
+              refilled(target) := true.B // Immediately refills
+
+              victim := rand(log2Ceil(opts.ASSOC)-1, 0)
               nstate := L2MainState.refilled
             }.elsewhen(sameAddrRefilling) {
+              // FIXME: Do we need this?
               // collided(target) := true.B
             }.otherwise {
               misses(target) := true.B
               missesAddr(target) := addrs(target)
               sent(target) := false.B
             }
-            refilled(target) := false.B
 
             nstate := L2MainState.idle
             step()
@@ -905,7 +911,7 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
         }
 
         axi.BREADY := ucSendStage === 2.U
-        when(axi.BVALID) {
+        when(axi.BVALID && ucSendStage === 2.U) {
           ucSendStage := 0.U
           when(ucWalkPtr === (opts.CORE_COUNT-1).U) {
             wbState := L2WBState.idle

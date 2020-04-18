@@ -17,7 +17,7 @@ class PTE(implicit val coredef: CoreDef) extends Bundle {
   val v = Bool()
 
   def intermediate = v && !w && !r && !x
-  def valid = v && !((!r) && x)
+  def valid = v && !((!r) && w)
   def misaligned(level: UInt)(implicit coredef: CoreDef) = {
     val MAX_SEG = coredef.vpnWidth / 9
     // Current at level, we have MAX_SEG segments
@@ -28,7 +28,7 @@ class PTE(implicit val coredef: CoreDef) extends Bundle {
 
     MuxLookup(
       level,
-      true.B, // If level == MAX_SEG - 1, then this is not a super page
+      false.B, // If level == MAX_SEG - 1, then this is not a super page
       (0 until (MAX_SEG - 1)).map(i => i.U -> segMisaligned.asUInt()(MAX_SEG-2-i, 0).orR)
     )
   }
