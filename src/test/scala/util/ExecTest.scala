@@ -38,11 +38,13 @@ class ExecTest(dut: Core, file: String) extends PeekPokeTester(dut) {
     }
     println(s"Initialized: $idx longs")
 
+    // Test pass signal through tohost
+    var finished = false
     for(i <- (0 until bound)) {
       // println("Cycle: " + i)
       step(1)
 
-      if(peek(dut.io.pc) == 0x100000) {
+      if(peek(dut.io.pc) == 0x100000 || finished) {
         println(s"> Process ended at cycle ${i}")
 
         val mcycle = peek(dut.io.mcycle)
@@ -118,6 +120,11 @@ class ExecTest(dut: Core, file: String) extends PeekPokeTester(dut) {
               // tohost in ISA testsuite
               val data = (wdata & 0xFFFFFFFF).toLong // SW
               println(s"ISA testsuite tohost: ${data}")
+
+              if(data == 1) {
+                println("ISA Testsuite pass.")
+                finished = true
+              }
             }
             case _ => {}
           }
@@ -150,7 +157,7 @@ class ExecTest(dut: Core, file: String) extends PeekPokeTester(dut) {
     throw new Error(s"Did not finished within ${bound} cycles")
   }
 
-  doTest(10000)
+  doTest(100000)
 }
 
 object ExecTest {
