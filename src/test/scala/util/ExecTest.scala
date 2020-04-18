@@ -138,7 +138,7 @@ class ExecTest(dut: Core, file: String) extends PeekPokeTester(dut) {
         poke(dut.io.axi.BRESP, 0)
         poke(dut.io.axi.BID, 0)
 
-        if(peek(dut.io.axi.BVALID) == 1) {
+        if(peek(dut.io.axi.BREADY) == 1) {
           writing = None
           writingFinished = false
         }
