@@ -118,12 +118,15 @@ class ExecTest(dut: Core, file: String) extends PeekPokeTester(dut) {
             }
             case Some((addr, _)) if addr == 0xFFFFFF80000000L => {
               // tohost in ISA testsuite
-              val data = (wdata & 0xFFFFFFFF).toLong // SW
-              println(s"ISA testsuite tohost: ${data}")
-
-              if(data == 1) {
+              val data = (wdata & 0xFFFFFFFF).toLong
+              if(wdata == ((data & 0xFF) | BigInt("0101000000000000", 16))) {
+                // Is simple print
+                print((data & 0xFF).toChar)
+              } else if(data == 1) {
                 println("ISA Testsuite pass.")
                 finished = true
+              } else {
+                println(s"ISA testsuite tohost: ${data}")
               }
             }
             case _ => {}
