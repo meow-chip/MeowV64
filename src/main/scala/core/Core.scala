@@ -8,15 +8,32 @@ import _root_.reg._
 import exec.Exec
 import paging.PTW
 
-class Core(implicit val coredef: CoreDef = DefaultDef) extends Module {
+class CoreInt extends Bundle {
+  val meip = Bool()
+  val seip = Bool()
+  val mtip = Bool()
+  val msip = Bool()
+}
+
+class CoreFrontend(implicit val coredef: CoreDef) extends Bundle {
+  val ic = new L1ICPort(coredef.L1I)
+  val dc = new L1DCPort(coredef.L1D)
+  val uc = new L1UCPort(coredef.L1D)
+}
+
+class CoreDebug(implicit val coredef: CoreDef) extends Bundle {
+  val pc = UInt(coredef.XLEN.W)
+  val minstret = UInt(coredef.XLEN.W)
+  val mcycle = UInt(coredef.XLEN.W)
+}
+
+class Core(implicit val coredef: CoreDef) extends Module {
   val io = IO(new Bundle {
-    val axi = new AXI(coredef.XLEN, coredef.PADDR_WIDTH)
-    val eint = Input(Bool())
+    val int = Input(new CoreInt)
+    val frontend = new CoreFrontend
 
     // Debug
-    val pc = Output(UInt(coredef.XLEN.W))
-    val minstret = Output(UInt(coredef.XLEN.W))
-    val mcycle = Output(UInt(coredef.XLEN.W))
+    val debug = Output(new CoreDebug)
   })
 
   assert(coredef.FETCH_NUM % 2 == 0, "issue num can only be multiples of two, because we need to support compressed instructions")
@@ -24,13 +41,11 @@ class Core(implicit val coredef: CoreDef = DefaultDef) extends Module {
   val ctrl = Module(new Ctrl)
   
   // Caches
-  val l2 = Module(new L2Cache(coredef.L2))
   val l1i = Module(new L1IC(coredef.L1I))
   val l1d = Module(new L1DC(coredef.L1D))
 
-  l2.axi <> io.axi
-  l2.ic(0) <> l1i.toL2
-  l2.dc(0) <> l1d.toL2
+  l1i.toL2 <> io.frontend.ic
+  l1d.toL2 <> io.frontend.dc
 
   // TODO: attach DTLB
   val ptw = Module(new PTW)
@@ -58,7 +73,7 @@ class Core(implicit val coredef: CoreDef = DefaultDef) extends Module {
   exec.toDC.r <> l1d.mr
   exec.toDC.w <> l1d.w
   exec.toDC.fs <> l1d.fs
-  exec.toDC.u <> l2.directs(0)
+  exec.toDC.u <> io.frontend.uc
   
   exec.toCtrl.ctrl <> ctrl.toExec.ctrl
   exec.toCtrl.tlbrst := ctrl.toExec.tlbrst
@@ -75,9 +90,9 @@ class Core(implicit val coredef: CoreDef = DefaultDef) extends Module {
   ctrl.toExec.priv <> exec.toCtrl.priv
   ctrl.toExec.status <> exec.toCtrl.status
 
-  ctrl.eint := io.eint
+  ctrl.int := io.int
 
-  io.pc := fetch.debug.pc
+  io.debug.pc := fetch.debug.pc
 
   // CSR
   CSRHelper.defaults(csr)
@@ -115,6 +130,6 @@ class Core(implicit val coredef: CoreDef = DefaultDef) extends Module {
   fetch.toCore.satp := satp
   exec.toCore.satp := satp
 
-  io.mcycle := ctrl.csr.mcycle.rdata
-  io.minstret := ctrl.csr.minstret.rdata
+  io.debug.mcycle := ctrl.csr.mcycle.rdata
+  io.debug.minstret := ctrl.csr.minstret.rdata
 }

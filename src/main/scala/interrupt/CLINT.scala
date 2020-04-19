@@ -26,11 +26,18 @@ class LocalInt extends Bundle {
   val mtip = Bool()
 }
 
-class CLINT(implicit mcdef: MulticoreDef) extends MultiIOModule {
-  val req = IO(DecoupledIO(new CLINTReq))
-  val resp = IO(ValidIO(UInt(64.W)))
+class CLINTAccess extends Bundle {
+  val req = Flipped(DecoupledIO(new CLINTReq))
+  val resp = ValidIO(UInt(64.W))
+}
 
-  val ints = IO(Vec(mcdef.CORE_COUNT, new LocalInt))
+class CLINT(implicit mcdef: MulticoreDef) extends MultiIOModule {
+  val toL2 = IO(new CLINTAccess)
+  val ints = IO(Output(Vec(mcdef.CORE_COUNT, new LocalInt)))
+
+  toL2.req.nodeq()
+  toL2.resp.bits := DontCare
+  toL2.resp.valid := false.B
 
   // Timer
   val mtime = RegInit(0.U(64.W))
@@ -62,14 +69,11 @@ class CLINT(implicit mcdef: MulticoreDef) extends MultiIOModule {
 
   switch(state) {
     is(State.idle) {
-      val cur = req.deq()
+      val cur = toL2.req.deq()
       seg := DontCare
       idx := DontCare
       wdata := cur.wdata
       write := cur.op === CLINTReqOp.write
-
-      resp.bits := DontCare
-      resp.valid := false.B
 
       when(cur.addr < 0x4000.U) {
         seg := Seg.msip
@@ -81,30 +85,28 @@ class CLINT(implicit mcdef: MulticoreDef) extends MultiIOModule {
         seg := Seg.mtime
       }
 
-      when(req.fire()) {
+      when(toL2.req.fire()) {
         state := State.commit
       }
     }
 
     is(State.commit) {
-      req.nodeq()
-
       state := State.idle
 
-      resp.bits := DontCare
-      resp.valid := true.B
+      toL2.resp.bits := DontCare
+      toL2.resp.valid := true.B
 
       switch(seg) {
         is(Seg.msip) {
-          resp.bits := msip(idx)
+          toL2.resp.bits := msip(idx)
         }
 
         is(Seg.mtimecmp) {
-          resp.bits := mtimecmp(idx)
+          toL2.resp.bits := mtimecmp(idx)
         }
 
         is(Seg.mtime) {
-          resp.bits := mtime
+          toL2.resp.bits := mtime
         }
       }
 

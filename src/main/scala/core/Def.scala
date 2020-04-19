@@ -18,7 +18,7 @@ abstract class CoreDef {
 
   val TLB_SIZE: Int = 32
 
-  val HART_ID: Int = 0
+  val HART_ID: Int
 
 /**
  * This is one larger than the actual maximum number,
@@ -32,25 +32,12 @@ abstract class CoreDef {
     2
   )
 
-  val CYCLE_PER_TIMEUNIT: Int = 50 // We're running on 50M
-
-  val L12_LINE_WIDTH: Int = 16 // In bytes
-
-  object L2 extends {
-    val ADDR_WIDTH: Int = outer.PADDR_WIDTH
-    val ASSOC: Int = 4
-    val CORE_COUNT: Int = 1
-    val LINE_WIDTH: Int = outer.L12_LINE_WIDTH
-    val TRANSFER_SIZE: Int = 0 // Actually ignored
-    val SIZE: Int = 16384 // 32K L2
-    val WB_DEPTH: Int = 4
-    val XLEN: Int = outer.XLEN
-  } with L2Opts
+  val L1_LINE_WIDTH: Int = 16 // In bytes
 
   object L1I extends {
     val ADDR_WIDTH: Int = outer.PADDR_WIDTH
     val ASSOC: Int = 2
-    val LINE_WIDTH: Int = outer.L12_LINE_WIDTH
+    val LINE_WIDTH: Int = outer.L1_LINE_WIDTH
     val SIZE: Int = 2048 // 4K L1 I
     val TRANSFER_SIZE: Int = 64
     val XLEN: Int = outer.XLEN
@@ -59,7 +46,7 @@ abstract class CoreDef {
   object L1D extends {
     val ADDR_WIDTH: Int = outer.PADDR_WIDTH
     val ASSOC: Int = 2
-    val LINE_WIDTH: Int = outer.L12_LINE_WIDTH
+    val LINE_WIDTH: Int = outer.L1_LINE_WIDTH
     val SIZE: Int = 2048 // 4K L1 D
     val TRANSFER_SIZE: Int = outer.XLEN // Currently, this is required
     val XLEN: Int = outer.XLEN
@@ -72,4 +59,12 @@ abstract class CoreDef {
   def ppnWidth = PADDR_WIDTH - 12
 }
 
-object DefaultDef extends CoreDef
+// TODO: moves into MulticoreDef
+object CoreDef {
+  def default(id: Int, initVec: BigInt) = {
+    new CoreDef {
+      override val HART_ID = id
+      override val INIT_VEC = initVec
+    }
+  }
+}

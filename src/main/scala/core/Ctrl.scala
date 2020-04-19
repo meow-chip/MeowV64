@@ -74,7 +74,8 @@ class Ctrl(implicit coredef: CoreDef) extends MultiIOModule {
     val tlbrst = Output(Bool())
   })
 
-  val eint = IO(Input(Bool()))
+  // FIXME: implement this
+  val int = IO(Input(new CoreInt))
 
   val csr = IO(new Bundle {
     val mcycle = new CSRPort(coredef.XLEN)

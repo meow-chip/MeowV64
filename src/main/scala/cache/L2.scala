@@ -7,6 +7,7 @@ import _root_.data._
 import chisel3.util._
 import cache.L1DCPort.L2Req
 import cache.L1DCPort.L1Req
+import interrupt._
 
 /**
  * L2 cache
@@ -125,12 +126,20 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
   val dc = IO(Vec(opts.CORE_COUNT, Flipped(new L1DCPort(opts))))
   val directs = IO(Vec(opts.CORE_COUNT, Flipped(new L1UCPort(opts))))
 
+  val clint = IO(Flipped(new CLINTAccess))
+  clint.req.noenq()
+
   // Iterator for all ports
   // dc comes first to match MSI directory
   def ports = dc.iterator ++ ic.iterator
 
   val axi = IO(new AXI(opts.XLEN, opts.ADDR_WIDTH))
-  axi <> 0.U.asTypeOf(axi)
+  axi := DontCare
+  axi.ARVALID := false.B
+  axi.RREADY := false.B
+  axi.AWVALID := false.B
+  axi.WVALID := false.B
+  axi.BREADY := false.B
 
   // Assoc and writers
   val directories = Mem(LINE_COUNT, Vec(opts.ASSOC, new L2DirEntry(opts)))
@@ -218,6 +227,20 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
     uc.stall := uc.read || uc.write
     uc.rdata := DontCare
   }
+
+  /* Uncached ports */
+  def isCLINT(addr: UInt) = {
+    val ret = WireDefault(false.B)
+    when(
+      addr >= (CLINT.CLINT_REGION_START & ((1 << opts.ADDR_WIDTH)-1)).U(opts.ADDR_WIDTH.W)
+      && addr < ((CLINT.CLINT_REGION_START & ((1 << opts.ADDR_WIDTH)-1)) + CLINT.CLINT_REGION_SIZE).U(opts.ADDR_WIDTH.W)
+    ) {
+      ret := true.B
+    }
+    ret
+  }
+
+  def isMMIO(addr: UInt) = isCLINT(addr)
 
   // Refillers
   val misses = RegInit(VecInit(Seq.fill(opts.CORE_COUNT * 2)(false.B)))
@@ -776,9 +799,18 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
       // Step
       stepRefiller(reqTarget)
     }
-  }.otherwise {
+  }.otherwise { // Is uncached
     val id = reqTarget - (opts.CORE_COUNT * 2).U
-    when(directs(id).read && !ucSent(reqTarget)) {
+    when(!directs(id).read || ucSent(reqTarget)) {
+      stepRefiller(reqTarget)
+
+      /**
+       * MMIO are handled in the write-back state machine
+       * because they are faster, so they can be handled synchronizely
+       */
+    }.elsewhen(isMMIO(directs(id).addr)) {
+      stepRefiller(reqTarget)
+    }.otherwise {
       axi.ARADDR := directs(id).addr
       axi.ARBURST := AXI.Constants.Burst.INCR.U
       axi.ARID := reqTarget
@@ -792,8 +824,6 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
         ucSent(reqTarget) := true.B
         stepRefiller(reqTarget)
       }
-    }.otherwise {
-      stepRefiller(reqTarget)
     }
   }
 
@@ -832,11 +862,17 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
   }
 
   // Write-back...er? Handles AXI AW/W/B
+  // Also handles memory mapped reads (CLINT, PLIC, etc...)
   val wbPtr = RegInit(0.U(log2Ceil(axiGrpNum).W))
   val wbDataView = wbFifo(wbFifoHead).data.asTypeOf(Vec(axiGrpNum, UInt(axi.DATA_WIDTH.W)))
 
   val ucWalkPtr = RegInit(0.U((if(opts.CORE_COUNT == 1) { 1 } else { log2Ceil(opts.CORE_COUNT) }).W))
-  val ucSendStage = RegInit(0.U(2.W)) // Req, Data, Resp
+
+  object UCSendStage extends ChiselEnum {
+    val idle, req, data, resp, clint = Value
+  }
+  val ucSendStage = RegInit(UCSendStage.idle)
+
   switch(wbState) {
     is(L2WBState.idle) {
       when(!wbFifoEmpty) {
@@ -855,9 +891,9 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
           wbPtr := 0.U
           wbState := L2WBState.writing
         }
-      }.elsewhen(VecInit(directs.map(_.write)).asUInt.orR()) {
-        ucWalkPtr := 0.U
-        ucSendStage := 0.U
+      }.elsewhen(VecInit(directs.map(d => d.write || d.read && isMMIO(d.addr))).asUInt.orR()) {
+        assert(ucWalkPtr === 0.U)
+        assert(ucSendStage === UCSendStage.idle)
         wbState := L2WBState.ucWalk
       }
     }
@@ -891,42 +927,66 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
     }
 
     is(L2WBState.ucWalk) {
-      when(directs(ucWalkPtr).write) {
-        axi.AWADDR := directs(ucWalkPtr).addr
-        assert(axi.AWADDR(log2Ceil(opts.XLEN / 8)-1, 0) === 0.U)
-        axi.AWBURST := AXI.Constants.Burst.INCR.U
-        axi.AWLEN := 0.U
-        axi.AWSIZE := AXI.Constants.Size.from(axi.DATA_WIDTH / 8).U
-        axi.AWVALID := ucSendStage === 0.U
-        when(axi.AWVALID && axi.AWREADY) {
-          ucSendStage := 1.U
-        }
+      val pipeUCAddr = Reg(UInt(opts.ADDR_WIDTH.W))
+      val pipeUCData = Reg(UInt(opts.XLEN.W))
+      val pipeUCStrb = Reg(UInt((opts.XLEN / 8).W))
 
-        axi.WDATA := directs(ucWalkPtr).wdata
-        axi.WSTRB := directs(ucWalkPtr).wstrb
-        axi.WLAST := true.B
-        axi.WVALID := ucSendStage === 1.U
-        when(axi.WVALID && axi.WREADY) {
-          ucSendStage := 2.U
-        }
-
-        axi.BREADY := ucSendStage === 2.U
-        when(axi.BVALID && ucSendStage === 2.U) {
-          ucSendStage := 0.U
-          when(ucWalkPtr === (opts.CORE_COUNT-1).U) {
-            wbState := L2WBState.idle
+      switch(ucSendStage) {
+        is(UCSendStage.idle) {
+          when(directs(ucWalkPtr).write) {
+            // TODO: route
+            ucSendStage := UCSendStage.req
+            pipeUCAddr := directs(ucWalkPtr).addr
+            pipeUCStrb := directs(ucWalkPtr).wstrb
+            pipeUCData := directs(ucWalkPtr).wdata
           }.otherwise {
-            ucWalkPtr := ucWalkPtr +% 1.U
+            when(ucWalkPtr === (opts.CORE_COUNT-1).U) {
+              wbState := L2WBState.idle
+              ucWalkPtr := 0.U
+            }.otherwise {
+              ucWalkPtr := ucWalkPtr +% 1.U
+            }
           }
-
-          directs(ucWalkPtr).stall := false.B
         }
-      }.otherwise {
-        ucSendStage := 0.U
-        when(ucWalkPtr === (opts.CORE_COUNT-1).U) {
-          wbState := L2WBState.idle
-        }.otherwise {
-          ucWalkPtr := ucWalkPtr +% 1.U
+
+        is(UCSendStage.req) {
+          assert(directs(ucWalkPtr).write)
+          axi.AWADDR := pipeUCAddr
+          assert(axi.AWADDR(log2Ceil(opts.XLEN / 8)-1, 0) === 0.U)
+          axi.AWBURST := AXI.Constants.Burst.INCR.U
+          axi.AWLEN := 0.U
+          axi.AWSIZE := AXI.Constants.Size.from(axi.DATA_WIDTH / 8).U
+          axi.AWVALID := true.B
+
+          when(axi.AWREADY) {
+            ucSendStage := UCSendStage.data
+          }
+        }
+
+        is(UCSendStage.data) {
+          axi.WDATA := pipeUCData
+          axi.WSTRB := pipeUCStrb
+          axi.WLAST := true.B
+          axi.WVALID := true.B
+          when(axi.WREADY) {
+            ucSendStage := UCSendStage.resp
+          }
+        }
+
+        is(UCSendStage.resp) {
+          axi.BREADY := true.B
+          when(axi.BVALID) {
+            ucSendStage := UCSendStage.idle
+
+            when(ucWalkPtr === (opts.CORE_COUNT-1).U) {
+              wbState := L2WBState.idle
+              ucWalkPtr := 0.U
+            }.otherwise {
+              ucWalkPtr := ucWalkPtr +% 1.U
+            }
+
+            directs(ucWalkPtr).stall := false.B
+          }
         }
       }
     }
