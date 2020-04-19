@@ -1,7 +1,7 @@
 MeowV64
 =======================
 
-MeowV64 is a synthesizable and configurable superscalar RISC-V CPU with out-of-order execution, L1/L2 caches and multicore support. MeowV64 implements the RV64IMAC ISA.
+MeowV64 is a synthesizable and configurable superscalar RISC-V CPU with out-of-order execution, L1/L2 caches and multicore support. MeowV64 implements the RV64IMACSU ISA.
 
 ## Authors
 

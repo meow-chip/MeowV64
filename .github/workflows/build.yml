@@ -44,4 +44,4 @@ jobs:
     - uses: actions/upload-artifact@v1
       with:
         name: RTL
-        path: Core.v
+        path: Multicore.v
