@@ -20,6 +20,7 @@ class InstrExt(implicit val coredef: CoreDef) extends Bundle {
   val instr = new Instr
   val vacant = Bool()
   val fetchEx = FetchEx()
+  val acrossPageEx = Bool() // Exception happens on the second half of this instruction
   val pred = new BPUResult
   val forcePred = Bool() // RAS and missed branch
 
@@ -42,6 +43,7 @@ object InstrExt {
     ret.vacant := true.B
     ret.pred := DontCare
     ret.fetchEx := DontCare
+    ret.acrossPageEx := DontCare
     ret.forcePred := DontCare
 
     ret
@@ -175,11 +177,19 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
     }
 
     decoded(i).instr := instr
-    decoded(i).addr := ICHead.io.deq.bits.addr + (decodePtr(i) << log2Ceil((Const.INSTR_MIN_WIDTH / 8)))
+    val addr = ICHead.io.deq.bits.addr + (decodePtr(i) << log2Ceil((Const.INSTR_MIN_WIDTH / 8)))
+    val acrossPage = !isInstr16 && addr(12, log2Ceil(Const.INSTR_MIN_WIDTH / 8)).andR()
+    decoded(i).addr := addr
 
-    // FIXME: If an instruction span across the page border
+    // If an instruction span across the page border:
     // We need to consider fault/inval addr from both the previous page and the next page
+    // This is done by checking if the ppn of the instruction is the same as the ppn of
+    // ICHead
+
+    // TODO: invalAddr when cross page
+
     decoded(i).fetchEx := FetchEx.none
+    decoded(i).acrossPageEx := false.B
     assume(coredef.XLEN != coredef.VADDR_WIDTH)
     val headAddr = ICHead.io.deq.bits.addr
     val isInvalAddr = WireDefault(
@@ -201,6 +211,9 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
 
     when(ICHead.io.deq.bits.fault) {
       decoded(i).fetchEx := FetchEx.pageFault
+    }.elsewhen(acrossPage && ICQueue.io.deq.bits.fault) {
+      decoded(i).fetchEx := FetchEx.pageFault
+      decoded(i).acrossPageEx := true.B
     }.elsewhen(isInvalAddr) {
       decoded(i).fetchEx := FetchEx.invalAddr
     }

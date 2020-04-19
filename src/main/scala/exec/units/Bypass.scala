@@ -46,12 +46,17 @@ class Bypass(override implicit val coredef: CoreDef) extends ExecUnit(0, new Byp
   def finalize(pipe: PipeInstr, ext: BypassExt): RetireInfo = {
     val info = WireDefault(RetireInfo.vacant)
 
+    val ifAddr = WireDefault(pipe.instr.addr)
+    when(pipe.instr.acrossPageEx) {
+      ifAddr := pipe.instr.addr +% 2.U
+    }
+
     when(pipe.instr.fetchEx === FetchEx.pageFault) {
       info.branch.ex(ExType.INSTR_PAGE_FAULT)
-      info.wb := pipe.instr.addr
+      info.wb := ifAddr
     }.elsewhen(pipe.instr.fetchEx === FetchEx.invalAddr) {
       info.branch.ex(ExType.INSTR_ACCESS_FAULT)
-      info.wb := pipe.instr.addr
+      info.wb := ifAddr
     }.elsewhen(ext.inval) {
       info.branch.ex(ExType.ILLEGAL_INSTR)
       info.wb := 0.U

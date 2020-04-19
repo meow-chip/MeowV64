@@ -317,7 +317,7 @@ class Ctrl(implicit coredef: CoreDef) extends MultiIOModule {
   // Interrupts
   val intMask: UInt = (ie.asUInt & ip.asUInt())
   val intCause = PriorityEncoder(intMask)
-  val intDeleg = mideleg(intCause).orR
+  val intDeleg = priv =/= PrivLevel.M && mideleg(intCause)
   val intEnabled = Mux(
     intDeleg,
     priv < PrivLevel.S || status.sie,
@@ -336,11 +336,15 @@ class Ctrl(implicit coredef: CoreDef) extends MultiIOModule {
   }
 
   // Exception delegated to S-mode
-  val delegs = Mux(
+  val delegs = WireDefault(Mux(
     intFired,
     intDeleg,
-    medeleg(cause(62, 0))
-  )
+    priv =/= PrivLevel.M && medeleg(cause(62, 0))
+  ))
+
+  when(priv === PrivLevel.M) {
+    // When we are already in M-mode, don't delegate
+  }
 
   val tvecBase = Mux(delegs, stvec, mtvec)
   val tvec = Wire(UInt(coredef.XLEN.W))
@@ -364,7 +368,7 @@ class Ctrl(implicit coredef: CoreDef) extends MultiIOModule {
 
       status.spie := status.sie
       status.sie := false.B
-      status.spp := priv === PrivLevel.U
+      status.spp := priv =/= PrivLevel.U
 
       priv := PrivLevel.S
     } otherwise {
