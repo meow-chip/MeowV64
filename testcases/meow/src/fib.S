@@ -12,13 +12,11 @@ print:
 	lw	a5,-52(s0)
 	sext.w	a5,a5
 	bnez	a5,.L4
-	li	a5,536870912
-	addi	a5,a5,-15
+	li	a5,-15
 	slli	a5,a5,28
 	li	a4,48
 	sb	a4,0(a5)
-	li	a5,536870912
-	addi	a5,a5,-15
+	li	a5,-15
 	slli	a5,a5,28
 	li	a4,10
 	sb	a4,0(a5)
@@ -49,8 +47,7 @@ print:
 	ld	a5,-24(s0)
 	addi	a5,a5,-1
 	sd	a5,-24(s0)
-	li	a5,536870912
-	addi	a5,a5,-15
+	li	a5,-15
 	slli	a5,a5,28
 	ld	a4,-24(s0)
 	lbu	a4,0(a4)
@@ -59,8 +56,7 @@ print:
 	addi	a5,s0,-40
 	ld	a4,-24(s0)
 	bne	a4,a5,.L7
-	li	a5,536870912
-	addi	a5,a5,-15
+	li	a5,-15
 	slli	a5,a5,28
 	li	a4,10
 	sb	a4,0(a5)

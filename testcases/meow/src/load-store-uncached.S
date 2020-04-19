@@ -3,7 +3,7 @@
 .section .text
 .globl _start
 _start:
-  li s1, (0x1000 | 1 << 56)
+  li s1, 0xFFFFFFFF90000000
 
   li t0, 0x123456789ABCDEF
   li t1, 0xFF
