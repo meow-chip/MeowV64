@@ -235,8 +235,14 @@ class Ctrl(implicit coredef: CoreDef) extends MultiIOModule {
   csr.mideleg <> CSRPort.fromReg(coredef.XLEN, mideleg)
 
   // xIE, xIP
-  val ip = RegInit(IntConf.empty)
+  val ipStore = RegInit(IntConf.empty)
   val ie = RegInit(IntConf.empty)
+  val ip = WireDefault(ipStore)
+  ip.external.m := int.meip
+  ip.timer.m := int.mtip
+  ip.software.m := int.msip
+  // TODO: SEIP
+  
   val miewpri = RegInit(0.U(coredef.XLEN.W))
   val mipwpri = RegInit(0.U(coredef.XLEN.W))
   val siewpri = RegInit(0.U(coredef.XLEN.W))
@@ -281,16 +287,16 @@ class Ctrl(implicit coredef: CoreDef) extends MultiIOModule {
   )
 
   when(csr.mip.write) {
-    ip := (
-      csr.mip.wdata & IntConf.mmask(false) | ip.asUInt & ~Status.mmask
-    ).asTypeOf(ip)
+    ipStore := (
+      csr.mip.wdata & IntConf.mmask(false) | ipStore.asUInt & ~Status.mmask
+    ).asTypeOf(ipStore)
     mwpri := csr.mip.wdata
   }
 
   when(csr.sip.write) {
-    ip := (
-      csr.sip.wdata & IntConf.smask(false) | ip.asUInt & ~Status.smask
-    ).asTypeOf(ip)
+    ipStore := (
+      csr.sip.wdata & IntConf.smask(false) | ipStore.asUInt & ~Status.smask
+    ).asTypeOf(ipStore)
     swpri := csr.sip.wdata
   }
 

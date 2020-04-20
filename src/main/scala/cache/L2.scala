@@ -232,8 +232,8 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
   def isCLINT(addr: UInt) = {
     val ret = WireDefault(false.B)
     when(
-      addr >= (CLINT.CLINT_REGION_START & ((1 << opts.ADDR_WIDTH)-1)).U(opts.ADDR_WIDTH.W)
-      && addr < ((CLINT.CLINT_REGION_START & ((1 << opts.ADDR_WIDTH)-1)) + CLINT.CLINT_REGION_SIZE).U(opts.ADDR_WIDTH.W)
+      addr >= CLINT.CLINT_REGION_START.U(opts.XLEN.W)(opts.ADDR_WIDTH-1, 0)
+      && addr < (CLINT.CLINT_REGION_START + CLINT.CLINT_REGION_SIZE).U(opts.XLEN.W)(opts.ADDR_WIDTH-1, 0)
     ) {
       ret := true.B
     }
@@ -869,7 +869,7 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
   val ucWalkPtr = RegInit(0.U((if(opts.CORE_COUNT == 1) { 1 } else { log2Ceil(opts.CORE_COUNT) }).W))
 
   object UCSendStage extends ChiselEnum {
-    val idle, req, data, resp, clint = Value
+    val idle, req, data, resp, clintReq, clintResp = Value
   }
   val ucSendStage = RegInit(UCSendStage.idle)
 
@@ -931,14 +931,23 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
       val pipeUCData = Reg(UInt(opts.XLEN.W))
       val pipeUCStrb = Reg(UInt((opts.XLEN / 8).W))
 
+      val pipeMMIOWrite = Reg(Bool())
+
       switch(ucSendStage) {
         is(UCSendStage.idle) {
-          when(directs(ucWalkPtr).write) {
-            // TODO: route
+          val gotoCLINT = isCLINT(directs(ucWalkPtr).addr) && (
+            directs(ucWalkPtr).read || directs(ucWalkPtr).write
+          )
+
+          pipeMMIOWrite := directs(ucWalkPtr).write
+          pipeUCAddr := directs(ucWalkPtr).addr
+          pipeUCStrb := directs(ucWalkPtr).wstrb
+          pipeUCData := directs(ucWalkPtr).wdata
+
+          when(gotoCLINT) {
+            ucSendStage := UCSendStage.clintReq
+          }.elsewhen(directs(ucWalkPtr).write) {
             ucSendStage := UCSendStage.req
-            pipeUCAddr := directs(ucWalkPtr).addr
-            pipeUCStrb := directs(ucWalkPtr).wstrb
-            pipeUCData := directs(ucWalkPtr).wdata
           }.otherwise {
             when(ucWalkPtr === (opts.CORE_COUNT-1).U) {
               wbState := L2WBState.idle
@@ -986,6 +995,34 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
             }
 
             directs(ucWalkPtr).stall := false.B
+          }
+        }
+
+        is(UCSendStage.clintReq) { // TODO: change to MMIOReq
+          val req = Wire(new CLINTReq)
+          req.op := Mux(pipeMMIOWrite, CLINTReqOp.write, CLINTReqOp.read)
+          req.addr := pipeUCAddr
+          req.wdata := pipeUCData // TODO: wstrb
+          clint.req.enq(req)
+          when(clint.req.fire()) {
+            ucSendStage := UCSendStage.clintResp
+          }
+        }
+
+        is(UCSendStage.clintResp) {
+          directs(ucWalkPtr).rdata := clint.resp.bits
+          when(clint.resp.valid) {
+            directs(ucWalkPtr).stall := false.B
+
+            ucSendStage := UCSendStage.idle
+
+            // TODO: switch to RRArbiter
+            when(ucWalkPtr === (opts.CORE_COUNT-1).U) {
+              wbState := L2WBState.idle
+              ucWalkPtr := 0.U
+            }.otherwise {
+              ucWalkPtr := ucWalkPtr +% 1.U
+            }
           }
         }
       }

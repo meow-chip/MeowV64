@@ -167,7 +167,7 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
       },
       hasPipe = false
     )),
-    lsu,
+    lsu
   )
 
   lsu.toMem.reader <> toDC.r
