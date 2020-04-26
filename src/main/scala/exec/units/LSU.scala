@@ -33,15 +33,6 @@ object DelayedMemOp extends ChiselEnum {
 }
 
 /**
- * Bit length of the DelayedMem
- * 
- * Has the same defination as in the RISC-V unprivileged specification
- */
-object DelayedMemLen extends ChiselEnum {
-  val B, H, W, D = Value
-}
-
-/**
   * A (maybe-empty) sequential memory access
   * 
   * op: operation
@@ -58,8 +49,7 @@ class DelayedMem(implicit val coredef: CoreDef) extends Bundle {
   self =>
   val op = DelayedMemOp()
   val addr = UInt(coredef.XLEN.W)
-  val offset = UInt(log2Ceil(coredef.XLEN/8).W)
-  val len = DelayedMemLen()
+  val len = DCWriteLen()
   val sext = Bool()
   val data = UInt(coredef.XLEN.W)
 
@@ -72,20 +62,24 @@ class DelayedMem(implicit val coredef: CoreDef) extends Bundle {
 
   def isNoop() = op === DelayedMemOp.no
 
+  def alignedAddr = addr(63, 3) ## 0.U(3.W)
+  def shiftedData = data << (addr(2, 0) << 3)
+
   def be: UInt = {
+    val offset = addr(2, 0)
     val raw = Wire(UInt((coredef.XLEN / 8).W))
     raw := DontCare
     switch(len) {
-      is(DelayedMemLen.B) {
+      is(DCWriteLen.B) {
         raw := 0x1.U
       }
-      is(DelayedMemLen.H) {
+      is(DCWriteLen.H) {
         raw := 0x3.U
       }
-      is(DelayedMemLen.W) {
+      is(DCWriteLen.W) {
         raw := 0xf.U
       }
-      is(DelayedMemLen.D) {
+      is(DCWriteLen.D) {
         raw := 0xff.U
       }
     }
@@ -94,6 +88,7 @@ class DelayedMem(implicit val coredef: CoreDef) extends Bundle {
   }
 
   def getSlice(raw: UInt): UInt = {
+    val offset = addr(2, 0)
     val shifted = raw >> (offset << 3)
     val ret = Wire(UInt(coredef.XLEN.W))
     ret := DontCare
@@ -101,16 +96,16 @@ class DelayedMem(implicit val coredef: CoreDef) extends Bundle {
       val sret = Wire(SInt(coredef.XLEN.W))
       sret := DontCare
       switch(len) {
-        is(DelayedMemLen.B) {
+        is(DCWriteLen.B) {
           sret := shifted(7, 0).asSInt()
         }
-        is(DelayedMemLen.H) {
+        is(DCWriteLen.H) {
           sret := shifted(15, 0).asSInt()
         }
-        is(DelayedMemLen.W) {
+        is(DCWriteLen.W) {
           sret := shifted(31, 0).asSInt()
         }
-        is(DelayedMemLen.D) {
+        is(DCWriteLen.D) {
           sret := shifted(63, 0).asSInt()
         }
       }
@@ -118,16 +113,16 @@ class DelayedMem(implicit val coredef: CoreDef) extends Bundle {
       ret := sret.asUInt()
     }.otherwise {
       switch(len) {
-        is(DelayedMemLen.B) {
+        is(DCWriteLen.B) {
           ret := shifted(7, 0)
         }
-        is(DelayedMemLen.H) {
+        is(DCWriteLen.H) {
           ret := shifted(15, 0)
         }
-        is(DelayedMemLen.W) {
+        is(DCWriteLen.W) {
           ret := shifted(31, 0)
         }
-        is(DelayedMemLen.D) {
+        is(DCWriteLen.D) {
           ret := shifted(63, 0)
         }
       }
@@ -402,38 +397,37 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with UnitSelIO {
     retire.info.branch.nofire()
 
     mem.op := DelayedMemOp.ul
-    mem.addr := pipeAligned
-    mem.offset := pipeOffset
+    mem.addr := pipeAddr
     mem.sext := DontCare
     mem.len := DontCare
     switch(pipeInstr.instr.instr.funct3) {
       is(Decoder.LOAD_FUNC("LB")) {
         mem.sext := true.B
-        mem.len := DelayedMemLen.B
+        mem.len := DCWriteLen.B
       }
       is(Decoder.LOAD_FUNC("LH")) {
         mem.sext := true.B
-        mem.len := DelayedMemLen.H
+        mem.len := DCWriteLen.H
       }
       is(Decoder.LOAD_FUNC("LW")) {
         mem.sext := true.B
-        mem.len := DelayedMemLen.W
+        mem.len := DCWriteLen.W
       }
       is(Decoder.LOAD_FUNC("LD")) {
         mem.sext := false.B
-        mem.len := DelayedMemLen.D
+        mem.len := DCWriteLen.D
       }
       is(Decoder.LOAD_FUNC("LBU")) {
         mem.sext := false.B
-        mem.len := DelayedMemLen.B
+        mem.len := DCWriteLen.B
       }
       is(Decoder.LOAD_FUNC("LHU")) {
         mem.sext := false.B
-        mem.len := DelayedMemLen.H
+        mem.len := DCWriteLen.H
       }
       is(Decoder.LOAD_FUNC("LWU")) {
         mem.sext := false.B
-        mem.len := DelayedMemLen.W
+        mem.len := DCWriteLen.W
       }
     }
 
@@ -444,13 +438,12 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with UnitSelIO {
 
     mem.len := DontCare
     switch(pipeInstr.instr.instr.funct3) {
-      is(Decoder.STORE_FUNC("SB")) { mem.len := DelayedMemLen.B }
-      is(Decoder.STORE_FUNC("SH")) { mem.len := DelayedMemLen.H }
-      is(Decoder.STORE_FUNC("SW")) { mem.len := DelayedMemLen.W }
-      is(Decoder.STORE_FUNC("SD")) { mem.len := DelayedMemLen.D }
+      is(Decoder.STORE_FUNC("SB")) { mem.len := DCWriteLen.B }
+      is(Decoder.STORE_FUNC("SH")) { mem.len := DCWriteLen.H }
+      is(Decoder.STORE_FUNC("SW")) { mem.len := DCWriteLen.W }
+      is(Decoder.STORE_FUNC("SD")) { mem.len := DCWriteLen.D }
     }
-    mem.offset := pipeOffset
-    mem.addr := pipeAligned
+    mem.addr := pipeAddr
     mem.sext := false.B
 
     when(pipeUncached) {
@@ -460,7 +453,7 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with UnitSelIO {
     }
 
     retire.info.wb := DontCare
-    mem.data := pipeInstr.rs2val << (pipeOffset << 3)
+    mem.data := pipeInstr.rs2val
   }.otherwise {
     // Inval instr?
     retire.info.branch.ex(ExType.ILLEGAL_INSTR)
@@ -478,21 +471,22 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with UnitSelIO {
 
   // Delayed memory ops
   val pendingHead = pendings.io.deq.bits
-  toMem.writer.data := pendingHead.data
-  toMem.uncached.wdata := pendingHead.data
+  toMem.writer.wdata := pendingHead.data
+  toMem.uncached.wdata := pendingHead.shiftedData
 
   toMem.writer.addr := pendingHead.addr
-  toMem.uncached.addr := pendingHead.addr
+  toMem.uncached.addr := pendingHead.alignedAddr
   
-  toMem.writer.be := pendingHead.be
+  // toMem.writer.be := pendingHead.be
+  toMem.writer.len := pendingHead.len
   toMem.uncached.wstrb := pendingHead.be
 
-  toMem.writer.write := false.B
+  toMem.writer.op := DCWriteOp.idle
   toMem.uncached.read := false.B
   toMem.uncached.write := false.B
 
   when(pendings.io.deq.valid && release.ready) {
-    toMem.writer.write := pendingHead.op === DelayedMemOp.s
+    toMem.writer.op := Mux(pendingHead.op === DelayedMemOp.s, DCWriteOp.write, DCWriteOp.idle)
     toMem.uncached.read := pendingHead.op === DelayedMemOp.ul
     toMem.uncached.write := pendingHead.op === DelayedMemOp.us
   }

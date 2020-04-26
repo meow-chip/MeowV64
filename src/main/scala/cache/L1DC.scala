@@ -11,6 +11,7 @@ import cache.L1DCPort.L1Req
 import _root_.core.CoreDef
 import _root_.util.FlushableSlot
 
+// TODO: LR
 class DCReader(implicit val coredef: CoreDef) extends Bundle {
   val req = DecoupledIO(UInt(coredef.PADDR_WIDTH.W))
   val resp = Input(ValidIO(UInt(coredef.XLEN.W)))
@@ -23,12 +24,50 @@ class DCInnerReader(val opts: L1DOpts) extends Bundle {
   val stall = Input(Bool())
 }
 
+object DCWriteOp extends ChiselEnum {
+  val idle = Value
+  val write = Value
+  val cond = Value // Write cond
+  val swap, add, and, or, xor, max, maxu, min, minu, reserve, reject = Value // TODO: optimize LUT
+}
+
+object DCWriteLen extends ChiselEnum {
+  val B, H, W, D = Value
+}
+
 class DCWriter(val opts: L1DOpts) extends Bundle {
-  val addr = Output(UInt(opts.ADDR_WIDTH.W))
-  val write = Output(Bool())
-  val data = Output(UInt(opts.TRANSFER_SIZE.W))
-  val be = Output(UInt((opts.TRANSFER_SIZE / 8).W))
+  val addr = Output(UInt(opts.ADDR_WIDTH.W)) // Offset is now embedded inside addr
+  val len = Output(DCWriteLen())
+  val op = Output(DCWriteOp())
+
+  val wdata = Output(UInt(opts.TRANSFER_SIZE.W)) // WData should be sign extended
+
+  val rdata = Input(UInt(opts.TRANSFER_SIZE.W)) // AMOSWAP and friends
   val stall = Input(Bool())
+
+  // Raw byte enable
+  def be = {
+    val offset = addr(log2Ceil(opts.TRANSFER_SIZE/8)-1, 0)
+    val mask = MuxLookup(len.asUInt(), 0.U, Seq(
+      DCWriteLen.B.asUInt -> 0x1.U,
+      DCWriteLen.H.asUInt -> 0x3.U,
+      DCWriteLen.W.asUInt -> 0xF.U,
+      DCWriteLen.D.asUInt -> 0xFF.U
+    ))
+    val sliced = Wire(UInt((opts.TRANSFER_SIZE / 8).W))
+    sliced := mask << offset
+    sliced
+  }
+
+  // Raw write data
+  def data = {
+    val offset = addr(log2Ceil(opts.TRANSFER_SIZE/8)-1, 0)
+    val sliced = Wire(UInt(opts.TRANSFER_SIZE.W))
+    sliced := wdata << (offset << 3)
+    sliced
+  }
+
+  def aligned = addr(opts.ADDR_WIDTH-1, 3) ## 0.U(3.W)
 }
 
 class DCFenceStatus(val opts: L1DOpts) extends Bundle {
@@ -115,7 +154,8 @@ class L1DC(val opts: L1DOpts)(implicit coredef: CoreDef) extends MultiIOModule {
 
   // Asserting that in-line offset is 0
   assert((!r.read) || r.addr(IGNORED_WIDTH-1, 0) === 0.U)
-  assert((!w.write) || w.addr(IGNORED_WIDTH-1, 0) === 0.U)
+  // assert((!w.write) || w.addr(IGNORED_WIDTH-1, 0) === 0.U)
+  //   The check for write is no longer true, because of AMO
 
   toL2.wdata := DontCare
   toL2.l1addr := DontCare
@@ -411,11 +451,14 @@ class L1DC(val opts: L1DOpts)(implicit coredef: CoreDef) extends MultiIOModule {
 
   // Handle write interface
   // This operates synchronizely
-  val wmHits = wbuf.map(ev => ev.valid && ev.addr === w.addr)
+  val wmHits = wbuf.map(ev => ev.valid && ev.addr === w.aligned)
   val wmHit = VecInit(wmHits).asUInt().orR
-  val wmHitHead = wbuf(wbufHead).valid && wbuf(wbufHead).addr === w.addr
+  val wmHitHead = wbuf(wbufHead).valid && wbuf(wbufHead).addr === w.aligned
 
-  when(!w.write) {
+  // val amoalu = Module(new AMOALU(opts))
+  w.rdata := DontCare
+
+  when(w.op === DCWriteOp.idle) {
     // No request
     w.stall := false.B
   }.elsewhen(wmHitHead) {
@@ -423,7 +466,7 @@ class L1DC(val opts: L1DOpts)(implicit coredef: CoreDef) extends MultiIOModule {
     w.stall := true.B
   }.otherwise {
     for(buf <- wbuf) {
-      when(buf.addr === w.addr) {
+      when(buf.addr === w.aligned) {
         buf.wdata := muxBE(w.be, w.data, buf.wdata)
         buf.be := buf.be | w.be
       }
@@ -435,7 +478,7 @@ class L1DC(val opts: L1DOpts)(implicit coredef: CoreDef) extends MultiIOModule {
     }.elsewhen(wbufTail +% 1.U =/= wbufHead) {
       // Write merge miss, waiting to push
       assert(waddr(IGNORED_WIDTH-1, 0) === 0.U)
-      wbuf(wbufTail).addr := w.addr
+      wbuf(wbufTail).addr := w.aligned
       wbuf(wbufTail).be := w.be
       wbuf(wbufTail).wdata := w.data
       wbuf(wbufTail).valid := true.B
