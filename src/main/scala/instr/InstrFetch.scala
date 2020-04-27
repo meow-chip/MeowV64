@@ -83,6 +83,7 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
   val fpc = WireDefault(pc)
   pc := fpc
   val pipePc = RegInit(0.U(coredef.XLEN.W))
+  val pipeFault = RegInit(false.B)
 
   val tlb = Module(new TLB)
   val requiresTranslate = toCore.satp.mode =/= SatpMode.bare && toCtrl.priv <= PrivLevel.S
@@ -91,6 +92,7 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
 
   when(!readStalled) {
     pipePc := fpc
+    pipeFault := tlb.query.fault
 
     when(toIC.read) {
       pc := fpc + (coredef.L1I.TRANSFER_SIZE / 8).U
@@ -123,8 +125,8 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
   ICQueue.io.enq.bits.data := toIC.data
   ICQueue.io.enq.bits.addr := pipePc
   ICQueue.io.enq.bits.pred := toBPU.results
-  ICQueue.io.enq.bits.fault := RegNext(tlb.query.fault)
-  ICQueue.io.enq.valid := (!toIC.stall && !toIC.vacant) || RegNext(tlb.query.ready && tlb.query.fault)
+  ICQueue.io.enq.bits.fault := pipeFault
+  ICQueue.io.enq.valid := (!toIC.stall && !toIC.vacant) || pipeFault
 
   val pipeSpecBr = Wire(Bool())
 
@@ -200,11 +202,11 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
     when(requiresTranslate) {
       switch(toCore.satp.mode) {
         is(SatpMode.sv48) {
-          headAddr(coredef.XLEN-1, coredef.VADDR_WIDTH).asSInt() =/= headAddr(coredef.VADDR_WIDTH-1).asSInt()
+          isInvalAddr := headAddr(coredef.XLEN-1, coredef.VADDR_WIDTH).asSInt() =/= headAddr(coredef.VADDR_WIDTH-1).asSInt()
         }
 
         is(SatpMode.sv39) {
-          headAddr(coredef.XLEN-1, coredef.VADDR_WIDTH-9).asSInt() =/= headAddr(coredef.VADDR_WIDTH-10).asSInt()
+          isInvalAddr := headAddr(coredef.XLEN-1, coredef.VADDR_WIDTH-9).asSInt() =/= headAddr(coredef.VADDR_WIDTH-10).asSInt()
         }
       }
     }
@@ -298,6 +300,7 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
 
     val ICAlign = log2Ceil(coredef.L1I.TRANSFER_SIZE / 8)
     fpc := pipeSpecBrTarget(coredef.XLEN-1, ICAlign) ## 0.U(ICAlign.W)
+    pipeFault := false.B
     headPtr := pipeSpecBrTarget(ICAlign-1, log2Ceil(Const.INSTR_MIN_WIDTH / 8))
 
     pendingIRst := false.B
@@ -321,6 +324,7 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
     val ICAlign = log2Ceil(coredef.L1I.TRANSFER_SIZE / 8)
     // Set pc directly, because we are waiting for one tick
     pc := toCtrl.pc(coredef.XLEN-1, ICAlign) ## 0.U(ICAlign.W)
+    pipeFault := false.B
     headPtr := toCtrl.pc(ICAlign-1, log2Ceil(Const.INSTR_MIN_WIDTH / 8))
 
     pendingIRst := toCtrl.irst

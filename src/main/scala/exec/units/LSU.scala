@@ -267,7 +267,7 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with UnitSelIO {
   }
 
   when(canRead) {
-    toMem.reader.req.enq(aligned)
+    toMem.reader.req.enq(DCRead.load(aligned))
   }.otherwise {
     toMem.reader.req.noenq()
   }

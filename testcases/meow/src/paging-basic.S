@@ -55,7 +55,7 @@ SECOND:
 
 THIRD:
   la t0, LAST
-  li t1, ((511 - 3)<<39)
+  li t1, (((511 - 3)<<39) + 0xFFFF << 48)
   add t0, t0, t1
   jr t0
   unimp

@@ -11,14 +11,34 @@ import cache.L1DCPort.L1Req
 import _root_.core.CoreDef
 import _root_.util.FlushableSlot
 
-// TODO: LR
+class DCRead(implicit val coredef: CoreDef) extends Bundle {
+  val addr = UInt(coredef.PADDR_WIDTH.W)
+  val reserve = Bool()
+}
+
+object DCRead {
+  def load(addr: UInt)(implicit coredef: CoreDef): DCRead = {
+    val ret = Wire(new DCRead)
+    ret.reserve := false.B
+    ret.addr := addr
+    ret
+  }
+
+  def lr(addr: UInt)(implicit coredef: CoreDef) = {
+    val ret = Wire(new DCRead)
+    ret.reserve := true.B
+    ret.addr := addr
+  }
+}
+
 class DCReader(implicit val coredef: CoreDef) extends Bundle {
-  val req = DecoupledIO(UInt(coredef.PADDR_WIDTH.W))
+  val req = DecoupledIO(new DCRead)
   val resp = Input(ValidIO(UInt(coredef.XLEN.W)))
 }
 
 class DCInnerReader(val opts: L1DOpts) extends Bundle {
   val addr = Output(UInt(opts.ADDR_WIDTH.W))
+  val reserve = Output(Bool())
   val read = Output(Bool())
   val data = Input(UInt(opts.TRANSFER_SIZE.W))
   val stall = Input(Bool())
@@ -28,7 +48,7 @@ object DCWriteOp extends ChiselEnum {
   val idle = Value
   val write = Value
   val cond = Value // Write cond
-  val swap, add, and, or, xor, max, maxu, min, minu, reserve, reject = Value // TODO: optimize LUT
+  val swap, add, and, or, xor, max, maxu, min, minu = Value // TODO: optimize LUT
 }
 
 object DCWriteLen extends ChiselEnum {
@@ -59,8 +79,8 @@ class DCWriter(val opts: L1DOpts) extends Bundle {
     sliced
   }
 
-  // Raw write data
-  def data = {
+  // Shifted wdata
+  def sdata = {
     val offset = addr(log2Ceil(opts.TRANSFER_SIZE/8)-1, 0)
     val sliced = Wire(UInt(opts.TRANSFER_SIZE.W))
     sliced := wdata << (offset << 3)
@@ -133,7 +153,7 @@ class L1DC(val opts: L1DOpts)(implicit coredef: CoreDef) extends MultiIOModule {
   val toL2 = IO(new L1DCPort(opts))
 
   // Convert mr + ptw to r
-  val rArbiter = Module(new RRArbiter(UInt(coredef.PADDR_WIDTH.W), 2))
+  val rArbiter = Module(new RRArbiter(new DCRead, 2))
   class RReq extends Bundle {
     val addr = UInt(coredef.PADDR_WIDTH.W)
     val chosen = UInt()
@@ -142,7 +162,8 @@ class L1DC(val opts: L1DOpts)(implicit coredef: CoreDef) extends MultiIOModule {
   val r = Wire(new DCInnerReader(opts))
   r.read := rArbiter.io.out.valid
   rArbiter.io.out.ready := !r.stall
-  r.addr := rArbiter.io.out.bits
+  r.addr := rArbiter.io.out.bits.addr
+  r.reserve := rArbiter.io.out.bits.reserve
 
   rArbiter.io.in(0) <> ptw.req
   rArbiter.io.in(1) <> mr.req
@@ -163,6 +184,7 @@ class L1DC(val opts: L1DOpts)(implicit coredef: CoreDef) extends MultiIOModule {
 
   // Read pipes
   val pipeRead = RegInit(false.B)
+  val pipeReserve = RegInit(false.B)
   val pipeAddr = RegInit(0.U(opts.ADDR_WIDTH.W))
 
   ptw.resp.bits := r.data
@@ -173,11 +195,29 @@ class L1DC(val opts: L1DOpts)(implicit coredef: CoreDef) extends MultiIOModule {
   val queryAddr = Wire(UInt(opts.ADDR_WIDTH.W))
   val lookups = stores.read(getIndex(queryAddr))
 
+  // AMO/SC stuff
+  val amoalu = Module(new AMOALU(opts))
+  amoalu.io := DontCare
+  val hasReserved = RegInit(false.B)
+  val reserved = Reg(UInt(opts.ADDR_WIDTH.W))
+
+  val pendingWOp = RegNext(w.op)
+  val pendingWData = RegNext(w.wdata)
+  val pendingWLen = RegNext(w.len)
+  val pendingWAddr = RegInit(w.addr)
+  amoalu.io.offset := pendingWAddr(log2Ceil(opts.XLEN)-1)
+  amoalu.io.wdata := pendingWData
+  amoalu.io.length := pendingWLen
+  amoalu.io.op := pendingWOp
+  val pendingWret = RegInit(0.U(opts.XLEN.W))
+
   // Write FIFO
   class WriteEv(val opts: L1DOpts) extends Bundle {
-    val addr = UInt(opts.ADDR_WIDTH.W)
+    val aligned = UInt(opts.ADDR_WIDTH.W)
     val be = UInt((opts.TRANSFER_SIZE / 8).W)
-    val wdata = UInt(opts.TRANSFER_SIZE.W)
+    val sdata = UInt(opts.TRANSFER_SIZE.W)
+    val isAMO = Bool()
+    val isCond = Bool()
     val valid = Bool()
   }
 
@@ -185,10 +225,12 @@ class L1DC(val opts: L1DOpts)(implicit coredef: CoreDef) extends MultiIOModule {
     def default(opts: L1DOpts): WriteEv = {
       val ret = Wire(new WriteEv(opts))
 
-      ret.addr := DontCare
+      ret.aligned := DontCare
       ret.be := DontCare
-      ret.wdata := DontCare
+      ret.sdata := DontCare
       ret.valid := false.B
+      ret.isAMO := false.B
+      ret.isCond := false.B
 
       ret
     }
@@ -219,8 +261,8 @@ class L1DC(val opts: L1DOpts)(implicit coredef: CoreDef) extends MultiIOModule {
 
   val l2data = RegInit(0.U(opts.LINE_WIDTH))
 
-  val waddr = wbuf(wbufHead).addr
-  val nwaddr = wbuf(wbufHead +% 1.U).addr
+  val waddr = wbuf(wbufHead).aligned
+  val nwaddr = wbuf(wbufHead +% 1.U).aligned
   assert(waddr(IGNORED_WIDTH-1, 0) === 0.U)
 
   val wlookupAddr = Wire(waddr.cloneType)
@@ -246,6 +288,7 @@ class L1DC(val opts: L1DOpts)(implicit coredef: CoreDef) extends MultiIOModule {
     )
   }
 
+  // FIXME: merge this with lookups
   val wlookups = stores.read(getIndex(wlookupAddr))
   val whits = wlookups.map(line => line.valid && line.tag === getTag(waddr))
   val whit = VecInit(whits).asUInt.orR
@@ -298,6 +341,7 @@ class L1DC(val opts: L1DOpts)(implicit coredef: CoreDef) extends MultiIOModule {
       // for the allocated data to propagate to the read port
       when(pendingRead) {
         nstate := MainState.reading
+        victim := rand(ASSOC_IDX_WIDTH-1, 0)
       }.elsewhen(wbufHead =/= wbufTail) {
         nstate := MainState.writing
       }
@@ -316,12 +360,21 @@ class L1DC(val opts: L1DOpts)(implicit coredef: CoreDef) extends MultiIOModule {
         )}))
 
         val written = Wire(lookup.cloneType)
+
         written := lookup
         written.data(getSublineIdx(waddr)) := muxBE(
           wbuf(wbufHead).be,
-          wbuf(wbufHead).wdata,
+          wbuf(wbufHead).sdata,
           lookup.data(getSublineIdx(waddr))
         )
+
+        when(wbuf(wbufHead).isAMO) {
+          amoalu.io.rdata := lookup.data(getSublineIdx(waddr))
+          written.data(getSublineIdx(waddr)) := amoalu.io.muxed
+          pendingWret := amoalu.io.rsliced
+        }.otherwise {
+          pendingWret := 0.U // Successful SC
+        }
 
         written.dirty := true.B
 
@@ -336,6 +389,14 @@ class L1DC(val opts: L1DOpts)(implicit coredef: CoreDef) extends MultiIOModule {
       }
 
       when(
+        wbuf(wbufHead).isCond && (!hasReserved || reserved =/= waddr)
+      ) {
+        // SC failed
+        pendingWret := 1.U
+        wbuf(wbufHead).valid := false.B
+        wbufHead := wbufHead +% 1.U
+        nstate := MainState.idle
+      }.elsewhen(
         RegNext(toL2.l2req) =/= L2Req.idle && RegNext(getIndex(toL2.l2addr)) === getIndex(waddr)
       ) {
         // Wait for one extra cycle
@@ -359,7 +420,10 @@ class L1DC(val opts: L1DOpts)(implicit coredef: CoreDef) extends MultiIOModule {
     }
 
     is(MainState.reading) {
-      when(!wlookups(victim).valid || !wlookups(victim).dirty) {
+      when(wlookups(victim).valid && wlookups(victim).tag === getTag(reserved)) {
+        // Reselect victim
+        victim := victim +% 1.U
+      }.elsewhen(!wlookups(victim).valid || !wlookups(victim).dirty) {
         nstate := MainState.readingRefill
       }.otherwise {
         toL2.l1addr := wlookups(victim).tag ## getIndex(pipeAddr) ## 0.U(OFFSET_WIDTH.W)
@@ -420,19 +484,36 @@ class L1DC(val opts: L1DOpts)(implicit coredef: CoreDef) extends MultiIOModule {
       when(state === MainState.wallocRefill) {
         written.data(getSublineIdx(waddr)) := muxBE(
           wbuf(wbufHead).be,
-          wbuf(wbufHead).wdata,
+          wbuf(wbufHead).sdata,
           toL2.rdata.asTypeOf(written.data)(getSublineIdx(waddr))
         )
+
+        when(wbuf(wbufHead).isAMO) {
+          amoalu.io.rdata := toL2.rdata.asTypeOf(written.data)(getSublineIdx(waddr))
+          written.data(getSublineIdx(waddr)) := amoalu.io.muxed
+          pendingWret := amoalu.io.rsliced
+        }
       }
 
       when(!toL2.l1stall) {
-        l1writing(victim) := true.B
         writingAddr := getIndex(writtenAddr)
         writingData := written
 
         when(state === MainState.readingRefill) {
+          l1writing(victim) := true.B
           nstate := MainState.readingSpin
         }.otherwise {
+          when(
+            wbuf(wbufHead).isCond && (!hasReserved || reserved =/= waddr)
+          ) {
+            // SC failed
+            pendingWret := 1.U
+            l1writing(victim) := false.B
+          }.otherwise {
+            pendingWret := 0.U
+            l1writing(victim) := true.B
+          }
+
           wbuf(wbufHead).valid := false.B
           wbufHead := wbufHead +% 1.U
 
@@ -451,23 +532,45 @@ class L1DC(val opts: L1DOpts)(implicit coredef: CoreDef) extends MultiIOModule {
 
   // Handle write interface
   // This operates synchronizely
-  val wmHits = wbuf.map(ev => ev.valid && ev.addr === w.aligned)
+  val wmHits = wbuf.map(ev => ev.valid && ev.aligned === w.aligned)
   val wmHit = VecInit(wmHits).asUInt().orR
-  val wmHitHead = wbuf(wbufHead).valid && wbuf(wbufHead).addr === w.aligned
+  val wmHitHead = wbuf(wbufHead).valid && wbuf(wbufHead).aligned === w.aligned
 
-  // val amoalu = Module(new AMOALU(opts))
-  w.rdata := DontCare
+  w.rdata := pendingWret
+  val pushed = RegInit(false.B) // Pushed state for
 
   when(w.op === DCWriteOp.idle) {
     // No request
     w.stall := false.B
+  }.elsewhen(w.op =/= DCWriteOp.write) {
+    // Wait for write queue to clear up
+    when(!pushed) {
+      w.stall := true.B
+      when(wbufTail +% 1.U =/= wbufHead) {
+        wbuf(wbufTail).aligned := w.aligned
+        wbuf(wbufTail).be := w.be
+        wbuf(wbufTail).sdata := w.sdata
+        wbuf(wbufTail).valid := true.B
+        wbuf(wbufTail).isAMO := w.op =/= DCWriteOp.cond
+        wbuf(wbufTail).isCond := w.op === DCWriteOp.cond
+
+        wbufTail := wbufTail +% 1.U
+
+        pushed := true.B
+      }
+    }.elsewhen(wbufHead === wbufTail) {
+      pushed := false.B
+      w.stall := false.B
+    }.otherwise {
+      w.stall := true.B
+    }
   }.elsewhen(wmHitHead) {
     // Head may be being processed right now, wait for it to finish and do a push
     w.stall := true.B
   }.otherwise {
     for(buf <- wbuf) {
-      when(buf.addr === w.aligned) {
-        buf.wdata := muxBE(w.be, w.data, buf.wdata)
+      when(buf.aligned === w.aligned) {
+        buf.sdata := muxBE(w.be, w.sdata, buf.sdata)
         buf.be := buf.be | w.be
       }
     }
@@ -477,11 +580,13 @@ class L1DC(val opts: L1DOpts)(implicit coredef: CoreDef) extends MultiIOModule {
       w.stall := false.B
     }.elsewhen(wbufTail +% 1.U =/= wbufHead) {
       // Write merge miss, waiting to push
-      assert(waddr(IGNORED_WIDTH-1, 0) === 0.U)
-      wbuf(wbufTail).addr := w.aligned
+      assert(w.aligned(IGNORED_WIDTH-1, 0) === 0.U)
+      wbuf(wbufTail).aligned := w.aligned
       wbuf(wbufTail).be := w.be
-      wbuf(wbufTail).wdata := w.data
+      wbuf(wbufTail).sdata := w.sdata
       wbuf(wbufTail).valid := true.B
+      wbuf(wbufTail).isAMO := false.B
+      wbuf(wbufTail).isCond := false.B
 
       wbufTail := wbufTail +% 1.U
 
@@ -504,19 +609,25 @@ class L1DC(val opts: L1DOpts)(implicit coredef: CoreDef) extends MultiIOModule {
     line.data(getSublineIdx(pipeAddr))
   )))
 
-  val pendingWHits= wbuf.map(buf => buf.valid && buf.addr === getLineAddr(pipeAddr))
-  val pendingWdata = Mux1H(pendingWHits, wbuf.map(_.wdata))
+  val pendingWHits= wbuf.map(buf => buf.valid && buf.aligned === getLineAddr(pipeAddr))
+  val pendingWdata = Mux1H(pendingWHits, wbuf.map(_.sdata))
   val pendingBe = Mux1H(pendingWHits, wbuf.map(_.be))
 
   val rdata = Mux(VecInit(pendingWHits).asUInt.orR, muxBE(pendingBe, pendingWdata, lookupRdata), lookupRdata)
 
   when(!r.stall) {
     pipeRead := r.read
+    pipeReserve := r.reserve
     pipeAddr := r.addr
 
     queryAddr := r.addr
   }.otherwise {
     queryAddr := pipeAddr
+  }
+
+  when(pipeRead && pipeReserve && !r.stall) {
+    hasReserved := true.B
+    reserved := getTag(pipeAddr) ## getIndex(pipeAddr) ## 0.U(OFFSET_WIDTH.W)
   }
 
   pendingRead := false.B
@@ -536,7 +647,8 @@ class L1DC(val opts: L1DOpts)(implicit coredef: CoreDef) extends MultiIOModule {
 
   // L2 Handler
   toL2.l2stall := false.B
-  val lookupReady = RegNext(toL2.l2stall)
+  val mainWriting = l1writing.asUInt().orR
+  val lookupReady = !mainWriting && RegNext(toL2.l2stall && !mainWriting)
 
   val l2Rdata = MuxCase(0.U, lookups.map(line => (
     line.valid && line.tag === getTag(toL2.l2addr),
@@ -546,6 +658,8 @@ class L1DC(val opts: L1DOpts)(implicit coredef: CoreDef) extends MultiIOModule {
   when(toL2.l2req =/= L2Req.idle) {
     // assert(toL2.l1stall) // L2req can only happen when l2 is processing other ports' requests
     // Nope that may happen. Suppose we are to victimize a line held by this L1
+
+    assert(!toL2.l2addr(IGNORED_WIDTH-1, 0).orR())
 
     queryAddr := toL2.l2addr
     toL2.l2stall := true.B
@@ -572,12 +686,14 @@ class L1DC(val opts: L1DOpts)(implicit coredef: CoreDef) extends MultiIOModule {
        * on the same core are still compatible with the program order. Only load/stores from another core
        * is affected, and writes from this core cannot propagate into other cores within one cycle.
        */
-      when(!l1writing.asUInt().orR) {
-        toL2.l2stall := false.B
-        val hitmask = VecInit(lookups.map(lookup => lookup.valid && lookup.tag === getTag(toL2.l2addr)))
-        writing := hitmask
-        writingData := written
-        writingAddr := getIndex(toL2.l2addr)
+      toL2.l2stall := false.B
+      val hitmask = VecInit(lookups.map(lookup => lookup.valid && lookup.tag === getTag(toL2.l2addr)))
+      writing := hitmask
+      writingData := written
+      writingAddr := getIndex(toL2.l2addr)
+
+      when(toL2.l2req === L2Req.inval && toL2.l2addr === reserved) {
+        hasReserved := false.B
       }
     }
   }

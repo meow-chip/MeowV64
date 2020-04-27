@@ -7,7 +7,7 @@ import chisel3.util.RRArbiter
 import _root_.core.CoreDef
 import _root_.core.Satp
 import _root_.util.FlushableSlot
-import cache.DCReader
+import cache._
 import _root_.core.SatpMode
 
 object PTWState extends ChiselEnum {
@@ -72,7 +72,7 @@ class PTW(implicit coredef: CoreDef) extends MultiIOModule {
           initSeg := segs(0)
         }
 
-        dc.req.enq(satp.ppn ## initSeg ## 0.U(3.W)) // PTE are aligned in 64-bits
+        dc.req.enq(DCRead.load(satp.ppn ## initSeg ## 0.U(3.W))) // PTE are aligned in 64-bits
         when(dc.req.fire()) {
           state := PTWState.reading
         }
@@ -96,7 +96,7 @@ class PTW(implicit coredef: CoreDef) extends MultiIOModule {
             dcSlot.io.deq.deq()
           } otherwise {
             // Continue searching
-            dc.req.enq(pte.ppn ## segs(level + 1.U) ## 0.U(3.W))
+            dc.req.enq(DCRead.load(pte.ppn ## segs(level + 1.U) ## 0.U(3.W)))
             level := level + 1.U
             when(dc.req.fire()) { // Wait for request to go in
               dcSlot.io.deq.deq()
