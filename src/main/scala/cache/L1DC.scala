@@ -49,6 +49,7 @@ object DCWriteOp extends ChiselEnum {
   val write = Value
   val cond = Value // Write cond
   val swap, add, and, or, xor, max, maxu, min, minu = Value // TODO: optimize LUT
+  val commitLR = Value // Commit pending LR
 }
 
 object DCWriteLen extends ChiselEnum {
@@ -198,14 +199,20 @@ class L1DC(val opts: L1DOpts)(implicit coredef: CoreDef) extends MultiIOModule {
   // AMO/SC stuff
   val amoalu = Module(new AMOALU(opts))
   amoalu.io := DontCare
-  val hasReserved = RegInit(false.B)
+  val resValid = RegInit(false.B)
+  val resCommitted = RegInit(false.B)
   val reserved = Reg(UInt(opts.ADDR_WIDTH.W))
+  def reserveMatch(addr: UInt) = (
+    resValid && resCommitted
+    && getTag(reserved) === getTag(addr)
+    && getIndex(reserved) === getIndex(addr)
+  )
 
   val pendingWOp = RegNext(w.op)
   val pendingWData = RegNext(w.wdata)
   val pendingWLen = RegNext(w.len)
-  val pendingWAddr = RegInit(w.addr)
-  amoalu.io.offset := pendingWAddr(log2Ceil(opts.XLEN)-1)
+  val pendingWAddr = RegNext(w.addr)
+  amoalu.io.offset := pendingWAddr(log2Ceil(opts.XLEN/8)-1, 0)
   amoalu.io.wdata := pendingWData
   amoalu.io.length := pendingWLen
   amoalu.io.op := pendingWOp
@@ -376,6 +383,10 @@ class L1DC(val opts: L1DOpts)(implicit coredef: CoreDef) extends MultiIOModule {
           pendingWret := 0.U // Successful SC
         }
 
+        when(wbuf(wbufHead).isCond) {
+          resValid := false.B
+        }
+
         written.dirty := true.B
 
         l1writing := hitMask
@@ -389,13 +400,14 @@ class L1DC(val opts: L1DOpts)(implicit coredef: CoreDef) extends MultiIOModule {
       }
 
       when(
-        wbuf(wbufHead).isCond && (!hasReserved || reserved =/= waddr)
+        wbuf(wbufHead).isCond && !reserveMatch(waddr)
       ) {
         // SC failed
         pendingWret := 1.U
         wbuf(wbufHead).valid := false.B
         wbufHead := wbufHead +% 1.U
         nstate := MainState.idle
+        resValid := false.B
       }.elsewhen(
         RegNext(toL2.l2req) =/= L2Req.idle && RegNext(getIndex(toL2.l2addr)) === getIndex(waddr)
       ) {
@@ -503,15 +515,16 @@ class L1DC(val opts: L1DOpts)(implicit coredef: CoreDef) extends MultiIOModule {
           l1writing(victim) := true.B
           nstate := MainState.readingSpin
         }.otherwise {
-          when(
-            wbuf(wbufHead).isCond && (!hasReserved || reserved =/= waddr)
-          ) {
-            // SC failed
-            pendingWret := 1.U
-            l1writing(victim) := false.B
-          }.otherwise {
-            pendingWret := 0.U
-            l1writing(victim) := true.B
+          pendingWret := 0.U
+          l1writing(victim) := true.B
+
+          when(wbuf(wbufHead).isCond) {
+            resValid := false.B
+            when(!reserveMatch(waddr)) {
+              // SC failed
+              pendingWret := 1.U
+              l1writing(victim) := false.B
+            }
           }
 
           wbuf(wbufHead).valid := false.B
@@ -542,6 +555,11 @@ class L1DC(val opts: L1DOpts)(implicit coredef: CoreDef) extends MultiIOModule {
   when(w.op === DCWriteOp.idle) {
     // No request
     w.stall := false.B
+  }.elsewhen(w.op === DCWriteOp.commitLR) {
+    w.stall := false.B
+    when(getTag(w.addr) === getTag(reserved) && getIndex(w.addr) === getIndex(reserved)) {
+      resCommitted := true.B
+    }
   }.elsewhen(w.op =/= DCWriteOp.write) {
     // Wait for write queue to clear up
     when(!pushed) {
@@ -626,7 +644,8 @@ class L1DC(val opts: L1DOpts)(implicit coredef: CoreDef) extends MultiIOModule {
   }
 
   when(pipeRead && pipeReserve && !r.stall) {
-    hasReserved := true.B
+    resValid := true.B
+    resCommitted := false.B
     reserved := getTag(pipeAddr) ## getIndex(pipeAddr) ## 0.U(OFFSET_WIDTH.W)
   }
 
@@ -649,6 +668,8 @@ class L1DC(val opts: L1DOpts)(implicit coredef: CoreDef) extends MultiIOModule {
   toL2.l2stall := false.B
   val mainWriting = l1writing.asUInt().orR
   val lookupReady = !mainWriting && RegNext(toL2.l2stall && !mainWriting)
+  // FIXME: impl this
+  val resCancelDelay = RegInit(0.U(5.W)) // Up to 32
 
   val l2Rdata = MuxCase(0.U, lookups.map(line => (
     line.valid && line.tag === getTag(toL2.l2addr),
@@ -693,7 +714,7 @@ class L1DC(val opts: L1DOpts)(implicit coredef: CoreDef) extends MultiIOModule {
       writingAddr := getIndex(toL2.l2addr)
 
       when(toL2.l2req === L2Req.inval && toL2.l2addr === reserved) {
-        hasReserved := false.B
+        resValid := false.B
       }
     }
   }

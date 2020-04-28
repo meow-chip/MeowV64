@@ -451,7 +451,7 @@ class CDB(implicit val coredef: CoreDef) extends Bundle {
   */
 
 class DelayedMemResult(implicit val coredef: CoreDef) extends Bundle {
-  val isLoad = Bool()
+  val hasWB = Bool()
   val data = UInt(coredef.XLEN.W)
 }
 

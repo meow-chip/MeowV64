@@ -34,7 +34,7 @@ object Decoder {
     "STORE"     -> spec("01000", InstrType.S),
     // We don't have STORE-FP @ 01001, as we don't have F extension
     // We don't have custom-1 @ 01010
-    // We don't have AMO @ 01011, as we don't have A extension
+    "AMO"       -> spec("01011", InstrType.R),
     "OP"        -> spec("01100", InstrType.R),
     "LUI"       -> spec("01101", InstrType.U),
     "OP-32"     -> spec("01110", InstrType.R),
@@ -56,21 +56,14 @@ object Decoder {
     "BGEU" -> "111"
   ).mapValues(Integer.parseInt(_, 2).U(3.W))
 
-  val LOAD_FUNC: Map[String, UInt] = Map(
-    "LB" -> "000",
-    "LH" -> "001",
-    "LW" -> "010",
-    "LD" -> "011",
-    "LBU" -> "100",
-    "LHU" -> "101",
-    "LWU" -> "110"
-  ).mapValues(Integer.parseInt(_, 2).U(3.W))
-
-  val STORE_FUNC: Map[String, UInt] = Map(
-    "SB" -> "000",
-    "SH" -> "001",
-    "SW" -> "010",
-    "SD" -> "011"
+  val MEM_WIDTH_FUNC: Map[String, UInt] = Map(
+    "B" -> "000",
+    "H" -> "001",
+    "W" -> "010",
+    "D" -> "011",
+    "BU" -> "100",
+    "HU" -> "101",
+    "WU" -> "110"
   ).mapValues(Integer.parseInt(_, 2).U(3.W))
 
   // IMM verison is identical, except that we have no SUBI
@@ -122,6 +115,20 @@ object Decoder {
     "REM" -> "110",
     "REMU" -> "111"
   ).mapValues(Integer.parseInt(_, 2).U(3.W))
+
+  val AMO_FUNC: Map[String, UInt] = Map(
+    "LR" -> "00010",
+    "SC" -> "00011",
+    "AMOSWAP" -> "00001",
+    "AMOADD" -> "00000",
+    "AMOXOR" -> "00100",
+    "AMOAND" -> "01100",
+    "AMOOR" -> "01000",
+    "AMOMIN" -> "10000",
+    "AMOMAX" -> "10100",
+    "AMOMINU" -> "11000",
+    "AMOMAXU" -> "11100"
+  ).mapValues(Integer.parseInt(_, 2).U(5.W))
 
   implicit class ConvertToBin(self: String) {
     def asBin = Integer.parseInt(self, 2)
@@ -218,7 +225,7 @@ object Decoder {
           result.rs2 := DontCare
           result.rd := rs2t
           uimm := ui(5) ## ui(12, 10) ## ui(6) ## 0.U(2.W)
-          result.funct3 := LOAD_FUNC("LW")
+          result.funct3 := MEM_WIDTH_FUNC("W")
         }
         is("00011".asBits(5.W)) { // LD
           result.op := Op("LOAD").ident
@@ -226,7 +233,7 @@ object Decoder {
           result.rs2 := DontCare
           result.rd := rs2t
           uimm := ui(6, 5) ## ui(12, 10) ## 0.U(3.W)
-          result.funct3 := LOAD_FUNC("LD")
+          result.funct3 := MEM_WIDTH_FUNC("D")
         }
         is("00100".asBits(5.W)) { // Reserved
           fail()
@@ -240,7 +247,7 @@ object Decoder {
           result.rs2 := rs2t
           result.rd := DontCare
           uimm := ui(5) ## ui(12, 10) ## ui(6) ## 0.U(2.W)
-          result.funct3 := STORE_FUNC("SW")
+          result.funct3 := MEM_WIDTH_FUNC("W")
         }
         is("00111".asBits(5.W)) { // SD
           result.op := Op("STORE").ident
@@ -248,7 +255,7 @@ object Decoder {
           result.rs2 := rs2t
           result.rd := DontCare
           uimm := ui(6, 5) ## ui(12, 10) ## 0.U(3.W)
-          result.funct3 := STORE_FUNC("SD")
+          result.funct3 := MEM_WIDTH_FUNC("D")
         }
 
         is("01000".asBits(5.W)) { // ADDI
@@ -399,7 +406,7 @@ object Decoder {
           result.rs2 := DontCare
           result.rd := rs1e
           uimm := ui(3, 2) ## ui(12) ## ui(6, 4) ## 0.U(2.W)
-          result.funct3 := LOAD_FUNC("LW")
+          result.funct3 := MEM_WIDTH_FUNC("W")
         }
         is("10011".asBits(5.W)) { // LDSP
           result.op := Op("LOAD").ident
@@ -407,7 +414,7 @@ object Decoder {
           result.rs2 := DontCare
           result.rd := rs1e
           uimm := ui(4, 2) ## ui(12) ## ui(6, 5) ## 0.U(3.W)
-          result.funct3 := LOAD_FUNC("LD")
+          result.funct3 := MEM_WIDTH_FUNC("D")
         }
         is("10100".asBits(5.W)) { // J[AL]R/MV/ADD
           when(ui(12) === 0.U) {
@@ -462,7 +469,7 @@ object Decoder {
           result.rs2 := rs2e
           result.rd := DontCare
           uimm := ui(8, 7) ## ui(12, 9) ## 0.U(2.W)
-          result.funct3 := STORE_FUNC("SW")
+          result.funct3 := MEM_WIDTH_FUNC("W")
         }
         is("10111".asBits(5.W)) { // SDSP
           result.op := Op("STORE").ident
@@ -470,7 +477,7 @@ object Decoder {
           result.rs2 := rs2e
           result.rd := DontCare
           uimm := ui(9, 7) ## ui(12, 10) ## 0.U(3.W)
-          result.funct3 := STORE_FUNC("SD")
+          result.funct3 := MEM_WIDTH_FUNC("D")
         }
       }
 
@@ -501,7 +508,7 @@ object Decoder {
       result.rs2 := ui(24, 20)
 
       // Parse immediate
-      result.imm := 0.S
+      result.imm := 0.S // For R-type
       switch(result.base) {
         is(InstrType.I) {
           result.imm := ui(31, 20).asSInt

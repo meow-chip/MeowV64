@@ -29,7 +29,7 @@ abstract class CoreDef {
   val RESERVATION_STATION_DEPTHS = Seq(
     4,
     2,
-    2
+    4
   )
 
   val L1_LINE_WIDTH: Int = 16 // In bytes

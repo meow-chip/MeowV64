@@ -431,7 +431,7 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
       retireNum := 1.U
       rob(retirePtr).valid := false.B
       retirePtr := retirePtr +% 1.U
-      when(memResult.isLoad) {
+      when(memResult.hasWB) {
         cdb.entries(coredef.UNIT_COUNT).name := retirePtr // tag === rdname
         cdb.entries(coredef.UNIT_COUNT).data := memResult.data
         cdb.entries(coredef.UNIT_COUNT).valid := true.B
@@ -593,7 +593,8 @@ object Exec {
       is(
         Decoder.Op("LOAD").ident,
         Decoder.Op("STORE").ident,
-        Decoder.Op("MEM-MISC").ident
+        Decoder.Op("MEM-MISC").ident,
+        Decoder.Op("AMO").ident
       ) {
         ret := "b100".U(coredef.UNIT_COUNT.W)
       }

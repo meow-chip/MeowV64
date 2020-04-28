@@ -48,6 +48,7 @@ object DelayedMemOp extends ChiselEnum {
 class DelayedMem(implicit val coredef: CoreDef) extends Bundle {
   self =>
   val op = DelayedMemOp()
+  val wop = DCWriteOp()
   val addr = UInt(coredef.XLEN.W)
   val len = DCWriteLen()
   val sext = Bool()
@@ -236,7 +237,7 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with UnitSelIO {
    * Stage 1 state
    */ 
   assert(coredef.PADDR_WIDTH > coredef.VADDR_WIDTH)
-  val rawAddr = (next.rs1val.asSInt + next.instr.instr.imm).asUInt
+  val rawAddr = (next.rs1val.asSInt + next.instr.instr.imm).asUInt // We have imm = 0 for R-type instructions
   tlb.query.vpn := rawAddr(47, 12)
   val addr = WireDefault(rawAddr)
   when(requiresTranslate) {
@@ -245,9 +246,15 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with UnitSelIO {
 
   val aligned = addr(coredef.PADDR_WIDTH - 1, 3) ## 0.U(3.W)
   val offset = addr(2, 0)
-  val uncached = WireDefault(addr(coredef.PADDR_WIDTH-1)) // Uncached if phys bit 56 = high
-  val read = next.instr.instr.op === Decoder.Op("LOAD").ident && !next.instr.vacant
-  val write = next.instr.instr.op === Decoder.Op("STORE").ident && !next.instr.vacant
+  val uncached = addr(coredef.PADDR_WIDTH-1) && next.instr.instr.op =/= Decoder.Op("AMO").ident // Uncached if phys bit 56 = high and is not AMO
+  val read = (
+    next.instr.instr.op === Decoder.Op("LOAD").ident
+    || next.instr.instr.op === Decoder.Op("AMO").ident && next.instr.instr.funct7(6, 2) === Decoder.AMO_FUNC("LR")
+  ) && !next.instr.vacant
+  val write = (
+    next.instr.instr.op === Decoder.Op("STORE").ident
+    || next.instr.instr.op === Decoder.Op("AMO").ident && next.instr.instr.funct7(6, 2) =/= Decoder.AMO_FUNC("LR")
+  ) && !next.instr.vacant
 
   val invalAddr = isInvalAddr(rawAddr)
   val misaligned = isMisaligned(offset, next.instr.instr.funct3)
@@ -266,11 +273,9 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with UnitSelIO {
     }
   }
 
-  when(canRead) {
-    toMem.reader.req.enq(DCRead.load(aligned))
-  }.otherwise {
-    toMem.reader.req.noenq()
-  }
+  toMem.reader.req.bits.reserve := next.instr.instr.op =/= Decoder.Op("LOAD").ident
+  toMem.reader.req.bits.addr := aligned
+  toMem.reader.req.valid := canRead
 
   when(next.instr.vacant) {
     l1pass := false.B
@@ -298,6 +303,8 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with UnitSelIO {
   val pipeDCRead = Reg(Bool())
   val pipeInvalAddr = Reg(Bool())
   val pipeMisaligned = Reg(Bool())
+  val pipeRead = Reg(Bool())
+  val pipeWrite = Reg(Bool())
 
   l2stall := !toMem.reader.resp.valid && !pipeInstr.instr.vacant && pipeDCRead
   when(l1pass) {
@@ -308,6 +315,9 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with UnitSelIO {
     pipeDCRead := toMem.reader.req.fire()
     pipeInvalAddr := invalAddr
     pipeMisaligned := misaligned
+    pipeRead := read
+    pipeWrite := write
+
     when(!flush) {
       assert(!l2stall)
     }
@@ -321,9 +331,8 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with UnitSelIO {
 
   val pipeAligned = pipeAddr(coredef.PADDR_WIDTH - 1, 3) ## 0.U(3.W)
   val pipeOffset = pipeAddr(2, 0)
-  val pipeUncached = pipeAddr(coredef.PADDR_WIDTH-1)
-  val pipeRead = pipeInstr.instr.instr.op === Decoder.Op("LOAD").ident && !pipeInstr.instr.vacant
-  val pipeWrite = pipeInstr.instr.instr.op === Decoder.Op("STORE").ident && !pipeInstr.instr.vacant
+  val pipeAMO = pipeInstr.instr.instr.op === Decoder.Op("AMO").ident
+  val pipeUncached = pipeAddr(coredef.PADDR_WIDTH-1) && !pipeAMO
   val pipeFenceLike = (
     pipeInstr.instr.instr.op === Decoder.Op("MEM-MISC").ident
     && !pipeInstr.instr.vacant
@@ -349,13 +358,13 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with UnitSelIO {
   signedResult := DontCare
 
   switch(pipeInstr.instr.instr.funct3) {
-    is(Decoder.LOAD_FUNC("LB")) { signedResult := shifted(7, 0).asSInt }
-    is(Decoder.LOAD_FUNC("LH")) { signedResult := shifted(15, 0).asSInt }
-    is(Decoder.LOAD_FUNC("LW")) { signedResult := shifted(31, 0).asSInt }
-    is(Decoder.LOAD_FUNC("LD")) { result := shifted }
-    is(Decoder.LOAD_FUNC("LBU")) { result := shifted(7, 0) }
-    is(Decoder.LOAD_FUNC("LHU")) { result := shifted(15, 0) }
-    is(Decoder.LOAD_FUNC("LWU")) { result := shifted(31, 0) }
+    is(Decoder.MEM_WIDTH_FUNC("B")) { signedResult := shifted(7, 0).asSInt }
+    is(Decoder.MEM_WIDTH_FUNC("H")) { signedResult := shifted(15, 0).asSInt }
+    is(Decoder.MEM_WIDTH_FUNC("W")) { signedResult := shifted(31, 0).asSInt }
+    is(Decoder.MEM_WIDTH_FUNC("D")) { result := shifted }
+    is(Decoder.MEM_WIDTH_FUNC("BU")) { result := shifted(7, 0) }
+    is(Decoder.MEM_WIDTH_FUNC("HU")) { result := shifted(15, 0) }
+    is(Decoder.MEM_WIDTH_FUNC("WU")) { result := shifted(31, 0) }
   }
 
   // Retirement
@@ -393,6 +402,12 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with UnitSelIO {
   }.elsewhen(pipeRead && !pipeUncached) {
     retire.info.branch.nofire()
     retire.info.wb := result
+    when(pipeAMO) { // Must be LR
+      mem.op := DelayedMemOp.s
+      mem.wop := DCWriteOp.commitLR
+      mem.addr := pipeAddr
+      mem.data := result
+    }
   }.elsewhen(pipeRead) {
     retire.info.branch.nofire()
 
@@ -401,31 +416,31 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with UnitSelIO {
     mem.sext := DontCare
     mem.len := DontCare
     switch(pipeInstr.instr.instr.funct3) {
-      is(Decoder.LOAD_FUNC("LB")) {
+      is(Decoder.MEM_WIDTH_FUNC("B")) {
         mem.sext := true.B
         mem.len := DCWriteLen.B
       }
-      is(Decoder.LOAD_FUNC("LH")) {
+      is(Decoder.MEM_WIDTH_FUNC("H")) {
         mem.sext := true.B
         mem.len := DCWriteLen.H
       }
-      is(Decoder.LOAD_FUNC("LW")) {
+      is(Decoder.MEM_WIDTH_FUNC("W")) {
         mem.sext := true.B
         mem.len := DCWriteLen.W
       }
-      is(Decoder.LOAD_FUNC("LD")) {
+      is(Decoder.MEM_WIDTH_FUNC("D")) {
         mem.sext := false.B
         mem.len := DCWriteLen.D
       }
-      is(Decoder.LOAD_FUNC("LBU")) {
+      is(Decoder.MEM_WIDTH_FUNC("BU")) {
         mem.sext := false.B
         mem.len := DCWriteLen.B
       }
-      is(Decoder.LOAD_FUNC("LHU")) {
+      is(Decoder.MEM_WIDTH_FUNC("HU")) {
         mem.sext := false.B
         mem.len := DCWriteLen.H
       }
-      is(Decoder.LOAD_FUNC("LWU")) {
+      is(Decoder.MEM_WIDTH_FUNC("WU")) {
         mem.sext := false.B
         mem.len := DCWriteLen.W
       }
@@ -438,10 +453,10 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with UnitSelIO {
 
     mem.len := DontCare
     switch(pipeInstr.instr.instr.funct3) {
-      is(Decoder.STORE_FUNC("SB")) { mem.len := DCWriteLen.B }
-      is(Decoder.STORE_FUNC("SH")) { mem.len := DCWriteLen.H }
-      is(Decoder.STORE_FUNC("SW")) { mem.len := DCWriteLen.W }
-      is(Decoder.STORE_FUNC("SD")) { mem.len := DCWriteLen.D }
+      is(Decoder.MEM_WIDTH_FUNC("B")) { mem.len := DCWriteLen.B }
+      is(Decoder.MEM_WIDTH_FUNC("H")) { mem.len := DCWriteLen.H }
+      is(Decoder.MEM_WIDTH_FUNC("W")) { mem.len := DCWriteLen.W }
+      is(Decoder.MEM_WIDTH_FUNC("D")) { mem.len := DCWriteLen.D }
     }
     mem.addr := pipeAddr
     mem.sext := false.B
@@ -452,6 +467,23 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with UnitSelIO {
       mem.op := DelayedMemOp.s
     }
 
+    when(pipeAMO) {
+      mem.wop := MuxLookup(pipeInstr.instr.instr.funct7(6, 2), DCWriteOp.idle, Seq(
+        Decoder.AMO_FUNC("SC") -> DCWriteOp.cond,
+        Decoder.AMO_FUNC("AMOSWAP") -> DCWriteOp.swap,
+        Decoder.AMO_FUNC("AMOADD") -> DCWriteOp.add,
+        Decoder.AMO_FUNC("AMOXOR") -> DCWriteOp.xor,
+        Decoder.AMO_FUNC("AMOAND") -> DCWriteOp.and,
+        Decoder.AMO_FUNC("AMOOR") -> DCWriteOp.or,
+        Decoder.AMO_FUNC("AMOMIN") -> DCWriteOp.min,
+        Decoder.AMO_FUNC("AMOMAX") -> DCWriteOp.max,
+        Decoder.AMO_FUNC("AMOMINU") -> DCWriteOp.minu,
+        Decoder.AMO_FUNC("AMOMAXU") -> DCWriteOp.maxu
+      ))
+    }.otherwise {
+      mem.wop := DCWriteOp.write
+    }
+
     retire.info.wb := DontCare
     mem.data := pipeInstr.rs2val
   }.otherwise {
@@ -460,10 +492,7 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with UnitSelIO {
     retire.info.wb := DontCare
   }
 
-  val push = mem.op =/= DelayedMemOp.no && !pipeInstr.instr.vacant
-  when(push) {
-    assert(!l2stall)
-  }
+  val push = mem.op =/= DelayedMemOp.no && !pipeInstr.instr.vacant && !l2stall
   retire.info.hasMem := push
   pendings.io.enq.bits := mem
   pendings.io.enq.valid := push
@@ -486,13 +515,34 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with UnitSelIO {
   toMem.uncached.write := false.B
 
   when(pendings.io.deq.valid && release.ready) {
-    toMem.writer.op := Mux(pendingHead.op === DelayedMemOp.s, DCWriteOp.write, DCWriteOp.idle)
+    toMem.writer.op := Mux(pendingHead.op === DelayedMemOp.s, pendingHead.wop, DCWriteOp.idle)
     toMem.uncached.read := pendingHead.op === DelayedMemOp.ul
     toMem.uncached.write := pendingHead.op === DelayedMemOp.us
   }
 
-  release.bits.data := pendingHead.getSlice(toMem.uncached.rdata)
-  release.bits.isLoad := pendingHead.op === DelayedMemOp.ul
+  release.bits.data := DontCare
+  switch(pendingHead.op) {
+    is(DelayedMemOp.s) {
+      release.bits.data := toMem.writer.rdata
+
+      when(pendingHead.wop === DCWriteOp.commitLR) {
+        release.bits.data := pendingHead.data
+      }
+    }
+
+    is(DelayedMemOp.ul) {
+      release.bits.data := pendingHead.getSlice(toMem.uncached.rdata)
+    }
+  }
+
+
+  // FIXME: maybe we can ignore this, because for all such operations, we have erd =/= 0
+  release.bits.hasWB := (
+    pendingHead.op === DelayedMemOp.ul
+    || pendingHead.op === DelayedMemOp.s && (
+      pendingHead.wop =/= DCWriteOp.write
+    )
+  )
 
   val finished = (
     pendings.io.deq.valid

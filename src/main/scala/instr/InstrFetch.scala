@@ -188,8 +188,6 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
     // This is done by checking if the ppn of the instruction is the same as the ppn of
     // ICHead
 
-    // TODO: invalAddr when cross page
-
     decoded(i).fetchEx := FetchEx.none
     decoded(i).acrossPageEx := false.B
     assume(coredef.XLEN != coredef.VADDR_WIDTH)

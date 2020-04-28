@@ -190,8 +190,18 @@ class LSBuf(val idx: Int)(implicit val coredef: CoreDef) extends MultiIOModule w
   // Exgress part
   // Extra restrictions: no pending writes
 
-  val headIsLoad = store(head).instr.instr.op === Decoder.Op("LOAD").ident
-  val headIsFence = store(head).instr.instr.op === Decoder.Op("MEM-MISC").ident
+  val headIsLoad = (
+    store(head).instr.instr.op === Decoder.Op("LOAD").ident
+    || store(head).instr.instr.op === Decoder.Op("AMO").ident && store(head).instr.instr.funct7(6, 2) === Decoder.AMO_FUNC("LR")
+  )
+  val headIsFence = (
+    store(head).instr.instr.op === Decoder.Op("MEM-MISC").ident
+    // Release ops cannot be reordered before any previous ops
+    || store(head).instr.instr.op === Decoder.Op("AMO").ident && store(head).instr.instr.funct7(1)
+  )
+
+  // FIXME: is there acquire ops dispatched?
+
   // TODO: optimize: allow stores with different address to slip over?
   val loadBlocked = hasPending
   val fenceBlocked = hasPending || !fs.wbufClear
