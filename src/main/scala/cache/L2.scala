@@ -245,7 +245,7 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
   // Refillers
   val misses = RegInit(VecInit(Seq.fill(opts.CORE_COUNT * 2)(false.B)))
   val missesAddr = RegInit(VecInit(Seq.fill(opts.CORE_COUNT * 2)(0.U(opts.ADDR_WIDTH.W)))) // Pipe addr to optimize timing
-  val collided = RegInit(VecInit(Seq.fill(opts.CORE_COUNT * 2)(false.B)))
+  // val collided = RegInit(VecInit(Seq.fill(opts.CORE_COUNT * 2)(false.B)))
   val refilled = RegInit(VecInit(Seq.fill(opts.CORE_COUNT * 2)(false.B)))
   val sent = RegInit(VecInit(Seq.fill(opts.CORE_COUNT * 2)(false.B)))
   val ucSent = RegInit(VecInit(Seq.fill(opts.CORE_COUNT)(false.B)))
@@ -254,7 +254,7 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
   )))
 
   for((m, r) <- misses.zip(refilled)) assert(m || !r) // refilled implies miss
-  for((m, c) <- misses.zip(collided)) assert(!(m && c)) // miss and collided is never true at the same time
+  // for((m, c) <- misses.zip(collided)) assert(!(m && c)) // miss and collided is never true at the same time
 
   // Writebacks
   val wbFifo = RegInit(VecInit(Seq.fill(opts.WB_DEPTH)(WBEntry.default(opts))))
@@ -284,7 +284,7 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
   val pipeTargetAddr = RegNext(targetAddr)
 
   val sameAddrRefilling = VecInit((0 until opts.CORE_COUNT * 2).map(
-    idx => misses(idx) && !refilled(idx) && addrs(idx) === targetAddr
+    idx => misses(idx) && addrs(idx) === targetAddr
   )).asUInt().orR
 
   // Compute directory lookups & delayed data fetch
@@ -380,7 +380,7 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
             }
           }.elsewhen(hit) {
             nstate := L2MainState.hit
-          }.elsewhen(collided(target)) { // Someone-else is fetching for me, and it's not a hit yet
+          }.elsewhen(sameAddrRefilling) { // Someone-else is fetching for me, and it's not a hit yet
             nstate := L2MainState.idle
             step()
           }.otherwise {
@@ -402,9 +402,6 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
 
               victim := rand(log2Ceil(opts.ASSOC)-1, 0)
               nstate := L2MainState.refilled
-            }.elsewhen(sameAddrRefilling) {
-              // FIXME: Do we need this?
-              // collided(target) := true.B
             }.otherwise {
               misses(target) := true.B
               missesAddr(target) := addrs(target)
@@ -468,7 +465,7 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
 
         rdatas(target) := data
         stalls(target) := false.B
-        collided(target) := false.B
+        // collided(target) := false.B
 
         val newState = Wire(L2DirState())
 
@@ -495,7 +492,7 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
 
           rdatas(target) := data
           stalls(target) := false.B
-          collided(target) := false.B
+          // collided(target) := false.B
 
           when(isDC) {
             writeDir(
