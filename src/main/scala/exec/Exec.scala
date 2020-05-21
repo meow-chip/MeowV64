@@ -344,7 +344,7 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
 
   val brMask = Wire(Vec(units.size, UInt(coredef.INFLIGHT_INSTR_LIMIT.W)))
   val brMux = Wire(UInt(coredef.INFLIGHT_INSTR_LIMIT.W))
-  brMux := brMask.reduceTree(_ | _) | Mux(pendingBr, pendingBrTag -% retirePtr, 0.U)
+  brMux := brMask.reduceTree(_ | _) | Mux(pendingBr, UIntToOH(pendingBrTag -% retirePtr), 0.U)
   val brSel = VecInit(PriorityEncoderOH(brMux.asBools())).asUInt()
   val brSeled = Wire(Vec(units.size, Bool()))
   val brNormlalized = Wire(Vec(units.size, new BranchResult))
