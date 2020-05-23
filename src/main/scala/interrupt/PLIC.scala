@@ -11,8 +11,8 @@ abstract class PLICDef {
 }
 
 object PLIC {
-  val PLIC_REGION_START = BigInt("FFFF00000C000000", 16)
-  val PLIC_REGION_SIZE = 0x30000000
+  val PLIC_REGION_START = BigInt("0C000000", 16)
+  val PLIC_REGION_SIZE = 0x3000000
   val PLIC_ADDR_WIDTH = log2Ceil(PLIC_REGION_SIZE)
 }
 
@@ -103,6 +103,7 @@ class PLIC(val pdef: PLICDef) extends MultiIOModule {
   // MMIO interface
   val req = toL2.req.deq()
   toL2.resp.valid := toL2.req.fire()
+  toL2.resp.bits := DontCare
   val offset = (req.addr -% PLIC.PLIC_REGION_START.U)(PLIC.PLIC_ADDR_WIDTH-1, 0)
   switch(PLICAddrSpace.fromOffset(offset)) {
     is(PLICAddrSpace.priority) {

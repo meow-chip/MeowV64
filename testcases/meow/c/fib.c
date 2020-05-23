@@ -1,4 +1,4 @@
-#define SERIAL ((volatile char *) 0xFFFFFFFF10000000ULL)
+#define SERIAL ((volatile char *) 0x10000000ULL)
 
 void print(int num) {
   int q;

@@ -1,9 +1,9 @@
   li sp, 0x10000
-	li ra, 0x100000
+  li ra, 0x100000
 .section .text
 .globl _start
 _start:
-  li s1, 0xFFFFFFFF90000000
+  li s1, 0x70000000
 
   li t0, 0x123456789ABCDEF
   li t1, 0xFF

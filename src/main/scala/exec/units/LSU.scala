@@ -139,6 +139,8 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with UnitSelIO {
   val retire = IO(Output(new Retirement))
   val extras = new mutable.HashMap[String, Data]()
 
+  def isUncached(addr: UInt) = addr < BigInt("80000000", 16).U
+
   val hasNext = rs.valid // TODO: merge into rs.instr
   val next = WireDefault(rs.instr)
   when(!rs.valid) {
@@ -246,7 +248,7 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with UnitSelIO {
 
   val aligned = addr(coredef.PADDR_WIDTH - 1, 3) ## 0.U(3.W)
   val offset = addr(2, 0)
-  val uncached = addr(coredef.PADDR_WIDTH-1) && next.instr.instr.op =/= Decoder.Op("AMO").ident // Uncached if phys bit 56 = high and is not AMO
+  val uncached = isUncached(addr) && next.instr.instr.op =/= Decoder.Op("AMO").ident // Uncached if phys bit 56 = high and is not AMO
   val read = (
     next.instr.instr.op === Decoder.Op("LOAD").ident
     || next.instr.instr.op === Decoder.Op("AMO").ident && next.instr.instr.funct7(6, 2) === Decoder.AMO_FUNC("LR")
@@ -332,7 +334,7 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with UnitSelIO {
   val pipeAligned = pipeAddr(coredef.PADDR_WIDTH - 1, 3) ## 0.U(3.W)
   val pipeOffset = pipeAddr(2, 0)
   val pipeAMO = pipeInstr.instr.instr.op === Decoder.Op("AMO").ident
-  val pipeUncached = pipeAddr(coredef.PADDR_WIDTH-1) && !pipeAMO
+  val pipeUncached = isUncached(pipeAddr) && !pipeAMO
   val pipeFenceLike = (
     pipeInstr.instr.instr.op === Decoder.Op("MEM-MISC").ident
     && !pipeInstr.instr.vacant

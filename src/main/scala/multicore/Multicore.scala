@@ -12,7 +12,7 @@ import interrupt.PLIC
 class Multicore(implicit val mcdef: MulticoreDef = DefaultDef) extends Module {
   val io = IO(new Bundle {
     val axi = new AXI(mcdef.XLEN, mcdef.PADDR_WIDTH)
-    val eints = Input(Vec(mcdef.INTERRUPT_CNT, Bool()))
+    val eints = Input(Vec(mcdef.INTERRUPT_CNT+1, Bool()))
 
     // Debug infos
     val debug = Output(Vec(mcdef.CORE_COUNT, new CoreDebug()(CoreDef.default(0, mcdef.INIT_VEC)))) // HART_ID doesn't matter here
@@ -40,7 +40,7 @@ class Multicore(implicit val mcdef: MulticoreDef = DefaultDef) extends Module {
     cores(idx).io.int.mtip := clint.ints(idx).mtip
   }
 
-  plic.source := io.eints
+  plic.source := io.eints.asUInt()
   for(idx <- (0 until mcdef.CORE_COUNT)) {
     cores(idx).io.int.meip := plic.eints(idx * 2)
     cores(idx).io.int.seip := plic.eints(idx * 2 + 1)

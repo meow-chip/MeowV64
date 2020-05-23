@@ -1,7 +1,7 @@
   li sp, 0x10000
-	li ra, 0x100000
-  li s0, 0xFFFF000002004000
-  li s1, 0xFFFF00000200BFF8
+  li ra, 0x100000
+  li s0, 0x02004000
+  li s1, 0x0200BFF8
 .section .text
 .globl _start
 _start:

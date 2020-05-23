@@ -15,7 +15,7 @@ import multicore.MulticoreDef
 import multicore.Multicore
 
 object ExecDef extends MulticoreDef {
-  override val INIT_VEC = BigInt("80000000", 16)
+  override val INIT_VEC = BigInt(0x80000000L)
 }
 
 class ExecTest(dut: Multicore, file: String) extends PeekPokeTester(dut) {
@@ -117,11 +117,11 @@ class ExecTest(dut: Multicore, file: String) extends PeekPokeTester(dut) {
           mem.put(ptr, muxed)
 
           writing match {
-            case Some((addr, _)) if addr == 0xFFFFFF00000000L => {
+            case Some((addr, _)) if addr == 0x10000000L => {
               // Print to serial
               print((wdata & 0xFF).toChar)
             }
-            case Some((addr, _)) if addr == 0xFFFFFF80000000L => {
+            case Some((addr, _)) if addr == 0x20000000L => {
               // tohost in ISA testsuite
               val data = (wdata & 0xFFFFFFFF).toLong
               if(wdata == ((data & 0xFF) | BigInt("0101000000000000", 16))) {
@@ -165,7 +165,7 @@ class ExecTest(dut: Multicore, file: String) extends PeekPokeTester(dut) {
     throw new Error(s"Did not finished within ${bound} cycles")
   }
 
-  doTest(1000000)
+  doTest(100000)
 }
 
 object ExecTest {

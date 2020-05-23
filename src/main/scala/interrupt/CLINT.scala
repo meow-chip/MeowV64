@@ -6,7 +6,7 @@ import chisel3.util._
 import multicore.MulticoreDef
 
 object CLINT {
-  val CLINT_REGION_START = BigInt("FFFF000002000000", 16)
+  val CLINT_REGION_START = BigInt("02000000", 16)
   val CLINT_REGION_SIZE = 0x10000
   val CLINT_ADDR_WIDTH = log2Ceil(CLINT_REGION_SIZE)
 }
