@@ -23,6 +23,8 @@ import interrupt._
 trait L2Opts extends L1Opts {
   val WB_DEPTH: Int
   val CORE_COUNT: Int
+
+  val MMIO: Seq[MMIOMapping]
 }
 
 object L2DirState extends ChiselEnum {
@@ -122,12 +124,22 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
   val ASSOC_IDX_WIDTH = log2Ceil(opts.ASSOC)
   val LINE_COUNT = opts.SIZE / opts.LINE_WIDTH / opts.ASSOC
 
+  object GeneralMMIODef extends {
+    override val ADDR_WIDTH: Int = opts.ADDR_WIDTH
+    override val XLEN: Int = opts.XLEN
+  } with MMIODef
+
   val ic = IO(Vec(opts.CORE_COUNT, Flipped(new L1ICPort(opts))))
   val dc = IO(Vec(opts.CORE_COUNT, Flipped(new L1DCPort(opts))))
   val directs = IO(Vec(opts.CORE_COUNT, Flipped(new L1UCPort(opts))))
+  val mmio = IO(Vec(
+    opts.MMIO.size,
+    Flipped(new MMIOAccess(GeneralMMIODef))
+  ))
 
-  val clint = IO(Flipped(new CLINTAccess))
-  clint.req.noenq()
+  for(m <- mmio) {
+    m.req.noenq()
+  }
 
   // Iterator for all ports
   // dc comes first to match MSI directory
@@ -229,18 +241,19 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
   }
 
   /* Uncached ports */
-  def isCLINT(addr: UInt) = {
+  def isInMapping(addr: UInt, mapping: MMIOMapping) = {
     val ret = WireDefault(false.B)
     when(
-      addr >= CLINT.CLINT_REGION_START.U(opts.XLEN.W)(opts.ADDR_WIDTH-1, 0)
-      && addr < (CLINT.CLINT_REGION_START + CLINT.CLINT_REGION_SIZE).U(opts.XLEN.W)(opts.ADDR_WIDTH-1, 0)
+      addr >= mapping.MAPPED_START.U(opts.XLEN.W)(opts.ADDR_WIDTH-1, 0)
+      && addr < (mapping.MAPPED_START + mapping.MAPPED_SIZE).U(opts.XLEN.W)(opts.ADDR_WIDTH-1, 0)
     ) {
       ret := true.B
     }
     ret
   }
 
-  def isMMIO(addr: UInt) = isCLINT(addr)
+  def getMMIOMap(addr: UInt) = VecInit(opts.MMIO.map((mapping) => isInMapping(addr, mapping))).asUInt()
+  def isMMIO(addr: UInt) = getMMIOMap(addr).orR()
 
   // Refillers
   val misses = RegInit(VecInit(Seq.fill(opts.CORE_COUNT * 2)(false.B)))
@@ -866,7 +879,7 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
   val ucWalkPtr = RegInit(0.U((if(opts.CORE_COUNT == 1) { 1 } else { log2Ceil(opts.CORE_COUNT) }).W))
 
   object UCSendStage extends ChiselEnum {
-    val idle, req, data, resp, clintReq, clintResp = Value
+    val idle, req, data, resp, mmioReq, mmioResp = Value
   }
   val ucSendStage = RegInit(UCSendStage.idle)
 
@@ -929,20 +942,24 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
       val pipeUCStrb = Reg(UInt((opts.XLEN / 8).W))
 
       val pipeMMIOWrite = Reg(Bool())
+      val pipeMMIOMap = Reg(UInt(opts.MMIO.size.W))
 
       switch(ucSendStage) {
         is(UCSendStage.idle) {
-          val gotoCLINT = isCLINT(directs(ucWalkPtr).addr) && (
+          val mmioMap = getMMIOMap(directs(ucWalkPtr).addr)
+          val gotoMMIO = mmioMap.orR && (
             directs(ucWalkPtr).read || directs(ucWalkPtr).write
           )
+          assert(PopCount(mmioMap) <= 1.U)
 
           pipeMMIOWrite := directs(ucWalkPtr).write
+          pipeMMIOMap := mmioMap
           pipeUCAddr := directs(ucWalkPtr).addr
           pipeUCStrb := directs(ucWalkPtr).wstrb
           pipeUCData := directs(ucWalkPtr).wdata
 
-          when(gotoCLINT) {
-            ucSendStage := UCSendStage.clintReq
+          when(gotoMMIO) {
+            ucSendStage := UCSendStage.mmioReq
           }.elsewhen(directs(ucWalkPtr).write) {
             ucSendStage := UCSendStage.req
           }.otherwise {
@@ -995,20 +1012,30 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
           }
         }
 
-        is(UCSendStage.clintReq) { // TODO: change to MMIOReq
-          val req = Wire(new CLINTReq)
-          req.op := Mux(pipeMMIOWrite, CLINTReqOp.write, CLINTReqOp.read)
+        is(UCSendStage.mmioReq) { // TODO: change to MMIOReq
+          val req = Wire(new MMIOReq(GeneralMMIODef))
+          req.op := Mux(pipeMMIOWrite, MMIOReqOp.write, MMIOReqOp.read)
           req.addr := pipeUCAddr
           req.wdata := pipeUCData // TODO: wstrb
-          clint.req.enq(req)
-          when(clint.req.fire()) {
-            ucSendStage := UCSendStage.clintResp
+          for((m, e) <- mmio.zip(pipeMMIOMap.asBools())) {
+            when(e) {
+              m.req.enq(req)
+            }
+          }
+
+          when(VecInit(mmio.map((m) => m.req.fire())).asUInt.orR) {
+            ucSendStage := UCSendStage.mmioResp
           }
         }
 
-        is(UCSendStage.clintResp) {
-          directs(ucWalkPtr).rdata := clint.resp.bits
-          when(clint.resp.valid) {
+        is(UCSendStage.mmioResp) {
+          val validMap = mmio.map((m) => m.resp.valid)
+          assert(PopCount(validMap) <= 1.U)
+          assert(PopCount(VecInit(validMap).asUInt | pipeMMIOMap) <= 1.U)
+
+          directs(ucWalkPtr).rdata := Mux1H(pipeMMIOMap, mmio.map((m) => m.resp.bits))
+
+          when(VecInit(validMap).asUInt().orR) {
             directs(ucWalkPtr).stall := false.B
 
             ucSendStage := UCSendStage.idle

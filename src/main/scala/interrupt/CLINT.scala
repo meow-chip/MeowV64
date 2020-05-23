@@ -11,28 +11,23 @@ object CLINT {
   val CLINT_ADDR_WIDTH = log2Ceil(CLINT_REGION_SIZE)
 }
 
-object CLINTReqOp extends ChiselEnum {
-  val read, write = Value
-}
+object CLINTMMIODef extends {
+  override val ADDR_WIDTH: Int = CLINT.CLINT_ADDR_WIDTH
+  override val XLEN: Int = 64
+} with MMIODef
 
-class CLINTReq extends Bundle {
-  val addr = UInt(CLINT.CLINT_ADDR_WIDTH.W)
-  val wdata = UInt(64.W)
-  val op = CLINTReqOp()
-}
+object CLINTMapping extends {
+  override val MAPPED_START = CLINT.CLINT_REGION_START
+  override val MAPPED_SIZE = BigInt(CLINT.CLINT_REGION_SIZE)
+} with MMIOMapping
 
 class LocalInt extends Bundle {
   val msip = Bool()
   val mtip = Bool()
 }
 
-class CLINTAccess extends Bundle {
-  val req = Flipped(DecoupledIO(new CLINTReq))
-  val resp = ValidIO(UInt(64.W))
-}
-
 class CLINT(implicit mcdef: MulticoreDef) extends MultiIOModule {
-  val toL2 = IO(new CLINTAccess)
+  val toL2 = IO(new MMIOAccess(CLINTMMIODef))
   val ints = IO(Output(Vec(mcdef.CORE_COUNT, new LocalInt)))
 
   toL2.req.nodeq()
@@ -73,7 +68,7 @@ class CLINT(implicit mcdef: MulticoreDef) extends MultiIOModule {
       seg := DontCare
       idx := DontCare
       wdata := cur.wdata
-      write := cur.op === CLINTReqOp.write
+      write := cur.op === MMIOReqOp.write
 
       when(cur.addr < 0x4000.U) {
         seg := Seg.msip
