@@ -468,8 +468,8 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
       val data = datas(pipeHitIdx)
       val isDC = target < opts.CORE_COUNT.U
 
-      val dirtyMap = VecInit(lookups(pipeHitIdx).states.map(_ === L2DirState.modified)).asUInt.orR
-      val sharedMap = VecInit(lookups(pipeHitIdx).states.map(_ =/= L2DirState.vacant)).asUInt.orR
+      val dirtyMap = VecInit(lookups(pipeHitIdx).states.map(_ === L2DirState.modified)).asUInt
+      val sharedMap = VecInit(lookups(pipeHitIdx).states.map(_ =/= L2DirState.vacant)).asUInt
       val hasDirty = (dirtyMap & ~UIntToOH(target)).asUInt.orR
       val hasShared = (sharedMap & ~UIntToOH(target)).asUInt.orR
 
@@ -821,11 +821,11 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
     }.elsewhen(isMMIO(directs(id).addr)) {
       stepRefiller(reqTarget)
     }.otherwise {
-      axi.ARADDR := directs(id).addr
+      axi.ARADDR := directs(id).addr // This may be unaligned
       axi.ARBURST := AXI.Constants.Burst.INCR.U
       axi.ARID := reqTarget
       axi.ARLEN := 0.U
-      axi.ARSIZE := AXI.Constants.Size.from(axi.DATA_WIDTH / 8).U
+      axi.ARSIZE := DCWriteLen.toAXISize(directs(id).len)
 
       assume(axi.DATA_WIDTH == opts.XLEN)
 
@@ -939,7 +939,7 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
     is(L2WBState.ucWalk) {
       val pipeUCAddr = Reg(UInt(opts.ADDR_WIDTH.W))
       val pipeUCData = Reg(UInt(opts.XLEN.W))
-      val pipeUCStrb = Reg(UInt((opts.XLEN / 8).W))
+      val pipeUCLen = Reg(DCWriteLen())
 
       val pipeMMIOWrite = Reg(Bool())
       val pipeMMIOMap = Reg(UInt(opts.MMIO.size.W))
@@ -955,7 +955,7 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
           pipeMMIOWrite := directs(ucWalkPtr).write
           pipeMMIOMap := mmioMap
           pipeUCAddr := directs(ucWalkPtr).addr
-          pipeUCStrb := directs(ucWalkPtr).wstrb
+          pipeUCLen := directs(ucWalkPtr).len
           pipeUCData := directs(ucWalkPtr).wdata
 
           when(gotoMMIO) {
@@ -975,10 +975,10 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
         is(UCSendStage.req) {
           assert(directs(ucWalkPtr).write)
           axi.AWADDR := pipeUCAddr
-          assert(axi.AWADDR(log2Ceil(opts.XLEN / 8)-1, 0) === 0.U)
           axi.AWBURST := AXI.Constants.Burst.INCR.U
           axi.AWLEN := 0.U
-          axi.AWSIZE := AXI.Constants.Size.from(axi.DATA_WIDTH / 8).U
+          axi.AWSIZE := DCWriteLen.toAXISize(pipeUCLen)
+
           axi.AWVALID := true.B
 
           when(axi.AWREADY) {
@@ -988,7 +988,7 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
 
         is(UCSendStage.data) {
           axi.WDATA := pipeUCData
-          axi.WSTRB := pipeUCStrb
+          axi.WSTRB := (-1).S((axi.DATA_WIDTH / 8).W).asUInt // Write all stuff
           axi.WLAST := true.B
           axi.WVALID := true.B
           when(axi.WREADY) {

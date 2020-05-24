@@ -63,34 +63,7 @@ class DelayedMem(implicit val coredef: CoreDef) extends Bundle {
 
   def isNoop() = op === DelayedMemOp.no
 
-  def alignedAddr = addr(63, 3) ## 0.U(3.W)
-  def shiftedData = data << (addr(2, 0) << 3)
-
-  def be: UInt = {
-    val offset = addr(2, 0)
-    val raw = Wire(UInt((coredef.XLEN / 8).W))
-    raw := DontCare
-    switch(len) {
-      is(DCWriteLen.B) {
-        raw := 0x1.U
-      }
-      is(DCWriteLen.H) {
-        raw := 0x3.U
-      }
-      is(DCWriteLen.W) {
-        raw := 0xf.U
-      }
-      is(DCWriteLen.D) {
-        raw := 0xff.U
-      }
-    }
-
-    raw << offset
-  }
-
-  def getSlice(raw: UInt): UInt = {
-    val offset = addr(2, 0)
-    val shifted = raw >> (offset << 3)
+  def getLSB(raw: UInt): UInt = {
     val ret = Wire(UInt(coredef.XLEN.W))
     ret := DontCare
     when(sext) {
@@ -98,16 +71,16 @@ class DelayedMem(implicit val coredef: CoreDef) extends Bundle {
       sret := DontCare
       switch(len) {
         is(DCWriteLen.B) {
-          sret := shifted(7, 0).asSInt()
+          sret := raw(7, 0).asSInt()
         }
         is(DCWriteLen.H) {
-          sret := shifted(15, 0).asSInt()
+          sret := raw(15, 0).asSInt()
         }
         is(DCWriteLen.W) {
-          sret := shifted(31, 0).asSInt()
+          sret := raw(31, 0).asSInt()
         }
         is(DCWriteLen.D) {
-          sret := shifted(63, 0).asSInt()
+          sret := raw(63, 0).asSInt()
         }
       }
 
@@ -115,16 +88,16 @@ class DelayedMem(implicit val coredef: CoreDef) extends Bundle {
     }.otherwise {
       switch(len) {
         is(DCWriteLen.B) {
-          ret := shifted(7, 0)
+          ret := raw(7, 0)
         }
         is(DCWriteLen.H) {
-          ret := shifted(15, 0)
+          ret := raw(15, 0)
         }
         is(DCWriteLen.W) {
-          ret := shifted(31, 0)
+          ret := raw(31, 0)
         }
         is(DCWriteLen.D) {
-          ret := shifted(63, 0)
+          ret := raw(63, 0)
         }
       }
     }
@@ -503,14 +476,14 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with UnitSelIO {
   // Delayed memory ops
   val pendingHead = pendings.io.deq.bits
   toMem.writer.wdata := pendingHead.data
-  toMem.uncached.wdata := pendingHead.shiftedData
+  toMem.uncached.wdata := pendingHead.data
 
   toMem.writer.addr := pendingHead.addr
-  toMem.uncached.addr := pendingHead.alignedAddr
+  toMem.uncached.addr := pendingHead.addr
   
   // toMem.writer.be := pendingHead.be
   toMem.writer.len := pendingHead.len
-  toMem.uncached.wstrb := pendingHead.be
+  toMem.uncached.len := pendingHead.len
 
   toMem.writer.op := DCWriteOp.idle
   toMem.uncached.read := false.B
@@ -533,7 +506,7 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with UnitSelIO {
     }
 
     is(DelayedMemOp.ul) {
-      release.bits.data := pendingHead.getSlice(toMem.uncached.rdata)
+      release.bits.data := pendingHead.getLSB(toMem.uncached.rdata)
     }
   }
 

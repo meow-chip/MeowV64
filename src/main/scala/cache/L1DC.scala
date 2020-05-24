@@ -54,6 +54,15 @@ object DCWriteOp extends ChiselEnum {
 
 object DCWriteLen extends ChiselEnum {
   val B, H, W, D = Value
+
+  def toAXISize(len: DCWriteLen.Type) = Mux1H(
+    Seq(
+      (len === DCWriteLen.B) -> AXI.Constants.Size.S1.U,
+      (len === DCWriteLen.H) -> AXI.Constants.Size.S2.U,
+      (len === DCWriteLen.W) -> AXI.Constants.Size.S4.U,
+      (len === DCWriteLen.D) -> AXI.Constants.Size.S8.U,
+    )
+  )
 }
 
 class DCWriter(val opts: L1DOpts) extends Bundle {

@@ -12,7 +12,7 @@ abstract class PLICDef {
 
 object PLIC {
   val PLIC_REGION_START = BigInt("0C000000", 16)
-  val PLIC_REGION_SIZE = 0x3000000
+  val PLIC_REGION_SIZE = 0x4000000
   val PLIC_ADDR_WIDTH = log2Ceil(PLIC_REGION_SIZE)
 }
 

@@ -111,7 +111,7 @@ class L1UCPort(val opts: L1Opts) extends Bundle {
   val read = Output(Bool())
   val write = Output(Bool())
   val addr = Output(UInt(opts.ADDR_WIDTH.W))
-  val wstrb = Output(UInt((opts.XLEN/8).W))
+  val len = Output(DCWriteLen())
 
   val stall = Input(Bool())
 
