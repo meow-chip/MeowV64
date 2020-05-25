@@ -82,16 +82,16 @@ class ExecTest(dut: Multicore, file: String) extends PeekPokeTester(dut) {
         poke(axi.RVALID, 1)
         poke(axi.RID, id)
         val rdata = mem.get((ptr >> 3) << 3).getOrElse(0L)
-        val shifted = rdata >> ((ptr & 7) * 8)
         val mask = if(size == 3) {
           0xFFFFFFFFFFFFFFFFL
         } else {
           (1L << ((1L << size) * 8)) - 1L
         }
+        val shiftedMask = mask << ((ptr & 7) * 8)
         // println(s"  Raw: 0x${rdata.toHexString}")
         // println(s"  Shifted: 0x${shifted.toHexString}")
         // println(s"  Mask: 0x${mask.toHexString}")
-        poke(axi.RDATA, shifted & mask)
+        poke(axi.RDATA, rdata & shiftedMask)
         poke(axi.RLAST, left == 0)
         // println(s"Returning: 0x${(shifted & mask).toHexString}")
 
@@ -233,8 +233,8 @@ object ExecTest {
         (base >>> (i*8)) & 0xFF
       } else if(i >= offset + size) {
         (base >>> (i*8)) & 0xFF
-      } else if(((be >>> (i - offset)) & 1) == 1) {
-        (input >>> ((i - offset)*8)) & 0xFF
+      } else if(((be >>> i) & 1) == 1) {
+        (input >>> (i*8)) & 0xFF
       } else {
         (base >>> (i*8)) & 0xFF
       }

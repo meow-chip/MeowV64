@@ -821,6 +821,7 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
     }.elsewhen(isMMIO(directs(id).addr)) {
       stepRefiller(reqTarget)
     }.otherwise {
+      // FIXME: one more pipeline stage, and save addr for response
       axi.ARADDR := directs(id).addr // This may be unaligned
       axi.ARBURST := AXI.Constants.Burst.INCR.U
       axi.ARID := reqTarget
@@ -865,7 +866,8 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
     }.otherwise {
       assert(axi.RLAST)
       val id = axi.RID - (opts.CORE_COUNT * 2).U
-      directs(id).rdata := axi.RDATA
+      val shifts = VecInit(directs.map(_.addr(log2Ceil(axi.DATA_WIDTH/8)-1, 0)))
+      directs(id).rdata := axi.RDATA >> (shifts(id) << 3)
       directs(id).stall := false.B
       ucSent(axi.RID) := false.B
     }
@@ -987,7 +989,7 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
         }
 
         is(UCSendStage.data) {
-          axi.WDATA := pipeUCData
+          axi.WDATA := pipeUCData << (pipeUCAddr(log2Ceil(axi.DATA_WIDTH/8)-1, 0) << 3)
           axi.WSTRB := (-1).S((axi.DATA_WIDTH / 8).W).asUInt // Write all stuff
           axi.WLAST := true.B
           axi.WVALID := true.B
