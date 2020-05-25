@@ -122,12 +122,12 @@ class BPU(implicit val coredef: CoreDef) extends MultiIOModule {
 
   val we = updateMask.map(bit => {
     val ret = WireDefault(bit)
-    when(reseting) {
-      ret := true.B
-    }
-
     when(!toExec.valid) {
       ret := false.B
+    }
+
+    when(reseting) {
+      ret := true.B
     }
 
     ret
