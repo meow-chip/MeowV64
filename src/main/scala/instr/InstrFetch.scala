@@ -343,8 +343,6 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
     }
   }
   
-  toBPU.pc := DontCare
-
   // TODO: asserts that decodable is shaped like [true, ..., true, false, ..., false] when there is no BPU
 
   debug.pc := fpc

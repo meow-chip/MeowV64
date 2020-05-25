@@ -81,7 +81,11 @@ class ExecTest(dut: Multicore, file: String) extends PeekPokeTester(dut) {
         val (id, ptr, left, size) = reading.get
         poke(axi.RVALID, 1)
         poke(axi.RID, id)
-        val rdata = mem.get((ptr >> 3) << 3).getOrElse(0L)
+        val rdata = if(ptr == 0x10001014) { // LSR
+          1L << (32 + 5)
+        } else {
+          mem.get((ptr >> 3) << 3).getOrElse(0L)
+        }
         val mask = if(size == 3) {
           0xFFFFFFFFFFFFFFFFL
         } else {
