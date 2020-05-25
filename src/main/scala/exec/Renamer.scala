@@ -28,7 +28,7 @@ class Renamer(implicit coredef: CoreDef) extends MultiIOModule {
     val commit = Input(UInt(log2Ceil(coredef.ISSUE_NUM+1).W))
     val ntag = Input(UInt(log2Ceil(coredef.INFLIGHT_INSTR_LIMIT).W)) // Next tag also used for next rdname
     val output = Output(Vec(coredef.ISSUE_NUM, new ReservedInstr))
-    val count = Output(UInt(log2Ceil(coredef.ISSUE_NUM+1).W))
+    val allowBit = Output(Vec(coredef.ISSUE_NUM, Bool()))
 
     val releases = Vec(coredef.RETIRE_NUM, new Release)
     val retire = Input(UInt(log2Ceil(coredef.RETIRE_NUM+1).W))
@@ -117,11 +117,7 @@ class Renamer(implicit coredef: CoreDef) extends MultiIOModule {
     (name, ready, value)
   }
 
-  toExec.count := MuxLookup(
-    false.B,
-    coredef.ISSUE_NUM.U,
-    canRename.zipWithIndex.map({ case (bit, idx) => bit -> idx.U })
-  )
+  toExec.allowBit := VecInit(canRename)
   
   // Release before allocation
   for((release, idx) <- toExec.releases.zipWithIndex) {

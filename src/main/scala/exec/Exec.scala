@@ -260,7 +260,7 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
 
     instr := renamer.toExec.output(idx)
 
-    when(idx.U >= toIF.cnt || idx.U >= renamer.toExec.count || idx.U >= maxIssueNum) {
+    when(idx.U >= toIF.cnt || !renamer.toExec.allowBit(idx) || idx.U >= maxIssueNum) {
       selfCanIssue := false.B
       sending := 0.U
     }.otherwise {
