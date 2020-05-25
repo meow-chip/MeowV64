@@ -279,7 +279,7 @@ class L1DC(val opts: L1DOpts)(implicit coredef: CoreDef) extends MultiIOModule {
 
   val waddr = wbuf(wbufHead).aligned
   val nwaddr = wbuf(wbufHead +% 1.U).aligned
-  assert(waddr(IGNORED_WIDTH-1, 0) === 0.U)
+  assert(wbufHead === wbufTail || waddr(IGNORED_WIDTH-1, 0) === 0.U)
 
   val wlookupAddr = Wire(waddr.cloneType)
   when(state === MainState.idle) {
