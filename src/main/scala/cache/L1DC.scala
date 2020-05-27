@@ -631,10 +631,20 @@ class L1DC(val opts: L1DOpts)(implicit coredef: CoreDef) extends MultiIOModule {
 
   val hits = lookups.map(line => line.valid && line.tag === getTag(pipeAddr))
   val hit = VecInit(hits).asUInt().orR
-  val lookupRdata = Mux1H(lookups.map(line => (
-    line.valid && line.tag === getTag(pipeAddr),
-    line.data(getSublineIdx(pipeAddr))
-  )))
+  val storeJustWrittenData = RegNext(writingData)
+  val storeJustWritten = (
+    RegNext(writing).asUInt().orR && RegNext(writingAddr) === getIndex(pipeAddr) && (
+      storeJustWrittenData.valid && storeJustWrittenData.tag === getTag(pipeAddr)
+    )
+  )
+  val lookupRdata = Mux(
+    storeJustWritten,
+    storeJustWrittenData.data(getSublineIdx(pipeAddr)),
+    Mux1H(lookups.map(line => (
+      line.valid && line.tag === getTag(pipeAddr),
+      line.data(getSublineIdx(pipeAddr))
+    )))
+  )
 
   val pendingWHits= wbuf.map(buf => buf.valid && buf.aligned === getLineAddr(pipeAddr))
   val pendingWdata = Mux1H(pendingWHits, wbuf.map(_.sdata))
@@ -648,6 +658,8 @@ class L1DC(val opts: L1DOpts)(implicit coredef: CoreDef) extends MultiIOModule {
     pipeAddr := r.addr
 
     queryAddr := r.addr
+
+    assert(RegNext(queryAddr) === pipeAddr)
   }.otherwise {
     queryAddr := pipeAddr
   }
@@ -664,7 +676,7 @@ class L1DC(val opts: L1DOpts)(implicit coredef: CoreDef) extends MultiIOModule {
   when(RegNext(toL2.l2req) =/= L2Req.idle) {
     // read port occupied
     r.stall := true.B
-  }.elsewhen((!pipeRead) || hit) {
+  }.elsewhen((!pipeRead) || hit || storeJustWritten) {
     r.stall := false.B
   }.otherwise {
     r.stall := true.B
