@@ -107,8 +107,7 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
   tlb.query.mode := Mux(toCtrl.priv === PrivLevel.U, TLBLookupMode.U, TLBLookupMode.S)
   tlb.flush := toCtrl.tlbrst
 
-  // FIXME: This one was RegNect(pc). Why regnext?
-  toBPU.pc := fpc // Perdict by virtual memory
+  toBPU.pc := Mux(toIC.stall, RegNext(toBPU.pc), fpc) // Perdict by virtual memory
   // TODO: flush BPU on context switch
 
   // TODO: BHT

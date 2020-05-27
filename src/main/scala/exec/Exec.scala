@@ -410,14 +410,13 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
   when(!rob(retirePtr).valid) {
     // First one invalid, cannot retire anything
     retireNum := 0.U
-    toCtrl.branch.nofire()
     for(rwp <- rw) {
       rwp.addr := 0.U
       rwp.data := DontCare
     }
+    toCtrl.branch := BranchResult.empty
   }.elsewhen(rob(retirePtr).hasMem) {
     // Is memory operation, wait for memAccSucc
-    toCtrl.branch.nofire()
     for(rwp <- rw) {
       rwp.addr := 0.U
       rwp.data := DontCare
@@ -426,6 +425,9 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
     releaseMem.ready := !RegNext(releaseMem.fire())
     val memResult = RegNext(releaseMem.bits)
     val memFired = RegNext(releaseMem.fire())
+
+    // For BPU mispredict on previous instructions
+    toCtrl.branch := BranchResult.empty
 
     when(memFired) {
       retireNum := 1.U
@@ -437,6 +439,10 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
         cdb.entries(coredef.UNIT_COUNT).valid := true.B
         rw(0).addr := inflights.reader.view(0).erd
         rw(0).data := memResult.data
+      }
+
+      when(pendingBr && pendingBrTag === retirePtr) {
+        toCtrl.branch := pendingBrResult
       }
     }.otherwise {
       retireNum := 0.U
