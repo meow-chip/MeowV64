@@ -120,7 +120,7 @@ class PLIC(val pdef: PLICDef) extends MultiIOModule {
 
     is(PLICAddrSpace.enable) {
       val inner = offset - 0x2000.U
-      val ctx = inner >> (1024/8)
+      val ctx = inner >> log2Ceil(1024/8)
       toL2.resp.bits := enables(ctx)(inner >> 2)
 
       when(toL2.req.fire() && req.op === MMIOReqOp.write) {
