@@ -1035,9 +1035,15 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
           assert(PopCount(validMap) <= 1.U)
           assert(PopCount(VecInit(validMap).asUInt | pipeMMIOMap) <= 1.U)
 
-          directs(ucWalkPtr).rdata := Mux1H(pipeMMIOMap, mmio.map((m) => m.resp.bits))
+          val currentCycleRdata = Mux1H(pipeMMIOMap, mmio.map((m) => m.resp.bits))
+          val lastCycleRdata = Mux1H(pipeMMIOMap, mmio.map(m => RegNext(m.resp.bits)))
 
-          when(VecInit(validMap).asUInt().orR) {
+          val valid = VecInit(validMap).asUInt.orR()
+          val lastCycleValid = RegNext(valid)
+
+          directs(ucWalkPtr).rdata := Mux(lastCycleValid, lastCycleRdata, currentCycleRdata)
+
+          when(valid || lastCycleValid) {
             directs(ucWalkPtr).stall := false.B
 
             ucSendStage := UCSendStage.idle
