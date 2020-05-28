@@ -659,7 +659,7 @@ class L1DC(val opts: L1DOpts)(implicit coredef: CoreDef) extends MultiIOModule {
 
     queryAddr := r.addr
 
-    assert(RegNext(queryAddr) === pipeAddr)
+    assert((!pipeRead) || RegNext(queryAddr) === pipeAddr)
   }.otherwise {
     queryAddr := pipeAddr
   }
