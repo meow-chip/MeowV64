@@ -240,7 +240,8 @@ class Ctrl(implicit coredef: CoreDef) extends MultiIOModule {
   ip.external.m := int.meip
   ip.timer.m := int.mtip
   ip.software.m := int.msip
-  // TODO: SEIP
+  ip.external.s := int.seip
+  // TODO: CSRW SEIP
   
   val miewpri = RegInit(0.U(coredef.XLEN.W))
   val mipwpri = RegInit(0.U(coredef.XLEN.W))
