@@ -97,6 +97,9 @@ class Ctrl(implicit coredef: CoreDef) extends MultiIOModule {
     val scause = new CSRPort(coredef.XLEN)
     val sepc = new CSRPort(coredef.XLEN)
     val stval = new CSRPort(coredef.XLEN)
+
+    val instret = Output(UInt(64.W))
+    val cycle = Output(UInt(64.W))
   });
 
   // Privilege level
@@ -194,6 +197,9 @@ class Ctrl(implicit coredef: CoreDef) extends MultiIOModule {
   csr.mcycle <> CSRPort.fromReg(coredef.XLEN, mcycle)
   csr.minstret <> CSRPort.fromReg(coredef.XLEN, minstret)
   csr.mcountinhibit <> CSRPort.fromReg(coredef.XLEN, mcountinhibit)
+
+  csr.instret := minstret
+  csr.cycle := mcycle
 
   // xstatus
   val status = RegInit(Status.empty)

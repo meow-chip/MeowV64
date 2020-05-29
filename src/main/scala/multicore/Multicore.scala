@@ -38,6 +38,7 @@ class Multicore(implicit val mcdef: MulticoreDef = DefaultDef) extends Module {
   for(idx <- (0 until mcdef.CORE_COUNT)) {
     cores(idx).io.int.msip := clint.ints(idx).msip
     cores(idx).io.int.mtip := clint.ints(idx).mtip
+    cores(idx).io.time := clint.time
   }
 
   plic.source := io.eints.asUInt()

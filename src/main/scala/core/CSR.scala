@@ -128,7 +128,12 @@ object CSR {
     0x142 -> ("scause", true),
     0x143 -> ("stval", true),
     0x144 -> ("sip", true),
-    0x180 -> ("satp", true)
+    0x180 -> ("satp", true),
+
+    // User
+    0xC00 -> ("cycle", false),
+    0xC01 -> ("time", false),
+    0xC02 -> ("instret", false),
   )
 
   /*

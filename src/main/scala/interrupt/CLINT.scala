@@ -29,6 +29,7 @@ class LocalInt extends Bundle {
 class CLINT(implicit mcdef: MulticoreDef) extends MultiIOModule {
   val toL2 = IO(new MMIOAccess(CLINTMMIODef))
   val ints = IO(Output(Vec(mcdef.CORE_COUNT, new LocalInt)))
+  val time = IO(Output(UInt(64.W)))
 
   toL2.req.nodeq()
   toL2.resp.bits := DontCare
@@ -37,6 +38,8 @@ class CLINT(implicit mcdef: MulticoreDef) extends MultiIOModule {
   // Timer
   val mtime = RegInit(0.U(64.W))
   mtime := mtime +% 1.U
+
+  time := mtime
 
   val mtimecmp = RegInit(VecInit(Seq.fill(mcdef.CORE_COUNT)(0.U(64.W))))
   for((c, m) <- ints.zip(mtimecmp)) {

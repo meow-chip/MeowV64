@@ -31,6 +31,7 @@ class Core(implicit val coredef: CoreDef) extends Module {
   val io = IO(new Bundle {
     val int = Input(new CoreInt)
     val frontend = new CoreFrontend
+    val time = Input(UInt(64.W))
 
     // Debug
     val debug = Output(new CoreDebug)
@@ -125,6 +126,10 @@ class Core(implicit val coredef: CoreDef) extends Module {
 
   val satp = RegInit(Satp.empty)
   csr.attach("satp").connect(satp.port)
+
+  csr.readers("cycle") := ctrl.csr.cycle
+  csr.readers("time") := io.time
+  csr.readers("instret") := ctrl.csr.instret
 
   ptw.satp := satp
   fetch.toCore.satp := satp
