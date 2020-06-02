@@ -97,8 +97,8 @@ class PTW(implicit coredef: CoreDef) extends MultiIOModule {
           } otherwise {
             // Continue searching
             dc.req.enq(DCRead.load(pte.ppn ## segs(level + 1.U) ## 0.U(3.W)))
-            level := level + 1.U
             when(dc.req.fire()) { // Wait for request to go in
+              level := level + 1.U
               dcSlot.io.deq.deq()
             }
           }
