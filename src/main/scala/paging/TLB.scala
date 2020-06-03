@@ -82,7 +82,7 @@ class TLB(implicit coredef: CoreDef) extends MultiIOModule {
     }
   }.otherwise {
     query.ready := false.B
-    ptw.req.enq(query.vpn)
+    ptw.req.enq(refilling)
 
     val random = LFSR(log2Ceil(coredef.TLB_SIZE))
     val invalids = storage.map(!_.v)
