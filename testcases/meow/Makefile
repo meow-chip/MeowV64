@@ -7,7 +7,7 @@ HEXS:=$(patsubst src/%.S,hex/%.hex,$(SRCS))
 CSRCS:=$(wildcard c/*.c)
 REFS:=$(patsubst c/%.c,ref/%.S,$(CSRCS))
 
-PREFIX ?= "riscv64-linux-gnu-"
+PREFIX ?= riscv64-linux-gnu-
 
 .PHONY: list all clean ref
 
@@ -15,7 +15,7 @@ all: $(BINS) $(HEXS)
 
 bin/%.bin: src/%.S Makefile
 	mkdir -p bin
-	$(PREFIX)as -march=rv64imc $< -o $@.assembled
+	$(PREFIX)cpp $< | $(PREFIX)as -march=rv64imac -o $@.assembled -
 	$(PREFIX)ld $@.assembled -o $@.linked
 	cp $@.linked $@
 	$(PREFIX)objcopy -O binary $@
