@@ -512,7 +512,8 @@ class L1DC(val opts: L1DOpts)(implicit coredef: CoreDef) extends MultiIOModule {
         when(wbuf(wbufHead).isAMO) {
           amoalu.io.rdata := toL2.rdata.asTypeOf(written.data)(getSublineIdx(waddr))
           written.data(getSublineIdx(waddr)) := amoalu.io.muxed
-          pendingWret := amoalu.io.rsliced
+          // pendingWret := amoalu.io.rsliced
+          // penidngWret is set in the branch below
         }
       }
 
@@ -524,7 +525,6 @@ class L1DC(val opts: L1DOpts)(implicit coredef: CoreDef) extends MultiIOModule {
           l1writing(victim) := true.B
           nstate := MainState.readingSpin
         }.otherwise {
-          pendingWret := 0.U
           l1writing(victim) := true.B
 
           when(wbuf(wbufHead).isCond) {
@@ -534,6 +534,10 @@ class L1DC(val opts: L1DOpts)(implicit coredef: CoreDef) extends MultiIOModule {
               pendingWret := 1.U
               l1writing(victim) := false.B
             }
+          }.elsewhen(wbuf(wbufHead).isAMO) {
+            pendingWret := amoalu.io.rsliced
+          }.otherwise {
+            pendingWret := 0.U
           }
 
           wbuf(wbufHead).valid := false.B

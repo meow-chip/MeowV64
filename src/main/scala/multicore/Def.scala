@@ -9,7 +9,7 @@ import interrupt.MMIODef
 
 abstract class MulticoreDef {
   outer =>
-  val CORE_COUNT = 1
+  val CORE_COUNT = 2
 
   val INIT_VEC = BigInt(0x80000000L)
 

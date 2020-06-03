@@ -41,6 +41,7 @@ class ExecTest(dut: Multicore, file: String) extends PeekPokeTester(dut) {
     println(s"Initialized: $idx longs")
 
     val axi = dut.io.axi
+    val failed: mutable.HashSet[Long] = mutable.HashSet.empty
 
     // Test pass signal through tohost
     var finished = false
@@ -150,8 +151,14 @@ class ExecTest(dut: Multicore, file: String) extends PeekPokeTester(dut) {
                 // Is simple print
                 print((data & 0xFF).toChar)
               } else if(data == 1) {
-                println("ISA Testsuite pass.")
+                println("ISA testsuite pass.")
                 finished = true
+              } else if((data & 1) == 1) {
+                val c = data >> 1
+                if(!failed.contains(c)) {
+                  println(s"ISA testsuit failed case ${c}")
+                  failed.add(c)
+                }
               } else {
                 println(s"ISA testsuite tohost: ${data}")
               }

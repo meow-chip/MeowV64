@@ -55,6 +55,16 @@ class L2DirEntry(val opts: L2Opts) extends Bundle {
     w.dirty := true.B
     w
   }
+
+  // Asserts that as long as this entry is valid, states is always compatible with each other
+  def validate() = {
+    when(valid) {
+      val modifiedCnt = PopCount(states.map(_ === L2DirState.modified))
+      val sharedCnt = PopCount(states.map(_ === L2DirState.shared))
+
+      assert(modifiedCnt === 0.U || (sharedCnt === 0.U && modifiedCnt === 1.U))
+    }
+  }
 }
 
 object L2DirEntry {
@@ -176,6 +186,9 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
 
   stores.write(dataWriter.addr, VecInit(Seq.fill(opts.ASSOC)(dataWriter.data)), dataWriter.mask)
   directories.write(dirWriter.addr, VecInit(Seq.fill(opts.ASSOC)(dirWriter.dir)), dirWriter.mask)
+  when(PopCount(dirWriter.mask) =/= 0.U) {
+    dirWriter.dir.validate()
+  }
 
   def writeData(idx: UInt, addr: UInt, data: UInt) {
     assume(data.getWidth == opts.LINE_WIDTH * 8)
@@ -302,6 +315,7 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
 
   // Compute directory lookups & delayed data fetch
   val lookups = directories.read(targetIndex)
+  for(l <- lookups) { l.validate() }
   val datas = stores.read(targetIndex)
   val pipeLookups = RegNext(lookups)
   val hits = lookups.map(_.hit(targetAddr))
@@ -634,10 +648,12 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
       val ent = Wire(new L2DirEntry(opts))
       val writtenTowards = Wire(UInt(ASSOC_IDX_WIDTH.W))
 
+      // TODO: can we merge victim and pipeHitIdx? their use case are mutually exculsive
       when(pendingVictim) {
         ent := pipeLookups(victim)
         writtenTowards := victim
       }.otherwise {
+        // TODO: also use pipeLookups here?
         ent := lookups(pipeHitIdx)
         writtenTowards := pipeHitIdx
       }
@@ -648,12 +664,15 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
       writtenData := DontCare
       commit := false.B
 
-      for((d, p) <- dc.zip(pendings)) {
+      val justWritten = Reg(UInt())
+
+      for(((d, p), idx) <- dc.zip(pendings).zipWithIndex) {
         when(p =/= L1DCPort.L2Req.idle && !d.l2stall) {
           p := L1DCPort.L2Req.idle
 
           writtenData := d.wdata
           commit := true.B
+          justWritten := idx.U
         }
       }
 
@@ -666,6 +685,20 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
         // in which we committed the changes
         assert(RegNext(commit))
 
+        when(!pendingVictim) {
+          // Asserts that we are not invalidating ourselves
+          assert(justWritten =/= target)
+        }
+
+        // Assert the directory only had justWritten set at modified, nothing else
+        for((s, idx) <- ent.states.zipWithIndex) {
+          when(idx.U === justWritten) {
+            assert(s === L2DirState.modified)
+          }.otherwise {
+            assert(s === L2DirState.vacant)
+          }
+        }
+
         when(!pendingVictim && targetOps === L1DCPort.L1Req.read) {
           // plain old read hit, after flush we can return our data
 
@@ -674,14 +707,21 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
           misses(target) := false.B
           refilled(target) := false.B
 
-          writeDir(pipeHitIdx, targetAddr, lookups(pipeHitIdx).editState(target, L2DirState.shared).withDirty())
+          // TODO: This probably can be constructed from an empty directory
+          val editedState = lookups(pipeHitIdx).editState(justWritten, L2DirState.shared).editState(target, L2DirState.shared).withDirty()
+          writeDir(pipeHitIdx, targetAddr, editedState)
 
           nstate := L2MainState.idle
           step()
         }.otherwise {
           for((s, p) <- ent.states.zip(pendings)) {
-            when(s =/= L2DirState.vacant) {
+            when(s =/= L2DirState.vacant) { // FIXME: && target != s
               p := L1DCPort.L2Req.inval
+            }
+
+            // Don't flush sender on write requests
+            when(!pendingVictim) {
+              pendings(target) := L1DCPort.L2Req.idle
             }
           }
 
