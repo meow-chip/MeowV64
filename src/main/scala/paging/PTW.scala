@@ -25,28 +25,46 @@ class PTW(implicit coredef: CoreDef) extends MultiIOModule {
   val arbiter = Module(new RRArbiter(UInt(coredef.vpnWidth.W), 2))
   arbiter.io.in(0) <> itlb.req
   arbiter.io.in(1) <> dtlb.req
-  arbiter.io.out.nodeq()
 
   val MAX_SEG = coredef.vpnWidth / 9
 
   val state = RegInit(PTWState.idle)
   val level = RegInit(0.U(log2Ceil(MAX_SEG).W))
 
+  val resp = Wire(new PTWResp)
+  val fault = WireDefault(false.B)
+  itlb.resp.bits := resp
+  dtlb.resp.bits := resp
+  itlb.resp.valid := false.B
+  dtlb.resp.valid := false.B
+
+  resp.fault := fault
+  resp.level := level
+  resp.pte := DontCare
+
+  class TLBReq extends Bundle {
+    val vpn = UInt(coredef.vpnWidth.W)
+    val src = UInt(1.W) // Source
+  }
+  val tlbSlot = Module(new FlushableSlot(new TLBReq, false, true))
+  tlbSlot.io.enq.bits.src := arbiter.io.chosen
+  tlbSlot.io.enq.bits.vpn := arbiter.io.out.bits
+  tlbSlot.io.enq.valid <> arbiter.io.out.valid
+  tlbSlot.io.enq.ready <> arbiter.io.out.ready
+
+  tlbSlot.io.flush := false.B
+
   val segs = VecInit((0 until MAX_SEG).map({ case idx => {
-    arbiter.io.out.bits((MAX_SEG-idx)*9 - 1, (MAX_SEG - idx-1)*9)
+    tlbSlot.io.deq.bits.vpn((MAX_SEG-idx)*9 - 1, (MAX_SEG - idx-1)*9)
   }}))
   val seg = segs(level)
 
-  val resp = Wire(new PTE)
-  val fault = WireDefault(false.B)
-  resp := DontCare
-  itlb.resp := resp
-  dtlb.resp := resp
-  itlb.fault := fault
-  dtlb.fault := fault
+  tlbSlot.io.deq.nodeq()
 
-  itlb.level := level
-  dtlb.level := level
+  when(tlbSlot.io.deq.fire()) {
+    itlb.resp.valid := tlbSlot.io.deq.bits.src === 0.U
+    dtlb.resp.valid := tlbSlot.io.deq.bits.src === 1.U
+  }
 
   val dcSlot = Module(new FlushableSlot(UInt(), false, true))
   dcSlot.io.flush := false.B
@@ -60,7 +78,7 @@ class PTW(implicit coredef: CoreDef) extends MultiIOModule {
   switch(state) {
     is(PTWState.idle) {
       assert(!dcSlot.io.deq.valid)
-      when(arbiter.io.out.valid) {
+      when(tlbSlot.io.deq.valid) {
         level := 0.U
 
         val initSeg = Wire(UInt())
@@ -90,9 +108,9 @@ class PTW(implicit coredef: CoreDef) extends MultiIOModule {
           when(level === (MAX_SEG-1).U) {
             // Reached last level
             state := PTWState.idle
-            resp := pte
+            resp.pte := pte
             fault := true.B
-            arbiter.io.out.deq()
+            tlbSlot.io.deq.deq()
             dcSlot.io.deq.deq()
           } otherwise {
             // Continue searching
@@ -106,15 +124,15 @@ class PTW(implicit coredef: CoreDef) extends MultiIOModule {
           // Validate superpage alignment
           fault := pte.misaligned(level)
           state := PTWState.idle
-          resp := pte
-          arbiter.io.out.deq()
+          resp.pte := pte
+          tlbSlot.io.deq.deq()
           dcSlot.io.deq.deq()
         }
       } otherwise {
         state := PTWState.idle
-        resp := PTE.empty
+        resp.pte := PTE.empty
         fault := true.B
-        arbiter.io.out.deq()
+        tlbSlot.io.deq.deq()
         dcSlot.io.deq.deq()
       }
     }

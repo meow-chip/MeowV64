@@ -122,9 +122,13 @@ object TLBEntry {
   }
 }
 
+class PTWResp(implicit val coredef: CoreDef) extends Bundle {
+  val pte = new PTE
+  val fault = Bool()
+  val level = UInt(2.W) // TODO: change into config
+}
+
 class TLBExt(implicit val coredef: CoreDef) extends Bundle {
   val req = DecoupledIO(UInt(coredef.vpnWidth.W))
-  val resp = Input(new PTE)
-  val fault = Input(Bool())
-  val level = Input(UInt(2.W)) // TODO: change into config
+  val resp = Flipped(ValidIO(new PTWResp))
 }

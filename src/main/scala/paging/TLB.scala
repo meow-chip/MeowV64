@@ -15,7 +15,7 @@ object TLBLookupMode extends ChiselEnum {
   val U, S, both = Value
 }
 
-class TLB(implicit coredef: CoreDef) extends MultiIOModule {
+class TLB(implicit val coredef: CoreDef) extends MultiIOModule {
   val ptw = IO(new TLBExt)
 
   val satp = IO(Input(new Satp))
@@ -37,7 +37,7 @@ class TLB(implicit coredef: CoreDef) extends MultiIOModule {
   val flush = IO(Input(Bool()))
 
   object TLBState extends ChiselEnum {
-    val idle, refill = Value
+    val idle, req, resp = Value
   }
 
   val state = RegInit(TLBState.idle)
@@ -69,38 +69,51 @@ class TLB(implicit coredef: CoreDef) extends MultiIOModule {
 
   // IF can be flushed during a blocked TLB refill, so we need to ensure that we properly handles it
   // This is done by using a state machine
-  when(state === TLBState.idle) {
-    query.ready := false.B
-    when(!flush && query.query) {
-      query.ready := inStore || fault
+  switch(state) {
+    is(TLBState.idle) {
+      query.ready := false.B
+      when(!flush && query.query) {
+        query.ready := inStore || fault
 
-      when(!query.ready) {
-        state := TLBState.refill
-        refilling := query.vpn
-        ptwFaulted := false.B
+        when(!query.ready) {
+          refilling := query.vpn
+          state := TLBState.req
+          ptwFaulted := false.B
+        }
       }
     }
-  }.otherwise {
-    query.ready := false.B
-    ptw.req.enq(refilling)
 
-    val random = LFSR(log2Ceil(coredef.TLB_SIZE))
-    val invalids = storage.map(!_.v)
-    val hasInvalid = VecInit(invalids).asUInt().orR
-    val victim = Mux(
-      hasInvalid,
-      PriorityEncoder(invalids),
-      random
-    )
+    is(TLBState.req) {
+      query.ready := false.B
 
-    val written = TLBEntry.fromPTE(refilling, ptw.level, ptw.resp)
+      ptw.req.enq(refilling)
 
-    when(ptw.req.fire()) {
-      when(!ptw.fault) {
-        storage(victim) := written
+      when(ptw.req.fire()) {
+        state := TLBState.resp
       }
-      ptwFaulted := ptw.fault
-      state := TLBState.idle
+    }
+
+    is(TLBState.resp) {
+      query.ready := false.B
+
+      val random = LFSR(log2Ceil(coredef.TLB_SIZE))
+      val invalids = storage.map(!_.v)
+      val hasInvalid = VecInit(invalids).asUInt().orR
+      val victim = Mux(
+        hasInvalid,
+        PriorityEncoder(invalids),
+        random
+      )
+
+      val written = TLBEntry.fromPTE(refilling, ptw.resp.bits.level, ptw.resp.bits.pte)
+
+      when(ptw.resp.valid) {
+        when(!ptw.resp.bits.fault) {
+          storage(victim) := written
+        }
+        ptwFaulted := ptw.resp.bits.fault
+        state := TLBState.idle
+      }
     }
   }
 
