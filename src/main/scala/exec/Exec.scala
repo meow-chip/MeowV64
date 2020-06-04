@@ -225,6 +225,12 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
   val retireNum = Wire(UInt(log2Ceil(coredef.RETIRE_NUM + 1).W))
   val issueNum = Wire(UInt(log2Ceil(coredef.ISSUE_NUM + 1).W))
 
+  when(retirePtr === issuePtr) {
+    assert(inflights.reader.cnt === 0.U)
+  }.otherwise {
+    assert(inflights.reader.cnt =/= 0.U)
+  }
+
   toIF.accept := issueNum
   renamer.toExec.commit := issueNum
   renamer.toExec.input := toIF.view
@@ -398,16 +404,19 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
   retireNum := 0.U
 
   // Default: no branch if nothing is retired
+  // nepc is set to the next retiring instruction for interrupts
   toCtrl.branch.nofire()
   toCtrl.tval := DontCare
-  toCtrl.nepc := DontCare
+  toCtrl.nepc := inflights.reader.view(0).addr
 
   cdb.entries(coredef.UNIT_COUNT) := DontCare
   cdb.entries(coredef.UNIT_COUNT).valid := false.B
 
   // TODO: send memory reqeust one tick before its turn
 
-  when(!rob(retirePtr).valid) {
+  val retireNext = rob(retirePtr)
+
+  when(!retireNext.valid) {
     // First one invalid, cannot retire anything
     retireNum := 0.U
     for(rwp <- rw) {
@@ -415,7 +424,7 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
       rwp.data := DontCare
     }
     toCtrl.branch := BranchResult.empty
-  }.elsewhen(rob(retirePtr).hasMem) {
+  }.elsewhen(retireNext.hasMem) {
     // Is memory operation, wait for memAccSucc
     for(rwp <- rw) {
       rwp.addr := 0.U
@@ -447,6 +456,14 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
     }.otherwise {
       retireNum := 0.U
     }
+  }.elsewhen(toCtrl.int && toCtrl.intAck) {
+    // Interrupts inbound, retires nothing
+    retireNum := 0.U
+    for(rwp <- rw) {
+      rwp.addr := 0.U
+      rwp.data := DontCare
+    }
+    toCtrl.branch := BranchResult.empty
   }.otherwise {
     val blocked = Wire(Vec(coredef.RETIRE_NUM, Bool()))
     val isBranch = Wire(Vec(coredef.RETIRE_NUM, Bool()))
@@ -521,8 +538,6 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
     }
   }
 
-  val retireNext = rob(retirePtr)
-
   // Renamer release
   for(i <- (0 until coredef.RETIRE_NUM)) {
     // renamer.toExec.releases(i).name := rob(retirePtr +% i.U).retirement.instr.rdname
@@ -538,7 +553,9 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
   when(retireNext.valid && retireNext.hasMem) {
     toCtrl.intAck := false.B
   }.otherwise {
-    toCtrl.intAck := toCtrl.int
+    // We need to ensure that the address we are giving ctrl is valid
+    // which is equvilent to the inflight queue being not empty
+    toCtrl.intAck := retirePtr =/= issuePtr
   }
 
   // Flushing control
