@@ -441,7 +441,11 @@ class L1DC(val opts: L1DOpts)(implicit coredef: CoreDef) extends MultiIOModule {
     }
 
     is(MainState.reading) {
-      when(wlookups(victim).valid && wlookups(victim).tag === getTag(reserved)) {
+      val reservedCollision = (wlookups(victim).valid
+        && getIndex(wlookupAddr) === getIndex(reserved)
+        && wlookups(victim).tag === getTag(reserved)
+      )
+      when(if(ASSOC_IDX_WIDTH == 0) { false.B } else { reservedCollision }) {
         // Reselect victim
         victim := victim +% 1.U
       }.elsewhen(!wlookups(victim).valid || !wlookups(victim).dirty) {

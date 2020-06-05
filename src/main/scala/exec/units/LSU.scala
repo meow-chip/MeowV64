@@ -146,10 +146,12 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with UnitSelIO {
     tlbMode := Mux(status.sum, TLBLookupMode.both, TLBLookupMode.S)
   }
 
+  val fenceLike = Wire(Bool())
+
   val tlbRequestModify = WireDefault(false.B)
   tlb.satp := satp
   tlb.ptw <> ptw
-  tlb.query.query := requiresTranslate && !next.instr.vacant
+  tlb.query.query := requiresTranslate && !next.instr.vacant && !fenceLike
   tlb.query.isModify := tlbRequestModify
   tlb.query.mode := tlbMode
   tlb.flush := tlbrst
@@ -231,6 +233,11 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with UnitSelIO {
     || next.instr.instr.op === Decoder.Op("AMO").ident && next.instr.instr.funct7(6, 2) =/= Decoder.AMO_FUNC("LR")
   ) && !next.instr.vacant
 
+  fenceLike := (
+    next.instr.instr.op === Decoder.Op("MEM-MISC").ident
+    && !next.instr.vacant
+  )
+
   val invalAddr = isInvalAddr(rawAddr)
   val misaligned = isMisaligned(offset, next.instr.instr.funct3)
 
@@ -254,6 +261,8 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with UnitSelIO {
 
   when(next.instr.vacant) {
     l1pass := false.B
+  }.elsewhen(fenceLike) {
+    l1pass := true.B
   }.elsewhen(requiresTranslate && !tlb.query.ready) {
     l1pass := false.B
   }.elsewhen(toMem.reader.req.valid) {
