@@ -262,7 +262,7 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with UnitSelIO {
   when(next.instr.vacant) {
     l1pass := false.B
   }.elsewhen(fenceLike) {
-    l1pass := true.B
+    l1pass := !l2stall
   }.elsewhen(requiresTranslate && !tlb.query.ready) {
     l1pass := false.B
   }.elsewhen(toMem.reader.req.valid) {

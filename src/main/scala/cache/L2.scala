@@ -617,7 +617,8 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
           pendingVictim := true.B
 
           for((s, p) <- lookups(victim).states.zip(pendings)) {
-            when(s === L2DirState.modified) {
+            assert(s =/= L2DirState.modified)
+            when(s === L2DirState.shared) {
               p := L1DCPort.L2Req.inval
             }
           }
