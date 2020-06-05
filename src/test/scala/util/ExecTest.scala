@@ -46,6 +46,9 @@ class ExecTest(dut: Multicore, file: String) extends PeekPokeTester(dut) {
     // Test pass signal through tohost
     var finished = false
     for(i <- (0 until bound)) {
+      // Always have interrupt 1 set at high
+      poke(dut.io.eints(1), true)
+
       // println("Cycle: " + i)
       step(1)
 
