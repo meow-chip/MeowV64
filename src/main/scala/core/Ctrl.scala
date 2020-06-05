@@ -106,8 +106,6 @@ class Ctrl(implicit coredef: CoreDef) extends MultiIOModule {
   val priv = RegInit(PrivLevel.M);
   toExec.priv := priv;
 
-  val snepc = RegInit(coredef.INIT_VEC.U(coredef.XLEN.W))
-
   toIF.ctrl.flush := false.B
   toExec.ctrl.flush := false.B
   toExec.tlbrst := false.B
@@ -125,21 +123,12 @@ class Ctrl(implicit coredef: CoreDef) extends MultiIOModule {
 
   // Next retired instruction
   val nepc = Wire(UInt(coredef.XLEN.W))
-  when(toExec.retCnt =/= 0.U) {
-    val recv = Wire(UInt(coredef.XLEN.W))
-    recv := toExec.nepc
-    when(br.req.ex === ExReq.mret) {
-      recv := mepc
-    }.elsewhen(br.req.ex === ExReq.sret) {
-      recv := sepc
-    }.elsewhen(br.req.branch) {
-      recv:= toExec.nepc
-    }
-
-    snepc := recv
-    nepc := recv
+  when(br.req.ex === ExReq.mret) {
+    nepc := mepc
+  }.elsewhen(br.req.ex === ExReq.sret) {
+    nepc := sepc
   }.otherwise {
-    nepc := snepc
+    nepc := toExec.nepc
   }
 
   // Rst comes together with an branch
@@ -159,8 +148,6 @@ class Ctrl(implicit coredef: CoreDef) extends MultiIOModule {
     toIF.tlbrst := br.req.tlbrst
 
     toExec.tlbrst := br.req.tlbrst
-
-    snepc := baddr
   }
   /*
     // printf(p"PC: ${Hexadecimal(io.pc)}\n")
