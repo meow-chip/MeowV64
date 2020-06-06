@@ -23,6 +23,7 @@ class InstrExt(implicit val coredef: CoreDef) extends Bundle {
   val acrossPageEx = Bool() // Exception happens on the second half of this instruction
   val pred = new BPUResult
   val forcePred = Bool() // RAS and missed branch
+  val predTarget = UInt(coredef.XLEN.W) // For JALR handling
 
   override def toPrintable: Printable = {
     p"Address: 0x${Hexadecimal(addr)}\n" +
@@ -45,6 +46,7 @@ object InstrExt {
     ret.fetchEx := DontCare
     ret.acrossPageEx := DontCare
     ret.forcePred := DontCare
+    ret.predTarget := DontCare
 
     ret
   }
@@ -68,6 +70,11 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
   val toBPU = IO(new Bundle {
     val pc = Output(UInt(coredef.XLEN.W))
     val results = Input(Vec(coredef.L1I.TRANSFER_SIZE / Const.INSTR_MIN_WIDTH, new BPUResult))
+  })
+
+  val toRAS = IO(new Bundle {
+    val push = ValidIO(UInt(coredef.XLEN.W))
+    val pop = Flipped(DecoupledIO(UInt(coredef.XLEN.W)))
   })
 
   val debug = IO(new Bundle {
@@ -109,8 +116,6 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
 
   toBPU.pc := Mux(toIC.stall, RegNext(toBPU.pc), fpc) // Perdict by virtual memory
   // TODO: flush BPU on context switch
-
-  // TODO: BHT
 
   // First, push all IC readouts into a queue
   class ICData extends Bundle {
@@ -158,6 +163,8 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
   val decodable = Wire(Vec(coredef.FETCH_NUM, Bool()))
   val decodePtr = Wire(Vec(coredef.FETCH_NUM + 1, UInt(log2Ceil(coredef.L1I.TRANSFER_SIZE * 2 / 16).W)))
   val decoded = Wire(Vec(coredef.FETCH_NUM, new InstrExt))
+  val decodedRASPush = Wire(Vec(coredef.FETCH_NUM, Bool()))
+  val decodedRASPop = Wire(Vec(coredef.FETCH_NUM, Bool()))
   decodePtr(0) := headPtr
 
   for(i <- 0 until coredef.FETCH_NUM) {
@@ -222,12 +229,29 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
     decoded(i).pred := pred
     decoded(i).forcePred := false.B
 
+    decodedRASPop(i) := false.B
+    decodedRASPush(i) := false.B
+
     when(instr.op === Decoder.Op("JAL").ident) {
       decoded(i).forcePred := true.B
+      decodedRASPush(i) := instr.rd === 1.U || instr.rd === 5.U
+    }.elsewhen(instr.op === Decoder.Op("JALR").ident) {
+      decodedRASPush(i) := instr.rd === 1.U || instr.rd === 5.U
+      val doPop = (instr.rs1 === 1.U || instr.rs1 === 5.U) && instr.rs1 =/= instr.rd
+      decodedRASPop(i) := doPop
+
+      when(doPop) {
+        decoded(i).forcePred := toRAS.pop.valid
+      }
     }.elsewhen(instr.op === Decoder.Op("BRANCH").ident) {
       when(instr.imm < 0.S && pred.prediction === BHTPrediction.missed) {
         decoded(i).forcePred := true.B
       }
+    }
+
+    decoded(i).predTarget := (decoded(i).instr.imm +% decoded(i).addr.asSInt()).asUInt()
+    when(instr.op === Decoder.Op("JALR").ident) {
+      decoded(i).predTarget := toRAS.pop.bits
     }
   }
 
@@ -251,6 +275,11 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
   }
 
   val stepping = steppings(coredef.FETCH_NUM)
+
+  // RAS push/pop
+  toRAS.pop.ready := stepping =/= 0.U && decodedRASPop(stepping-%1.U)
+  toRAS.push.valid := stepping =/= 0.U && decodedRASPush(stepping-%1.U)
+  toRAS.push.bits := decoded(stepping-%1.U).npc
 
   val nHeadPtr = decodePtr(stepping) // Expanded
   headPtr := nHeadPtr // Trim
@@ -278,9 +307,7 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
   // Speculative branch
   val pipeStepping = RegNext(stepping)
   val pipeTaken = RegNext(VecInit(decoded.map(_.taken)))
-  val pipeAddrs = RegNext(VecInit(decoded.map(_.addr.asSInt())))
-  val pipeImms = RegNext(VecInit(decoded.map(_.instr.imm)))
-  val pipeSpecBrTargets = pipeAddrs.zip(pipeImms).map({ case (addr, imm) => (addr +% imm).asUInt })
+  val pipeSpecBrTargets = RegNext(VecInit(decoded.map(_.predTarget)))
   val pipeSpecBrMask = pipeTaken.zipWithIndex.map({ case (taken, idx) => idx.U < pipeStepping && taken })
   val pipeSpecBrTarget = MuxLookup(
     true.B,
@@ -294,6 +321,9 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
     ICHead.io.flush := true.B
     // Do not push into issue fifo in this cycle
     issueFifo.writer.cnt := 0.U
+    // Do not commit RAS
+    toRAS.push.valid := false.B
+    toRAS.pop.ready := false.B
 
     val ICAlign = log2Ceil(coredef.L1I.TRANSFER_SIZE / 8)
     fpc := pipeSpecBrTarget(coredef.XLEN-1, ICAlign) ## 0.U(ICAlign.W)

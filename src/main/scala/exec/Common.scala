@@ -144,6 +144,8 @@ class RetireInfo(implicit val coredef: CoreDef) extends Bundle {
     }.elsewhen(op === Decoder.Op("JAL").ident) {
       // assert(instr.forcePred)
       result.nofire()
+    }.elsewhen(op === Decoder.Op("JALR").ident) {
+      result := b
     }.otherwise {
       when(b.branch === taken) {
         result.nofire()

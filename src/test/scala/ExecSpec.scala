@@ -20,8 +20,10 @@ object ExecSpec {
     ("Division neg", "./testcases/meow/bin/div-neg.bin"),
     ("Div by 0 & overflow", "./testcases/meow/bin/div-special.bin"),
     ("Page Table - Basic", "./testcases/meow/bin/paging-basic.bin"),
-    ("Fibonacci", "./testcases/meow/bin/fib.bin"),
-    ("Timer interrupt", "./testcases/meow/bin/timer.bin")
+    // ("Fibonacci", "./testcases/meow/bin/fib.bin"),
+    ("Timer interrupt", "./testcases/meow/bin/timer.bin"),
+    ("External interrupt", "./testcases/meow/bin/eint.bin"),
+    ("RAS", "./testcases/meow/bin/ras.bin")
   )
 }
 

@@ -54,6 +54,7 @@ class Core(implicit val coredef: CoreDef) extends Module {
 
   val fetch = Module(new InstrFetch)
   val bpu = Module(new BPU)
+  val ras = Module(new RAS)
   val exec = Module(new Exec)
   val reg = Module(new RegFile(coredef.XLEN, 32, coredef.ISSUE_NUM * 2, coredef.RETIRE_NUM))
 
@@ -65,6 +66,10 @@ class Core(implicit val coredef: CoreDef) extends Module {
 
   bpu.toExec <> exec.toBPU
   bpu.toFetch <> fetch.toBPU
+
+  ras.toIF <> fetch.toRAS
+  ras.toExec.realign.bits := DontCare
+  ras.toExec.realign.valid := false.B
 
   exec.toIF <> fetch.toExec
   exec.rr <> reg.io.reads

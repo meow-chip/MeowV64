@@ -13,8 +13,9 @@ abstract class CoreDef {
   val ISSUE_FIFO_DEPTH: Int = FETCH_NUM * 4
   val INIT_VEC: BigInt = BigInt("FFFF20000000", 16)
 
-  val BHT_SIZE: Int = 64
+  val BHT_SIZE: Int = 1024
   val BHT_WIDTH: Int = 2
+  val BTB_SIZE: Int = 1024
 
   val TLB_SIZE: Int = 32
 
@@ -33,6 +34,8 @@ abstract class CoreDef {
   )
 
   val L1_LINE_WIDTH: Int = 16 // In bytes
+
+  val RAS_SIZE: Int = 8;
 
   object L1I extends {
     val ADDR_WIDTH: Int = outer.PADDR_WIDTH

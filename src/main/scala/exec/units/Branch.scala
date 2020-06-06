@@ -157,9 +157,13 @@ class Branch(override implicit val coredef: CoreDef)
       // info.regWaddr := pipe.instr.instr.rd
       info.wb := linked.asUInt
 
-      val dest = ((pipe.rs1val.asSInt + pipe.instr.instr.imm) >> 1) << 1
+      val dest = (((pipe.rs1val.asSInt + pipe.instr.instr.imm) >> 1) << 1).asUInt
 
-      info.branch.fire(dest.asUInt)
+      when(pipe.instr.taken && dest === pipe.instr.predTarget) {
+        info.branch.nofire()
+      }.otherwise {
+        info.branch.fire(dest)
+      }
     }
 
     info
