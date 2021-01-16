@@ -21,6 +21,7 @@ abstract class Config {
 
   val iCache = DefaultICacheConfig
   val fetchWidth = 2
+  val initVec = BigInt("0x80000000")
 }
 
 object DefaultConfig extends Config
