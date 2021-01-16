@@ -12,11 +12,11 @@ class Fetch(implicit val config: Config) extends MultiIOModule {
 
   val pcreg = RegInit(config.initVec.U(config.xlen.W))
   val pc = WireDefault(pcreg)
-  val pcAligned = pc(config.xlen-1, log2Ceil(config.fetchWidth) + 1)
-  val fetchOffset = if(config.fetchWidth == 1) {
+  val pcAligned = pc(config.xlen-1, config.fetchOffset) ## 0.U(config.fetchOffset.W)
+  val fetchOffset = if(config.fetchOffset == 1) {
     0.U
   } else {
-    pc(log2Ceil(config.fetchWidth), 1)
+    pc(config.fetchOffset-1, 1)
   }
 
   val icache = Module(new ICache)
@@ -24,9 +24,10 @@ class Fetch(implicit val config: Config) extends MultiIOModule {
   icache.addr.valid := true.B
   icache.flush := false.B
 
-  val npc = pcAligned + (config.fetchWidth * 2).U
+  val nlp = Module(new NLP)
+  nlp.pc := pc
   when(icache.addr.fire()) {
-    pcreg := npc
+    pcreg := nlp.npc
   }
 
   when(br.valid) {

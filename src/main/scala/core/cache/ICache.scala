@@ -66,4 +66,10 @@ class ICache(implicit val config: Config) extends MultiIOModule {
   when(flush) {
     s1Valid := false.B
   }
+
+  /* Assertions */
+  // TODO: asserts that addr aligns
+  when(flush) {
+    assert(addr.fire())
+  }
 }
