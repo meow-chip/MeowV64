@@ -14,7 +14,6 @@ import scala.collection.mutable
 import chisel3._
 import chisel3.tester._
 import chiseltest.simulator.WriteVcdAnnotation
-import chiseltest.simulator.IcarusBackendAnnotation
 import chiseltest.simulator.VerilatorBackendAnnotation
 
 object ExecDef extends MulticoreDef {
@@ -23,7 +22,7 @@ object ExecDef extends MulticoreDef {
 
 class ExecTest(dut: Multicore, file: String) {
   def doTest(bound: Int): Unit = {
-    val mem: mutable.HashMap[Long, Long] = mutable.HashMap() // Addr to 4-byte
+    val mem: mutable.HashMap[Long, BigInt] = mutable.HashMap() // Addr to 4-byte
     var reading: Option[(Long, Long, Long, Long)] = None // ID, Ptr, Left, Size
     var writing: Option[(Long, Long, Long)] = None // Ptr, Left, Size
     var writingFinished = false
@@ -38,7 +37,12 @@ class ExecTest(dut: Multicore, file: String) {
     val longs = buffer.asLongBuffer()
     var idx = 0
     while (longs.hasRemaining()) {
-      mem.put(idx * 8 + 0x80000000L, longs.get())
+      var value = BigInt(longs.get())
+      // make it positive because Java only has signed long
+      if (value < 0) {
+        value += BigInt(1) << 64
+      }
+      mem.put(idx * 8 + 0x80000000L, value)
       idx += 1
     }
     println(s"Initialized: $idx longs")
@@ -91,16 +95,16 @@ class ExecTest(dut: Multicore, file: String) {
         axi.RVALID.poke(true.B)
         axi.RID.poke(id.U)
         val rdata = if (ptr == 0x10001014) { // LSR
-          1L << (32 + 5)
+          BigInt(1L << (32 + 5))
         } else {
-          mem.get((ptr >> 3) << 3).getOrElse(0L)
+          mem.get((ptr >> 3) << 3).getOrElse(BigInt(0))
         }
-        val mask = if (size == 3) {
+        val mask = BigInt(if (size == 3) {
           0xffffffffffffffffL
         } else {
           (1L << ((1L << size) * 8)) - 1L
-        }
-        val shiftedMask = mask << ((ptr & 7) * 8)
+        })
+        val shiftedMask = mask << ((ptr & 7) * 8).toInt
         // println(s"  Raw: 0x${rdata.toHexString}")
         // println(s"  Shifted: 0x${shifted.toHexString}")
         // println(s"  Mask: 0x${mask.toHexString}")
@@ -110,7 +114,7 @@ class ExecTest(dut: Multicore, file: String) {
 
         if (axi.RREADY.peek.litToBoolean == true) {
           if (left == 0) reading = None
-          else reading = Some((id, ptr + (1 << size), left - 1, size))
+          else reading = Some((id, ptr + (1L << size), left - 1, size))
         }
       } else {
         axi.RVALID.poke(false.B)
@@ -176,7 +180,7 @@ class ExecTest(dut: Multicore, file: String) {
             case _ => {}
           }
 
-          writing = Some((ptr + (1 << size), left - 1, size))
+          writing = Some((ptr + (1L << size), left - 1, size))
           if (axi.WLAST.peek.litToBoolean == true) {
             assume(left == 0)
             writingFinished = true
@@ -213,23 +217,23 @@ object ExecTest {
   }
 
   def longMux(
-      base: Long,
-      input: Long,
+      base: BigInt,
+      input: BigInt,
       be: Byte,
       offset: Long,
       size: Long
-  ): Long = {
-    var ret = 0L
+  ): BigInt = {
+    var ret = BigInt(0)
     // println(s"Muxing: 0x${base.toHexString} <- 0x${input.toHexString} & 0x${be}, offset $offset, size $size")
     for (i <- (0 until 8)) {
       val sel = if (i < offset) {
-        (base >>> (i * 8)) & 0xff
+        (base >> (i * 8)) & 0xff
       } else if (i >= offset + size) {
-        (base >>> (i * 8)) & 0xff
+        (base >> (i * 8)) & 0xff
       } else if (((be >>> i) & 1) == 1) {
-        (input >>> (i * 8)) & 0xff
+        (input >> (i * 8)) & 0xff
       } else {
-        (base >>> (i * 8)) & 0xff
+        (base >> (i * 8)) & 0xff
       }
       ret = (sel << (i * 8)) | ret
     }
