@@ -19,7 +19,7 @@ jobs:
         java-version: 1.11
     - name: Setup mill
       run: |
-        curl -L https://github.com/com-lihaoyi/mill/releases/download/0.10.0-M5/0.10.0-M5 > /usr/local/bin/mill && chmod +x /usr/local/bin/mill
+        curl -L https://github.com/com-lihaoyi/mill/releases/download/0.10.0-M3/0.10.0-M3 > /usr/local/bin/mill && chmod +x /usr/local/bin/mill
     - name: Checkout submodules
       run: |
         git submodule sync --recursive
