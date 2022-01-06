@@ -22,15 +22,17 @@ class PTE(implicit val coredef: CoreDef) extends Bundle {
   def misaligned(level: UInt)(implicit coredef: CoreDef) = {
     val MAX_SEG = coredef.vpnWidth / 9
     // Current at level, we have MAX_SEG segments
-    val segMisaligned = Wire(Vec(MAX_SEG-1, Bool()))
-    for(i <- (0 until MAX_SEG-1)) {
-      segMisaligned(i) := ppn(i*9+8, i*9).orR
+    val segMisaligned = Wire(Vec(MAX_SEG - 1, Bool()))
+    for (i <- (0 until MAX_SEG - 1)) {
+      segMisaligned(i) := ppn(i * 9 + 8, i * 9).orR
     }
 
     MuxLookup(
       level,
       false.B, // If level == MAX_SEG - 1, then this is not a super page
-      (0 until (MAX_SEG - 1)).map(i => i.U -> segMisaligned.asUInt()(MAX_SEG-2-i, 0).orR)
+      (0 until (MAX_SEG - 1)).map(i =>
+        i.U -> segMisaligned.asUInt()(MAX_SEG - 2 - i, 0).orR
+      )
     )
   }
 }
@@ -67,27 +69,30 @@ class TLBEntry(implicit val coredef: CoreDef) extends Bundle {
   def hit(req: UInt) = {
     val qvpn = req.head(coredef.vpnWidth)
     var result = v
-    for(i <- 0 until MAX_VPN_SEG) {
+    for (i <- 0 until MAX_VPN_SEG) {
       val ignore = i.U > level
-      val base = coredef.vpnWidth - 9 * (i+1)
+      val base = coredef.vpnWidth - 9 * (i + 1)
       result = Mux(
         ignore,
         result,
-        result && vpn(base+8, base) === qvpn(base+8, base)
+        result && vpn(base + 8, base) === qvpn(base + 8, base)
       )
     }
     result
   }
-  
+
   def fromVPN(vpn: UInt) = {
     val VPN_SEG = coredef.vpnWidth / 9
     Mux1H(
-      (0 until VPN_SEG).map(
-        i => (level === i.U) -> (if(i == VPN_SEG - 1) {
-          ppn
-        } else {
-          ppn(coredef.ppnWidth-1, (VPN_SEG - 1 - i) * 9) ## vpn((VPN_SEG - 1 - i) * 9 - 1, 0)
-        })
+      (0 until VPN_SEG).map(i =>
+        (level === i.U) -> (if (i == VPN_SEG - 1) {
+                              ppn
+                            } else {
+                              ppn(
+                                coredef.ppnWidth - 1,
+                                (VPN_SEG - 1 - i) * 9
+                              ) ## vpn((VPN_SEG - 1 - i) * 9 - 1, 0)
+                            })
       )
     )
   }

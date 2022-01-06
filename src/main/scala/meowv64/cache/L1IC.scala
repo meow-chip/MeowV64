@@ -66,25 +66,37 @@ class L1IC(opts: L1Opts) extends MultiIOModule {
   val TRANSFER_COUNT = opts.LINE_WIDTH * 8 / opts.TRANSFER_SIZE
 
   val directories = Mem(LINE_PER_ASSOC, Vec(opts.ASSOC, new ILine(opts)))
-  val stores = SyncReadMem(LINE_PER_ASSOC, Vec(opts.ASSOC, Vec(TRANSFER_COUNT, UInt(opts.TRANSFER_SIZE.W))))
+  val stores = SyncReadMem(
+    LINE_PER_ASSOC,
+    Vec(opts.ASSOC, Vec(TRANSFER_COUNT, UInt(opts.TRANSFER_SIZE.W)))
+  )
 
   val writerAddr = Wire(UInt(INDEX_WIDTH.W))
   val writerDir = Wire(new ILine(opts))
   val writerData = Wire(Vec(TRANSFER_COUNT, UInt(opts.TRANSFER_SIZE.W)))
   val writerMask = Wire(Vec(opts.ASSOC, Bool()))
 
-  directories.write(writerAddr, VecInit(Seq.fill(opts.ASSOC)(writerDir)), writerMask)
-  stores.write(writerAddr, VecInit(Seq.fill(opts.ASSOC)(writerData)), writerMask)
+  directories.write(
+    writerAddr,
+    VecInit(Seq.fill(opts.ASSOC)(writerDir)),
+    writerMask
+  )
+  stores.write(
+    writerAddr,
+    VecInit(Seq.fill(opts.ASSOC)(writerData)),
+    writerMask
+  )
 
   writerAddr := DontCare
   writerDir := DontCare
   writerData := DontCare
   writerMask := VecInit(Seq.fill(opts.ASSOC)(false.B))
 
-  def getTransferOffset(addr: UInt) = addr(OFFSET_WIDTH-1, IGNORED_WIDTH)
-  def getIndex(addr: UInt) = addr(INDEX_OFFSET_WIDTH-1, OFFSET_WIDTH)
-  def getTag(addr: UInt) = addr(opts.ADDR_WIDTH-1, INDEX_OFFSET_WIDTH)
-  def toAligned(addr: UInt) = getTag(addr) ## getIndex(addr) ## 0.U(OFFSET_WIDTH.W)
+  def getTransferOffset(addr: UInt) = addr(OFFSET_WIDTH - 1, IGNORED_WIDTH)
+  def getIndex(addr: UInt) = addr(INDEX_OFFSET_WIDTH - 1, OFFSET_WIDTH)
+  def getTag(addr: UInt) = addr(opts.ADDR_WIDTH - 1, INDEX_OFFSET_WIDTH)
+  def toAligned(addr: UInt) =
+    getTag(addr) ## getIndex(addr) ## 0.U(OFFSET_WIDTH.W)
 
   // Stage 1, tag fetch, data fetch
   val pipeRead = RegInit(false.B)
@@ -99,9 +111,13 @@ class L1IC(opts: L1Opts) extends MultiIOModule {
   }
   val readouts = directories.read(getIndex(readingAddr))
   val dataReadouts = stores.read(getIndex(readingAddr))
-  val hitMap = VecInit(readouts.map(r => r.valid && r.tag === getTag(readingAddr)))
+  val hitMap = VecInit(
+    readouts.map(r => r.valid && r.tag === getTag(readingAddr))
+  )
   val pipeReadouts = RegNext(readouts)
-  val pipeHitMap = VecInit(pipeReadouts.map(r => r.valid && r.tag === getTag(pipeAddr)))
+  val pipeHitMap = VecInit(
+    pipeReadouts.map(r => r.valid && r.tag === getTag(pipeAddr))
+  )
   assert(PopCount(hitMap) <= 1.U)
 
   // Stage 2, data mux, refilling, reset
@@ -155,7 +171,9 @@ class L1IC(opts: L1Opts) extends MultiIOModule {
 
     is(S2State.idle) {
       val rdata = Mux1H(
-        dataReadouts.zipWithIndex.map({ case (line, idx) => pipeHitMap(idx) -> line })
+        dataReadouts.zipWithIndex.map({ case (line, idx) =>
+          pipeHitMap(idx) -> line
+        })
       )
 
       when(pipeRst) {
@@ -183,7 +201,7 @@ class L1IC(opts: L1Opts) extends MultiIOModule {
         written.tag := getTag(pipeAddr)
         written.valid := true.B
 
-        val victim = rand(ASSOC_IDX_WIDTH-1, 0)
+        val victim = rand(ASSOC_IDX_WIDTH - 1, 0)
         val mask = UIntToOH(victim)
 
         val dataView = toL2.data.asTypeOf(writerData)

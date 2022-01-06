@@ -11,10 +11,14 @@ class AMOALU(val opts: L1DOpts) extends MultiIOModule {
     val rdata = Input(UInt(opts.XLEN.W))
     val wdata = Input(UInt(opts.XLEN.W))
 
-    val offset = Input(UInt(log2Ceil(opts.XLEN / 8).W)) // If op =/= write or idle, then length must be W or D
+    val offset = Input(
+      UInt(log2Ceil(opts.XLEN / 8).W)
+    ) // If op =/= write or idle, then length must be W or D
     val length = Input(DCWriteLen())
 
-    val rsliced = Output(UInt(opts.XLEN.W)) // Only valid if length is W or D. This is for AMO
+    val rsliced = Output(
+      UInt(opts.XLEN.W)
+    ) // Only valid if length is W or D. This is for AMO
     val muxed = Output(UInt(opts.XLEN.W))
   })
 
@@ -28,7 +32,7 @@ class AMOALU(val opts: L1DOpts) extends MultiIOModule {
   when(io.length === DCWriteLen.W) {
     when(io.offset.head(1) === 0.U) {
       rextended := io.rdata(31, 0).asSInt()
-      rraw:= io.rdata(31, 0)
+      rraw := io.rdata(31, 0)
     }.otherwise {
       rextended := io.rdata(63, 32).asSInt()
       rraw := io.rdata(63, 32)
@@ -66,7 +70,7 @@ class AMOALU(val opts: L1DOpts) extends MultiIOModule {
       filtered := rraw.max(io.wdata)
     }
 
-    is(DCWriteOp.min) { 
+    is(DCWriteOp.min) {
       filtered := rextended.min(io.wdata.asSInt()).asUInt()
     }
 

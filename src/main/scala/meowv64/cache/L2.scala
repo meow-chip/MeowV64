@@ -9,16 +9,16 @@ import meowv64.cache.L1DCPort.L2Req
 import meowv64.cache.L1DCPort.L1Req
 import meowv64.interrupt._
 
-/**
- * L2 cache
- * 
- * L2 is composed by two components: the primary component, and the external interface.
- * the primary component handles read/write from the underlying L1 caches
- * the external interface processes AXI requests/responsese
- * 
- * Currently, neither component is pipelined to reduce complexity in impl L2.
- * A round-robin arbiter is included to deal with concurrent coherence protocol requests from L1
- */
+/** L2 cache
+  *
+  * L2 is composed by two components: the primary component, and the external
+  * interface. the primary component handles read/write from the underlying L1
+  * caches the external interface processes AXI requests/responsese
+  *
+  * Currently, neither component is pipelined to reduce complexity in impl L2. A
+  * round-robin arbiter is included to deal with concurrent coherence protocol
+  * requests from L1
+  */
 
 trait L2Opts extends L1Opts {
   val WB_DEPTH: Int
@@ -40,7 +40,8 @@ class L2DirEntry(val opts: L2Opts) extends Bundle {
   val tag = UInt(TAG_LENGTH.W)
   val states = Vec(opts.CORE_COUNT, L2DirState())
 
-  def hit(addr: UInt): Bool = valid && addr(opts.ADDR_WIDTH-1, INDEX_OFFSET_LENGTH) === tag
+  def hit(addr: UInt): Bool =
+    valid && addr(opts.ADDR_WIDTH - 1, INDEX_OFFSET_LENGTH) === tag
 
   def editState(core: UInt, state: L2DirState.Type): L2DirEntry = {
     val w = Wire(new L2DirEntry(opts))
@@ -90,27 +91,17 @@ object L2DirEntry {
 }
 
 object L2MainState extends ChiselEnum {
-  val reset,
-    idle,
-    hit,
-    refilled,
-    waitFlush,
-    waitInval
-    = Value
+  val reset, idle, hit, refilled, waitFlush, waitInval = Value
 }
 
 object L2WBState extends ChiselEnum {
-  val idle,
-    writing,
-    resp,
-    ucWalk
-    = Value
+  val idle, writing, resp, ucWalk = Value
 }
 
 class WBEntry(val opts: L2Opts) extends Bundle {
   val OFFSET_LENGTH = log2Ceil(opts.LINE_WIDTH)
   val lineaddr = UInt((opts.ADDR_WIDTH - OFFSET_LENGTH).W)
-  val data = UInt((opts.LINE_WIDTH*8).W)
+  val data = UInt((opts.LINE_WIDTH * 8).W)
   val valid = Bool()
 }
 
@@ -134,20 +125,24 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
   val ASSOC_IDX_WIDTH = log2Ceil(opts.ASSOC)
   val LINE_COUNT = opts.SIZE / opts.LINE_WIDTH / opts.ASSOC
 
-  object GeneralMMIODef extends {
-    override val ADDR_WIDTH: Int = opts.ADDR_WIDTH
-    override val XLEN: Int = opts.XLEN
-  } with MMIODef
+  object GeneralMMIODef
+      extends {
+        override val ADDR_WIDTH: Int = opts.ADDR_WIDTH
+        override val XLEN: Int = opts.XLEN
+      }
+      with MMIODef
 
   val ic = IO(Vec(opts.CORE_COUNT, Flipped(new L1ICPort(opts))))
   val dc = IO(Vec(opts.CORE_COUNT, Flipped(new L1DCPort(opts))))
   val directs = IO(Vec(opts.CORE_COUNT, Flipped(new L1UCPort(opts))))
-  val mmio = IO(Vec(
-    opts.MMIO.size,
-    Flipped(new MMIOAccess(GeneralMMIODef))
-  ))
+  val mmio = IO(
+    Vec(
+      opts.MMIO.size,
+      Flipped(new MMIOAccess(GeneralMMIODef))
+    )
+  )
 
-  for(m <- mmio) {
+  for (m <- mmio) {
     m.req.noenq()
   }
 
@@ -165,7 +160,8 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
 
   // Assoc and writers
   val directories = Mem(LINE_COUNT, Vec(opts.ASSOC, new L2DirEntry(opts)))
-  val stores = SyncReadMem(LINE_COUNT, Vec(opts.ASSOC, UInt((opts.LINE_WIDTH * 8).W)))
+  val stores =
+    SyncReadMem(LINE_COUNT, Vec(opts.ASSOC, UInt((opts.LINE_WIDTH * 8).W)))
 
   val dataWriter = Wire(new Bundle {
     val mask = Vec(opts.ASSOC, Bool())
@@ -184,8 +180,16 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
   dirWriter := DontCare
   dirWriter.mask := VecInit(Seq.fill(4)(false.B))
 
-  stores.write(dataWriter.addr, VecInit(Seq.fill(opts.ASSOC)(dataWriter.data)), dataWriter.mask)
-  directories.write(dirWriter.addr, VecInit(Seq.fill(opts.ASSOC)(dirWriter.dir)), dirWriter.mask)
+  stores.write(
+    dataWriter.addr,
+    VecInit(Seq.fill(opts.ASSOC)(dataWriter.data)),
+    dataWriter.mask
+  )
+  directories.write(
+    dirWriter.addr,
+    VecInit(Seq.fill(opts.ASSOC)(dirWriter.dir)),
+    dirWriter.mask
+  )
   when(PopCount(dirWriter.mask) =/= 0.U) {
     dirWriter.dir.validate()
   }
@@ -194,33 +198,33 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
     assume(data.getWidth == opts.LINE_WIDTH * 8)
 
     val mask = Wire(Vec(opts.ASSOC, Bool()))
-    for((m, i) <- mask.zipWithIndex) {
+    for ((m, i) <- mask.zipWithIndex) {
       m := i.U === idx
     }
 
-    dataWriter.addr := addr(INDEX_OFFSET_LENGTH-1, OFFSET_LENGTH)
+    dataWriter.addr := addr(INDEX_OFFSET_LENGTH - 1, OFFSET_LENGTH)
     dataWriter.data := data
     dataWriter.mask := mask
   }
 
   def writeDir(idx: UInt, addr: UInt, dir: L2DirEntry) {
     val mask = Wire(Vec(opts.ASSOC, Bool()))
-    for((m, i) <- mask.zipWithIndex) {
+    for ((m, i) <- mask.zipWithIndex) {
       m := i.U === idx
     }
 
-    dirWriter.addr := addr(INDEX_OFFSET_LENGTH-1, OFFSET_LENGTH)
+    dirWriter.addr := addr(INDEX_OFFSET_LENGTH - 1, OFFSET_LENGTH)
     dirWriter.dir := dir
     dirWriter.mask := mask
   }
 
   def writeDirAll(addr: UInt, dir: L2DirEntry) {
     val mask = Wire(Vec(opts.ASSOC, Bool()))
-    for((m, i) <- mask.zipWithIndex) {
+    for ((m, i) <- mask.zipWithIndex) {
       m := true.B
     }
 
-    dirWriter.addr := addr(INDEX_OFFSET_LENGTH-1, OFFSET_LENGTH)
+    dirWriter.addr := addr(INDEX_OFFSET_LENGTH - 1, OFFSET_LENGTH)
     dirWriter.dir := dir
     dirWriter.mask := mask
   }
@@ -230,25 +234,25 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
   val ops = Wire(Vec(opts.CORE_COUNT * 2, L1DCPort.L1Req()))
   val rdatas = Wire(Vec(opts.CORE_COUNT * 2, UInt((opts.LINE_WIDTH * 8).W)))
   val stalls = Wire(Vec(opts.CORE_COUNT * 2, Bool()))
-  for((p, a) <- ports.zip(addrs.iterator)) {
+  for ((p, a) <- ports.zip(addrs.iterator)) {
     a := p.getAddr
   }
 
-  for((p, o) <- ports.zip(ops.iterator)) {
+  for ((p, o) <- ports.zip(ops.iterator)) {
     o := p.getReq
   }
 
-  for((p, r) <- ports.zip(rdatas.iterator)) {
+  for ((p, r) <- ports.zip(rdatas.iterator)) {
     p.getRdata := r
   }
 
-  for((p, s) <- ports.zip(stalls.iterator)) {
+  for ((p, s) <- ports.zip(stalls.iterator)) {
     p.getStall := s
   }
 
-  for(r <- rdatas) r := DontCare
+  for (r <- rdatas) r := DontCare
   stalls := VecInit(ops.map(op => op =/= L1Req.idle))
-  for(uc <- directs) {
+  for (uc <- directs) {
     uc.stall := uc.read || uc.write
     uc.rdata := DontCare
   }
@@ -257,29 +261,39 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
   def isInMapping(addr: UInt, mapping: MMIOMapping) = {
     val ret = WireDefault(false.B)
     when(
-      addr >= mapping.MAPPED_START.U(opts.XLEN.W)(opts.ADDR_WIDTH-1, 0)
-      && addr < (mapping.MAPPED_START + mapping.MAPPED_SIZE).U(opts.XLEN.W)(opts.ADDR_WIDTH-1, 0)
+      addr >= mapping.MAPPED_START.U(opts.XLEN.W)(opts.ADDR_WIDTH - 1, 0)
+        && addr < (mapping.MAPPED_START + mapping.MAPPED_SIZE)
+          .U(opts.XLEN.W)(opts.ADDR_WIDTH - 1, 0)
     ) {
       ret := true.B
     }
     ret
   }
 
-  def getMMIOMap(addr: UInt) = VecInit(opts.MMIO.map((mapping) => isInMapping(addr, mapping))).asUInt()
+  def getMMIOMap(addr: UInt) =
+    VecInit(opts.MMIO.map((mapping) => isInMapping(addr, mapping))).asUInt()
   def isMMIO(addr: UInt) = getMMIOMap(addr).orR()
 
   // Refillers
   val misses = RegInit(VecInit(Seq.fill(opts.CORE_COUNT * 2)(false.B)))
-  val missesAddr = RegInit(VecInit(Seq.fill(opts.CORE_COUNT * 2)(0.U(opts.ADDR_WIDTH.W)))) // Pipe addr to optimize timing
+  val missesAddr = RegInit(
+    VecInit(Seq.fill(opts.CORE_COUNT * 2)(0.U(opts.ADDR_WIDTH.W)))
+  ) // Pipe addr to optimize timing
   // val collided = RegInit(VecInit(Seq.fill(opts.CORE_COUNT * 2)(false.B)))
   val refilled = RegInit(VecInit(Seq.fill(opts.CORE_COUNT * 2)(false.B)))
   val sent = RegInit(VecInit(Seq.fill(opts.CORE_COUNT * 2)(false.B)))
   val ucSent = RegInit(VecInit(Seq.fill(opts.CORE_COUNT)(false.B)))
-  val bufs = RegInit(VecInit(Seq.fill(opts.CORE_COUNT * 2)(
-    VecInit(Seq.fill(opts.LINE_WIDTH * 8 / axi.DATA_WIDTH)(0.U(axi.DATA_WIDTH.W)))
-  )))
+  val bufs = RegInit(
+    VecInit(
+      Seq.fill(opts.CORE_COUNT * 2)(
+        VecInit(
+          Seq.fill(opts.LINE_WIDTH * 8 / axi.DATA_WIDTH)(0.U(axi.DATA_WIDTH.W))
+        )
+      )
+    )
+  )
 
-  for((m, r) <- misses.zip(refilled)) assert(m || !r) // refilled implies miss
+  for ((m, r) <- misses.zip(refilled)) assert(m || !r) // refilled implies miss
   // for((m, c) <- misses.zip(collided)) assert(!(m && c)) // miss and collided is never true at the same time
 
   // Writebacks
@@ -306,16 +320,18 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
   val target = RegInit(0.U(log2Ceil(opts.CORE_COUNT * 2).W))
   val targetAddr = addrs(target)
   val targetOps = ops(target)
-  val targetIndex = targetAddr(INDEX_OFFSET_LENGTH-1, OFFSET_LENGTH)
+  val targetIndex = targetAddr(INDEX_OFFSET_LENGTH - 1, OFFSET_LENGTH)
   val pipeTargetAddr = RegNext(targetAddr)
 
-  val sameAddrRefilling = VecInit((0 until opts.CORE_COUNT * 2).map(
-    idx => misses(idx) && addrs(idx) === targetAddr
-  )).asUInt().orR
+  val sameAddrRefilling = VecInit(
+    (0 until opts.CORE_COUNT * 2).map(idx =>
+      misses(idx) && addrs(idx) === targetAddr
+    )
+  ).asUInt().orR
 
   // Compute directory lookups & delayed data fetch
   val lookups = directories.read(targetIndex)
-  for(l <- lookups) { l.validate() }
+  for (l <- lookups) { l.validate() }
   val datas = stores.read(targetIndex)
   val pipeLookups = RegNext(lookups)
   val hits = lookups.map(_.hit(targetAddr))
@@ -327,7 +343,8 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
   val pipeHitIdx = RegNext(hitIdx)
 
   // Refilling from FIFO
-  val fifoHits = wbFifo.map(ent => ent.valid && ent.lineaddr === targetAddr >> OFFSET_LENGTH)
+  val fifoHits =
+    wbFifo.map(ent => ent.valid && ent.lineaddr === targetAddr >> OFFSET_LENGTH)
   val fifoHitCnt = PopCount(fifoHits)
   assert(fifoHitCnt <= 1.U)
   val fifoHit = VecInit(fifoHits).asUInt().orR
@@ -339,15 +356,20 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
   val victim = RegInit(0.U(log2Ceil(opts.ASSOC).W))
 
   // Downlink requests
-  val pendings = RegInit(VecInit(Seq.fill(opts.CORE_COUNT)(L1DCPort.L2Req.idle)))
+  val pendings = RegInit(
+    VecInit(Seq.fill(opts.CORE_COUNT)(L1DCPort.L2Req.idle))
+  )
   val pending = VecInit(pendings.map(_ =/= L1DCPort.L2Req.idle)).asUInt.orR
   val pendingVictim = RegInit(false.B)
 
-  for((d, p) <- dc.iterator.zip(pendings.iterator)) {
+  for ((d, p) <- dc.iterator.zip(pendings.iterator)) {
     d.l2req := p
     // TODO: investigate can we use pipeTargetAddr here
     when(pendingVictim) {
-      d.l2addr := pipeLookups(victim).tag ## pipeTargetAddr(INDEX_OFFSET_LENGTH-1, 0)
+      d.l2addr := pipeLookups(victim).tag ## pipeTargetAddr(
+        INDEX_OFFSET_LENGTH - 1,
+        0
+      )
     }.otherwise {
       d.l2addr := pipeTargetAddr
     }
@@ -362,14 +384,21 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
   }
 
   val nextEventful = Wire(UInt(log2Ceil(opts.CORE_COUNT * 2).W))
-  nextEventful := MuxCase(target, (1 until opts.CORE_COUNT * 2).map(i => {
-    val p = Mux(target < (opts.CORE_COUNT * 2 - i).U, target + i.U, target - (opts.CORE_COUNT*2 - i).U)
+  nextEventful := MuxCase(
+    target,
+    (1 until opts.CORE_COUNT * 2).map(i => {
+      val p = Mux(
+        target < (opts.CORE_COUNT * 2 - i).U,
+        target + i.U,
+        target - (opts.CORE_COUNT * 2 - i).U
+      )
 
-    (
-      (!misses(p) || refilled(p)) && ops(p) =/= L1Req.idle,
-      p
-    )
-  }))
+      (
+        (!misses(p) || refilled(p)) && ops(p) =/= L1Req.idle,
+        p
+      )
+    })
+  )
 
   def step() {
     target := nextEventful
@@ -399,7 +428,7 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
         is(L1DCPort.L1Req.read, L1DCPort.L1Req.modify) {
           when(misses(target)) {
             when(refilled(target)) {
-              victim := rand(log2Ceil(opts.ASSOC)-1, 0)
+              victim := rand(log2Ceil(opts.ASSOC) - 1, 0)
               nstate := L2MainState.refilled
             }.otherwise {
               nstate := L2MainState.idle
@@ -411,7 +440,9 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
             nstate := L2MainState.idle
             step()
           }.otherwise {
-            assert(!(fifoHit && sameAddrRefilling)) // FIFO inhabitance and AXI refilling are mutually exclusive
+            assert(
+              !(fifoHit && sameAddrRefilling)
+            ) // FIFO inhabitance and AXI refilling are mutually exclusive
 
             // hit == false && missed == false
             // Init a refill
@@ -427,7 +458,7 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
               sent(target) := true.B
               refilled(target) := true.B // Immediately refills
 
-              victim := rand(log2Ceil(opts.ASSOC)-1, 0)
+              victim := rand(log2Ceil(opts.ASSOC) - 1, 0)
               nstate := L2MainState.refilled
             }.otherwise {
               misses(target) := true.B
@@ -442,7 +473,7 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
 
         is(L1DCPort.L1Req.writeback) {
           assert(lookups(hitIdx).hit(targetAddr))
-          for(core <- (0 until opts.CORE_COUNT)) {
+          for (core <- (0 until opts.CORE_COUNT)) {
             when(core.U === target) {
               assert(lookups(hitIdx).states(core) === L2DirState.modified)
             }.otherwise {
@@ -482,8 +513,11 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
       val data = datas(pipeHitIdx)
       val isDC = target < opts.CORE_COUNT.U
 
-      val dirtyMap = VecInit(lookups(pipeHitIdx).states.map(_ === L2DirState.modified)).asUInt
-      val sharedMap = VecInit(lookups(pipeHitIdx).states.map(_ =/= L2DirState.vacant)).asUInt
+      val dirtyMap = VecInit(
+        lookups(pipeHitIdx).states.map(_ === L2DirState.modified)
+      ).asUInt
+      val sharedMap =
+        VecInit(lookups(pipeHitIdx).states.map(_ =/= L2DirState.vacant)).asUInt
       val hasDirty = (dirtyMap & ~UIntToOH(target)).asUInt.orR
       val hasShared = (sharedMap & ~UIntToOH(target)).asUInt.orR
 
@@ -534,7 +568,11 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
           pendingVictim := false.B
           nstate := L2MainState.waitInval
 
-          for(((s, p), idx) <- lookups(pipeHitIdx).states.zip(pendings).zipWithIndex) {
+          for (
+            ((s, p), idx) <- lookups(pipeHitIdx).states
+              .zip(pendings)
+              .zipWithIndex
+          ) {
             when(idx.U =/= target && s =/= L2DirState.vacant) {
               p := L1DCPort.L2Req.inval
             }
@@ -544,7 +582,9 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
         pendingVictim := false.B
         nstate := L2MainState.waitFlush
 
-        for(((s, p), idx) <- lookups(pipeHitIdx).states.zip(pendings).zipWithIndex) {
+        for (
+          ((s, p), idx) <- lookups(pipeHitIdx).states.zip(pendings).zipWithIndex
+        ) {
           when(idx.U =/= target && s === L2DirState.modified) {
             p := L1DCPort.L2Req.flush
           }
@@ -600,13 +640,17 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
       when(!lookups(victim).valid) {
         commit()
       }.otherwise {
-        val hasDirty = VecInit(lookups(victim).states.map(_ === L2DirState.modified)).asUInt().orR
-        val hasShared = VecInit(lookups(victim).states.map(_ =/= L2DirState.vacant)).asUInt().orR
+        val hasDirty = VecInit(
+          lookups(victim).states.map(_ === L2DirState.modified)
+        ).asUInt().orR
+        val hasShared = VecInit(
+          lookups(victim).states.map(_ =/= L2DirState.vacant)
+        ).asUInt().orR
 
         when(hasDirty) {
           pendingVictim := true.B
 
-          for((s, p) <- lookups(victim).states.zip(pendings)) {
+          for ((s, p) <- lookups(victim).states.zip(pendings)) {
             when(s === L2DirState.modified) {
               p := L1DCPort.L2Req.flush
             }
@@ -616,7 +660,7 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
         }.elsewhen(hasShared) {
           pendingVictim := true.B
 
-          for((s, p) <- lookups(victim).states.zip(pendings)) {
+          for ((s, p) <- lookups(victim).states.zip(pendings)) {
             assert(s =/= L2DirState.modified)
             when(s === L2DirState.shared) {
               p := L1DCPort.L2Req.inval
@@ -629,7 +673,10 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
 
           // Wait until not full
           when(!wbFifoFull) {
-            wbFifo(wbFifoTail).lineaddr := lookups(victim).tag ## targetAddr(INDEX_OFFSET_LENGTH-1, OFFSET_LENGTH)
+            wbFifo(wbFifoTail).lineaddr := lookups(victim).tag ## targetAddr(
+              INDEX_OFFSET_LENGTH - 1,
+              OFFSET_LENGTH
+            )
             // Datas should be ready now, after one cycle after jumped from idle
             wbFifo(wbFifoTail).data := datas(victim)
             wbFifo(wbFifoTail).valid := true.B
@@ -659,7 +706,7 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
         writtenTowards := pipeHitIdx
       }
 
-      val writtenAddr = ent.tag ## targetAddr(INDEX_OFFSET_LENGTH-1, 0)
+      val writtenAddr = ent.tag ## targetAddr(INDEX_OFFSET_LENGTH - 1, 0)
       val writtenData = Wire(UInt((opts.LINE_WIDTH * 8).W))
       val commit = Wire(Bool())
       writtenData := DontCare
@@ -667,7 +714,7 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
 
       val justWritten = Reg(UInt())
 
-      for(((d, p), idx) <- dc.zip(pendings).zipWithIndex) {
+      for (((d, p), idx) <- dc.zip(pendings).zipWithIndex) {
         when(p =/= L1DCPort.L2Req.idle && !d.l2stall) {
           p := L1DCPort.L2Req.idle
 
@@ -692,7 +739,7 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
         }
 
         // Assert the directory only had justWritten set at modified, nothing else
-        for((s, idx) <- ent.states.zipWithIndex) {
+        for ((s, idx) <- ent.states.zipWithIndex) {
           when(idx.U === justWritten) {
             assert(s === L2DirState.modified)
           }.otherwise {
@@ -703,19 +750,24 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
         when(!pendingVictim && targetOps === L1DCPort.L1Req.read) {
           // plain old read hit, after flush we can return our data
 
-          rdatas(target) := datas(pipeHitIdx) // One cycle after data-write, this should be ready
+          rdatas(target) := datas(
+            pipeHitIdx
+          ) // One cycle after data-write, this should be ready
           stalls(target) := false.B
           misses(target) := false.B
           refilled(target) := false.B
 
           // TODO: This probably can be constructed from an empty directory
-          val editedState = lookups(pipeHitIdx).editState(justWritten, L2DirState.shared).editState(target, L2DirState.shared).withDirty()
+          val editedState = lookups(pipeHitIdx)
+            .editState(justWritten, L2DirState.shared)
+            .editState(target, L2DirState.shared)
+            .withDirty()
           writeDir(pipeHitIdx, targetAddr, editedState)
 
           nstate := L2MainState.idle
           step()
         }.otherwise {
-          for((s, p) <- ent.states.zip(pendings)) {
+          for ((s, p) <- ent.states.zip(pendings)) {
             when(s =/= L2DirState.vacant) { // FIXME: && target != s
               p := L1DCPort.L2Req.inval
             }
@@ -732,7 +784,7 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
     }
 
     is(L2MainState.waitInval) {
-      for((d, p) <- dc.zip(pendings)) {
+      for ((d, p) <- dc.zip(pendings)) {
         when(p =/= L1DCPort.L2Req.idle && !d.l2stall) {
           p := L1DCPort.L2Req.idle
         }
@@ -741,13 +793,17 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
       when(!pending) {
         when(pendingVictim) { // Refilled
           // Was dirty
-          val hasDirty = VecInit(pipeLookups(victim).states.map(_ === L2DirState.modified)).asUInt.orR
+          val hasDirty = VecInit(
+            pipeLookups(victim).states.map(_ === L2DirState.modified)
+          ).asUInt.orR
           val isDC = target < opts.CORE_COUNT.U
 
           def commit() = {
             val rdata = bufs(target).asTypeOf(UInt((opts.LINE_WIDTH * 8).W))
             // TODO: check if CORE_COUNT = 2^n
-            val coreWidth = if(opts.CORE_COUNT != 1) { log2Ceil(opts.CORE_COUNT) } else { 1 }
+            val coreWidth = if (opts.CORE_COUNT != 1) {
+              log2Ceil(opts.CORE_COUNT)
+            } else { 1 }
 
             val sinit = Wire(L2DirState())
             when(!isDC) {
@@ -761,7 +817,9 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
             writeDir(
               victim,
               targetAddr,
-              L2DirEntry.withAddr(opts, targetAddr).editState(target(coreWidth-1, 0), sinit)
+              L2DirEntry
+                .withAddr(opts, targetAddr)
+                .editState(target(coreWidth - 1, 0), sinit)
             )
 
             writeData(
@@ -780,7 +838,10 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
 
           when(pipeLookups(victim).dirty || hasDirty) {
             when(!wbFifoFull) {
-              wbFifo(wbFifoTail).lineaddr := lookups(victim).tag ## targetAddr(INDEX_OFFSET_LENGTH-1, OFFSET_LENGTH)
+              wbFifo(wbFifoTail).lineaddr := lookups(victim).tag ## targetAddr(
+                INDEX_OFFSET_LENGTH - 1,
+                OFFSET_LENGTH
+              )
               wbFifo(wbFifoTail).data := datas(victim)
               wbFifo(wbFifoTail).valid := true.B
               wbFifoTail := wbFifoTail +% 1.U
@@ -792,8 +853,12 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
           }
         }.otherwise { // Modify hit
           assert(targetOps === L1DCPort.L1Req.modify)
-          val coreWidth = if(opts.CORE_COUNT != 1) { log2Ceil(opts.CORE_COUNT) } else { 1 }
-          val writtenDir = L2DirEntry.withAddr(opts, targetAddr).editState(target(coreWidth-1, 0), L2DirState.modified)
+          val coreWidth = if (opts.CORE_COUNT != 1) {
+            log2Ceil(opts.CORE_COUNT)
+          } else { 1 }
+          val writtenDir = L2DirEntry
+            .withAddr(opts, targetAddr)
+            .editState(target(coreWidth - 1, 0), L2DirState.modified)
 
           writeDir(
             pipeHitIdx,
@@ -814,7 +879,8 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
   val reqTarget = RegInit(0.U(log2Ceil(opts.CORE_COUNT * 3).W))
   val rawReqAddr = missesAddr(reqTarget)
 
-  val reqAddr = rawReqAddr(opts.ADDR_WIDTH-1, OFFSET_LENGTH) ## 0.U(OFFSET_LENGTH.W)
+  val reqAddr =
+    rawReqAddr(opts.ADDR_WIDTH - 1, OFFSET_LENGTH) ## 0.U(OFFSET_LENGTH.W)
   assume(reqAddr.getWidth == opts.ADDR_WIDTH)
 
   when(reqTarget < (opts.CORE_COUNT * 2).U) {
@@ -842,7 +908,7 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
           sent(reqTarget) := true.B
           stepRefiller(reqTarget)
         }
-      } .otherwise {
+      }.otherwise {
         sent(reqTarget) := false.B
         stepRefiller(reqTarget)
       }
@@ -855,10 +921,9 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
     when(!directs(id).read || ucSent(reqTarget)) {
       stepRefiller(reqTarget)
 
-      /**
-       * MMIO are handled in the write-back state machine
-       * because they are faster, so they can be handled synchronizely
-       */
+      /** MMIO are handled in the write-back state machine because they are
+        * faster, so they can be handled synchronizely
+        */
     }.elsewhen(isMMIO(directs(id).addr)) {
       stepRefiller(reqTarget)
     }.otherwise {
@@ -880,9 +945,13 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
   }
 
   // Receiver, deals with R channel, and victimize
-  val bufptrs = RegInit(VecInit(Seq.fill(opts.CORE_COUNT * 2)(
-    0.U(log2Ceil(opts.LINE_WIDTH * 8 / axi.DATA_WIDTH).W)
-  )))
+  val bufptrs = RegInit(
+    VecInit(
+      Seq.fill(opts.CORE_COUNT * 2)(
+        0.U(log2Ceil(opts.LINE_WIDTH * 8 / axi.DATA_WIDTH).W)
+      )
+    )
+  )
 
   when(axi.RVALID) {
     // TODO: handle RRESP
@@ -907,7 +976,8 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
     }.otherwise {
       assert(axi.RLAST)
       val id = axi.RID - (opts.CORE_COUNT * 2).U
-      val shifts = VecInit(directs.map(_.addr(log2Ceil(axi.DATA_WIDTH/8)-1, 0)))
+      val shifts =
+        VecInit(directs.map(_.addr(log2Ceil(axi.DATA_WIDTH / 8) - 1, 0)))
       directs(id).rdata := axi.RDATA >> (shifts(id) << 3)
       directs(id).stall := false.B
       ucSent(axi.RID) := false.B
@@ -917,9 +987,11 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
   // Write-back...er? Handles AXI AW/W/B
   // Also handles memory mapped reads (CLINT, PLIC, etc...)
   val wbPtr = RegInit(0.U(log2Ceil(axiGrpNum).W))
-  val wbDataView = wbFifo(wbFifoHead).data.asTypeOf(Vec(axiGrpNum, UInt(axi.DATA_WIDTH.W)))
+  val wbDataView =
+    wbFifo(wbFifoHead).data.asTypeOf(Vec(axiGrpNum, UInt(axi.DATA_WIDTH.W)))
 
-  val ucWalkPtr = RegInit(0.U((if(opts.CORE_COUNT == 1) { 1 } else { log2Ceil(opts.CORE_COUNT) }).W))
+  val ucWalkPtr = RegInit(0.U((if (opts.CORE_COUNT == 1) { 1 }
+                               else { log2Ceil(opts.CORE_COUNT) }).W))
 
   object UCSendStage extends ChiselEnum {
     val idle, req, data, resp, mmioReq, mmioResp = Value
@@ -944,7 +1016,10 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
           wbPtr := 0.U
           wbState := L2WBState.writing
         }
-      }.elsewhen(VecInit(directs.map(d => d.write || d.read && isMMIO(d.addr))).asUInt.orR()) {
+      }.elsewhen(
+        VecInit(directs.map(d => d.write || d.read && isMMIO(d.addr))).asUInt
+          .orR()
+      ) {
         assert(ucWalkPtr === 0.U)
         assert(ucSendStage === UCSendStage.idle)
         wbState := L2WBState.ucWalk
@@ -953,10 +1028,10 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
 
     is(L2WBState.writing) {
       axi.WDATA := wbDataView(wbPtr)
-      axi.WSTRB := ((1 << (axi.DATA_WIDTH / 8))-1).U
+      axi.WSTRB := ((1 << (axi.DATA_WIDTH / 8)) - 1).U
       axi.WVALID := true.B
 
-      val isLast = wbPtr === (axiGrpNum-1).U
+      val isLast = wbPtr === (axiGrpNum - 1).U
       axi.WLAST := isLast
 
       when(axi.WREADY) {
@@ -1006,7 +1081,7 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
           }.elsewhen(directs(ucWalkPtr).write) {
             ucSendStage := UCSendStage.req
           }.otherwise {
-            when(ucWalkPtr === (opts.CORE_COUNT-1).U) {
+            when(ucWalkPtr === (opts.CORE_COUNT - 1).U) {
               wbState := L2WBState.idle
               ucWalkPtr := 0.U
             }.otherwise {
@@ -1030,7 +1105,10 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
         }
 
         is(UCSendStage.data) {
-          axi.WDATA := pipeUCData << (pipeUCAddr(log2Ceil(axi.DATA_WIDTH/8)-1, 0) << 3)
+          axi.WDATA := pipeUCData << (pipeUCAddr(
+            log2Ceil(axi.DATA_WIDTH / 8) - 1,
+            0
+          ) << 3)
           axi.WSTRB := (-1).S((axi.DATA_WIDTH / 8).W).asUInt // Write all stuff
           axi.WLAST := true.B
           axi.WVALID := true.B
@@ -1044,7 +1122,7 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
           when(axi.BVALID) {
             ucSendStage := UCSendStage.idle
 
-            when(ucWalkPtr === (opts.CORE_COUNT-1).U) {
+            when(ucWalkPtr === (opts.CORE_COUNT - 1).U) {
               wbState := L2WBState.idle
               ucWalkPtr := 0.U
             }.otherwise {
@@ -1060,7 +1138,7 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
           req.op := Mux(pipeMMIOWrite, MMIOReqOp.write, MMIOReqOp.read)
           req.addr := pipeUCAddr
           req.wdata := pipeUCData // TODO: wstrb
-          for((m, e) <- mmio.zip(pipeMMIOMap.asBools())) {
+          for ((m, e) <- mmio.zip(pipeMMIOMap.asBools())) {
             when(e) {
               m.req.enq(req)
             }
@@ -1076,13 +1154,19 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
           assert(PopCount(validMap) <= 1.U)
           assert(PopCount(VecInit(validMap).asUInt | pipeMMIOMap) <= 1.U)
 
-          val currentCycleRdata = Mux1H(pipeMMIOMap, mmio.map((m) => m.resp.bits))
-          val lastCycleRdata = Mux1H(pipeMMIOMap, mmio.map(m => RegNext(m.resp.bits)))
+          val currentCycleRdata =
+            Mux1H(pipeMMIOMap, mmio.map((m) => m.resp.bits))
+          val lastCycleRdata =
+            Mux1H(pipeMMIOMap, mmio.map(m => RegNext(m.resp.bits)))
 
           val valid = VecInit(validMap).asUInt.orR()
           val lastCycleValid = RegNext(valid)
 
-          directs(ucWalkPtr).rdata := Mux(lastCycleValid, lastCycleRdata, currentCycleRdata)
+          directs(ucWalkPtr).rdata := Mux(
+            lastCycleValid,
+            lastCycleRdata,
+            currentCycleRdata
+          )
 
           when(valid || lastCycleValid) {
             directs(ucWalkPtr).stall := false.B
@@ -1090,7 +1174,7 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
             ucSendStage := UCSendStage.idle
 
             // TODO: switch to RRArbiter
-            when(ucWalkPtr === (opts.CORE_COUNT-1).U) {
+            when(ucWalkPtr === (opts.CORE_COUNT - 1).U) {
               wbState := L2WBState.idle
               ucWalkPtr := 0.U
             }.otherwise {

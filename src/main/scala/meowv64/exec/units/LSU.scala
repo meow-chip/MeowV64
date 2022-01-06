@@ -18,32 +18,29 @@ import scala.collection.mutable
 import meowv64.core.PrivLevel
 import meowv64.core.Status
 
-/**
- * DelayedMem = Delayed memory access, memory accesses that have side-effects and thus
- * needs to be preformed in-order.
- * 
- * All possible access types are stated in the DelayedMemOp enum
- * - no: No memory access
- * - s: store
- * - ul: uncached load
- * - us: uncached store
- */
+/** DelayedMem = Delayed memory access, memory accesses that have side-effects
+  * and thus needs to be preformed in-order.
+  *
+  * All possible access types are stated in the DelayedMemOp enum
+  *   - no: No memory access
+  *   - s: store
+  *   - ul: uncached load
+  *   - us: uncached store
+  */
 object DelayedMemOp extends ChiselEnum {
   val no, s, ul, us = Value
 }
 
-/**
-  * A (maybe-empty) sequential memory access
-  * 
-  * op: operation
-  * addr: address, this is always aligned in log_2(coredef.XLEN)
-  * offset: in-line offset
-  * len: Bit length
-  * sext: Sign extension?
-  * 
-  * Data are stored in the wb field alongside the DelayedMem bundle in execution results
+/** A (maybe-empty) sequential memory access
   *
-  * @param coredef: Core defination
+  * op: operation addr: address, this is always aligned in log_2(coredef.XLEN)
+  * offset: in-line offset len: Bit length sext: Sign extension?
+  *
+  * Data are stored in the wb field alongside the DelayedMem bundle in execution
+  * results
+  *
+  * @param coredef:
+  *   Core defination
   */
 class DelayedMem(implicit val coredef: CoreDef) extends Bundle {
   self =>
@@ -136,9 +133,10 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with UnitSelIO {
   val tlb = Module(new TLB)
   val requiresTranslate = satp.mode =/= SatpMode.bare && (
     priv <= PrivLevel.S
-    || status.mprv && (status.mpp =/= PrivLevel.M.asUInt())
+      || status.mprv && (status.mpp =/= PrivLevel.M.asUInt())
   )
-  val tlbEffectivePriv = Mux(priv === PrivLevel.M, status.mpp.asTypeOf(PrivLevel.M), priv)
+  val tlbEffectivePriv =
+    Mux(priv === PrivLevel.M, status.mpp.asTypeOf(PrivLevel.M), priv)
   val tlbMode = Wire(TLBLookupMode())
   when(tlbEffectivePriv === PrivLevel.U) {
     tlbMode := TLBLookupMode.U
@@ -161,7 +159,9 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with UnitSelIO {
   val hasPending = IO(Output(Bool()))
   val release = IO(EnqIO(new DelayedMemResult))
 
-  val pendings = Module(new FlushableQueue(new DelayedMem, coredef.INFLIGHT_INSTR_LIMIT))
+  val pendings = Module(
+    new FlushableQueue(new DelayedMem, coredef.INFLIGHT_INSTR_LIMIT)
+  )
   hasPending := pendings.io.count > 0.U || pendings.io.enq.fire()
 
   val l2stall = Wire(Bool())
@@ -174,32 +174,36 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with UnitSelIO {
   // Utils
   def isInvalAddr(addr: UInt) = {
     val inval = WireDefault(
-      addr(coredef.XLEN-1, coredef.PADDR_WIDTH).asSInt() =/= addr(coredef.PADDR_WIDTH-1).asSInt()
+      addr(coredef.XLEN - 1, coredef.PADDR_WIDTH).asSInt() =/= addr(
+        coredef.PADDR_WIDTH - 1
+      ).asSInt()
     )
 
     when(requiresTranslate) {
       switch(satp.mode) {
         is(SatpMode.sv48) {
-          inval := addr(coredef.XLEN-1, coredef.VADDR_WIDTH).asSInt() =/= addr(coredef.VADDR_WIDTH-1).asSInt()
+          inval := addr(coredef.XLEN - 1, coredef.VADDR_WIDTH)
+            .asSInt() =/= addr(coredef.VADDR_WIDTH - 1).asSInt()
         }
 
         is(SatpMode.sv39) {
-          inval := addr(coredef.XLEN-1, coredef.VADDR_WIDTH-9).asSInt() =/= addr(coredef.VADDR_WIDTH-10).asSInt()
+          inval := addr(coredef.XLEN - 1, coredef.VADDR_WIDTH - 9)
+            .asSInt() =/= addr(coredef.VADDR_WIDTH - 10).asSInt()
         }
       }
     }
     inval
   }
 
-  /**
-   * Is this access misaligned?
-   * 
-   * According to ISA, the least two bits of funct3 repersents the size of the load/store:
-   * - (L/S)B[U]: 00
-   * - (L/S)H[U]: 01
-   * - (L/S)W[U]: 10
-   * - (L/S)D: 11
-   */
+  /** Is this access misaligned?
+    *
+    * According to ISA, the least two bits of funct3 repersents the size of the
+    * load/store:
+    *   - (L/S)B[U]: 00
+    *   - (L/S)H[U]: 01
+    *   - (L/S)W[U]: 10
+    *   - (L/S)D: 11
+    */
   def isMisaligned(offset: UInt, funct3: UInt) = Mux1H(
     UIntToOH(funct3(1, 0)),
     Seq(
@@ -210,11 +214,11 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with UnitSelIO {
     )
   )
 
-  /**
-   * Stage 1 state
-   */ 
+  /** Stage 1 state
+    */
   assert(coredef.PADDR_WIDTH > coredef.VADDR_WIDTH)
-  val rawAddr = (next.rs1val.asSInt + next.instr.instr.imm).asUInt // We have imm = 0 for R-type instructions
+  val rawAddr =
+    (next.rs1val.asSInt + next.instr.instr.imm).asUInt // We have imm = 0 for R-type instructions
   tlb.query.vpn := rawAddr(47, 12)
   val addr = WireDefault(rawAddr)
   when(requiresTranslate) {
@@ -223,19 +227,23 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with UnitSelIO {
 
   val aligned = addr(coredef.PADDR_WIDTH - 1, 3) ## 0.U(3.W)
   val offset = addr(2, 0)
-  val uncached = isUncached(addr) && next.instr.instr.op =/= Decoder.Op("AMO").ident // Uncached if phys bit 56 = high and is not AMO
+  val uncached = isUncached(addr) && next.instr.instr.op =/= Decoder
+    .Op("AMO")
+    .ident // Uncached if phys bit 56 = high and is not AMO
   val read = (
     next.instr.instr.op === Decoder.Op("LOAD").ident
-    || next.instr.instr.op === Decoder.Op("AMO").ident && next.instr.instr.funct7(6, 2) === Decoder.AMO_FUNC("LR")
+      || next.instr.instr.op === Decoder.Op("AMO").ident && next.instr.instr
+        .funct7(6, 2) === Decoder.AMO_FUNC("LR")
   ) && !next.instr.vacant
   val write = (
     next.instr.instr.op === Decoder.Op("STORE").ident
-    || next.instr.instr.op === Decoder.Op("AMO").ident && next.instr.instr.funct7(6, 2) =/= Decoder.AMO_FUNC("LR")
+      || next.instr.instr.op === Decoder.Op("AMO").ident && next.instr.instr
+        .funct7(6, 2) =/= Decoder.AMO_FUNC("LR")
   ) && !next.instr.vacant
 
   fenceLike := (
     next.instr.instr.op === Decoder.Op("MEM-MISC").ident
-    && !next.instr.vacant
+      && !next.instr.vacant
   )
 
   val invalAddr = isInvalAddr(rawAddr)
@@ -244,7 +252,9 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with UnitSelIO {
   tlbRequestModify := write
 
   // Maybe we can let flushed request go through
-  val canRead = WireDefault(read && !uncached && !invalAddr && !misaligned && !flush)
+  val canRead = WireDefault(
+    read && !uncached && !invalAddr && !misaligned && !flush
+  )
   when(requiresTranslate) {
     when(!tlb.query.ready) {
       canRead := false.B
@@ -255,7 +265,9 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with UnitSelIO {
     }
   }
 
-  toMem.reader.req.bits.reserve := next.instr.instr.op =/= Decoder.Op("LOAD").ident
+  toMem.reader.req.bits.reserve := next.instr.instr.op =/= Decoder
+    .Op("LOAD")
+    .ident
   toMem.reader.req.bits.addr := aligned
   toMem.reader.req.valid := canRead
 
@@ -277,9 +289,8 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with UnitSelIO {
 
   rs.pop := l1pass
 
-  /**
-   * Stage 2 state
-   */
+  /** Stage 2 state
+    */
   val pipeInstr = RegInit(PipeInstr.empty)
   val pipeRawAddr = Reg(UInt(coredef.XLEN.W))
   val pipeAddr = Reg(UInt(coredef.XLEN.W))
@@ -319,7 +330,7 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with UnitSelIO {
   val pipeUncached = isUncached(pipeAddr) && !pipeAMO
   val pipeFenceLike = (
     pipeInstr.instr.instr.op === Decoder.Op("MEM-MISC").ident
-    && !pipeInstr.instr.vacant
+      && !pipeInstr.instr.vacant
   )
 
   retire.instr := pipeInstr
@@ -327,14 +338,15 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with UnitSelIO {
    * We should be able to ignore keeping track of flushed here
    * Because if there was an flush, and an corresponding request is running inside DC,
    * then stage 1 requests will never be able to enter stage 2, because DC read ops are in-order
-   * 
+   *
    * If we add MSHR, then we need to keep track of flushed requests
    */
   when(l2stall) {
     retire.instr.instr.vacant := true.B
   }
 
-  val shifted = toMem.reader.resp.bits >> (pipeOffset << 3) // TODO: use lookup table?
+  val shifted =
+    toMem.reader.resp.bits >> (pipeOffset << 3) // TODO: use lookup table?
   val signedResult = Wire(SInt(coredef.XLEN.W)).suggestName("signedResult")
   val result = Wire(UInt(coredef.XLEN.W)).suggestName("result")
   shifted.suggestName("shifted")
@@ -364,25 +376,31 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with UnitSelIO {
     }
   }.elsewhen(pipeInvalAddr) {
     retire.info.wb := pipeRawAddr
-    retire.info.branch.ex(Mux(
-      pipeRead,
-      ExType.LOAD_ACCESS_FAULT,
-      ExType.STORE_ACCESS_FAULT
-    ))
+    retire.info.branch.ex(
+      Mux(
+        pipeRead,
+        ExType.LOAD_ACCESS_FAULT,
+        ExType.STORE_ACCESS_FAULT
+      )
+    )
   }.elsewhen(pipeFault) {
     retire.info.wb := pipeRawAddr
-    retire.info.branch.ex(Mux(
-      pipeRead,
-      ExType.LOAD_PAGE_FAULT,
-      ExType.STORE_PAGE_FAULT
-    ))
+    retire.info.branch.ex(
+      Mux(
+        pipeRead,
+        ExType.LOAD_PAGE_FAULT,
+        ExType.STORE_PAGE_FAULT
+      )
+    )
   }.elsewhen(pipeMisaligned) {
     retire.info.wb := pipeRawAddr
-    retire.info.branch.ex(Mux(
-      pipeRead,
-      ExType.LOAD_ADDR_MISALIGN,
-      ExType.STORE_ADDR_MISALIGN
-    ))
+    retire.info.branch.ex(
+      Mux(
+        pipeRead,
+        ExType.LOAD_ADDR_MISALIGN,
+        ExType.STORE_ADDR_MISALIGN
+      )
+    )
   }.elsewhen(pipeRead && !pipeUncached) {
     retire.info.branch.nofire()
     retire.info.wb := result
@@ -452,18 +470,22 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with UnitSelIO {
     }
 
     when(pipeAMO) {
-      mem.wop := MuxLookup(pipeInstr.instr.instr.funct7(6, 2), DCWriteOp.idle, Seq(
-        Decoder.AMO_FUNC("SC") -> DCWriteOp.cond,
-        Decoder.AMO_FUNC("AMOSWAP") -> DCWriteOp.swap,
-        Decoder.AMO_FUNC("AMOADD") -> DCWriteOp.add,
-        Decoder.AMO_FUNC("AMOXOR") -> DCWriteOp.xor,
-        Decoder.AMO_FUNC("AMOAND") -> DCWriteOp.and,
-        Decoder.AMO_FUNC("AMOOR") -> DCWriteOp.or,
-        Decoder.AMO_FUNC("AMOMIN") -> DCWriteOp.min,
-        Decoder.AMO_FUNC("AMOMAX") -> DCWriteOp.max,
-        Decoder.AMO_FUNC("AMOMINU") -> DCWriteOp.minu,
-        Decoder.AMO_FUNC("AMOMAXU") -> DCWriteOp.maxu
-      ))
+      mem.wop := MuxLookup(
+        pipeInstr.instr.instr.funct7(6, 2),
+        DCWriteOp.idle,
+        Seq(
+          Decoder.AMO_FUNC("SC") -> DCWriteOp.cond,
+          Decoder.AMO_FUNC("AMOSWAP") -> DCWriteOp.swap,
+          Decoder.AMO_FUNC("AMOADD") -> DCWriteOp.add,
+          Decoder.AMO_FUNC("AMOXOR") -> DCWriteOp.xor,
+          Decoder.AMO_FUNC("AMOAND") -> DCWriteOp.and,
+          Decoder.AMO_FUNC("AMOOR") -> DCWriteOp.or,
+          Decoder.AMO_FUNC("AMOMIN") -> DCWriteOp.min,
+          Decoder.AMO_FUNC("AMOMAX") -> DCWriteOp.max,
+          Decoder.AMO_FUNC("AMOMINU") -> DCWriteOp.minu,
+          Decoder.AMO_FUNC("AMOMAXU") -> DCWriteOp.maxu
+        )
+      )
     }.otherwise {
       mem.wop := DCWriteOp.write
     }
@@ -489,7 +511,7 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with UnitSelIO {
 
   toMem.writer.addr := pendingHead.addr
   toMem.uncached.addr := pendingHead.addr
-  
+
   // toMem.writer.be := pendingHead.be
   toMem.writer.len := pendingHead.len
   toMem.uncached.len := pendingHead.len
@@ -499,7 +521,11 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with UnitSelIO {
   toMem.uncached.write := false.B
 
   when(pendings.io.deq.valid && release.ready) {
-    toMem.writer.op := Mux(pendingHead.op === DelayedMemOp.s, pendingHead.wop, DCWriteOp.idle)
+    toMem.writer.op := Mux(
+      pendingHead.op === DelayedMemOp.s,
+      pendingHead.wop,
+      DCWriteOp.idle
+    )
     toMem.uncached.read := pendingHead.op === DelayedMemOp.ul
     toMem.uncached.write := pendingHead.op === DelayedMemOp.us
   }
@@ -519,18 +545,21 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with UnitSelIO {
     }
   }
 
-
   // FIXME: maybe we can ignore this, because for all such operations, we have erd =/= 0
   release.bits.hasWB := (
     pendingHead.op === DelayedMemOp.ul
-    || pendingHead.op === DelayedMemOp.s && (
-      pendingHead.wop =/= DCWriteOp.write
-    )
+      || pendingHead.op === DelayedMemOp.s && (
+        pendingHead.wop =/= DCWriteOp.write
+      )
   )
 
   val finished = (
     pendings.io.deq.valid
-    && Mux(pendingHead.op === DelayedMemOp.s, !toMem.writer.stall, !toMem.uncached.stall)
+      && Mux(
+        pendingHead.op === DelayedMemOp.s,
+        !toMem.writer.stall,
+        !toMem.uncached.stall
+      )
   )
   release.valid := finished
 

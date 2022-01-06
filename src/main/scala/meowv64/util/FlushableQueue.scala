@@ -4,19 +4,20 @@ import chisel3._
 import chisel3.util._
 import chisel3.experimental._
 
-class FlushableQueueIO[T <: Data](private val gen: T, val _entries: Int) extends QueueIO(gen, _entries) {
+class FlushableQueueIO[T <: Data](private val gen: T, val _entries: Int)
+    extends QueueIO(gen, _entries) {
   val flush = Input(Bool())
 }
 
-/**
-  * Copied from chisel3.util.Queue
+/** Copied from chisel3.util.Queue
   */
 @chiselName
-class FlushableQueue[T <: Data](gen: T,
-                       val entries: Int,
-                       pipe: Boolean = false,
-                       flow: Boolean = false)
-                      (implicit compileOptions: chisel3.CompileOptions)
+class FlushableQueue[T <: Data](
+    gen: T,
+    val entries: Int,
+    pipe: Boolean = false,
+    flow: Boolean = false
+)(implicit compileOptions: chisel3.CompileOptions)
     extends Module() {
   require(entries > -1, "Queue must have non-negative number of entries")
   require(entries != 0, "Use companion object Queue.apply for zero entries")
@@ -44,14 +45,14 @@ class FlushableQueue[T <: Data](gen: T,
   private val do_enq = WireDefault(io.enq.fire())
   private val do_deq = WireDefault(io.deq.fire())
 
-  when (do_enq) {
+  when(do_enq) {
     ram(enq_ptr.value) := io.enq.bits
     enq_ptr.inc()
   }
-  when (do_deq) {
+  when(do_deq) {
     deq_ptr.inc()
   }
-  when (do_enq =/= do_deq) {
+  when(do_enq =/= do_deq) {
     maybe_full := do_enq
   }
 
@@ -63,31 +64,31 @@ class FlushableQueue[T <: Data](gen: T,
   io.deq.bits := Mux(lastCycleRAW, lastCycleData, ram(deq_ptr.preview))
 
   if (flow) {
-    when (io.enq.valid) { io.deq.valid := true.B }
-    when (empty) {
+    when(io.enq.valid) { io.deq.valid := true.B }
+    when(empty) {
       io.deq.bits := io.enq.bits
       do_deq := false.B
-      when (io.deq.ready) { do_enq := false.B }
+      when(io.deq.ready) { do_enq := false.B }
     }
   }
 
   if (pipe) {
-    when (io.deq.ready) { io.enq.ready := true.B }
+    when(io.deq.ready) { io.enq.ready := true.B }
   }
 
   private val ptr_diff = enq_ptr.value - deq_ptr.value
   if (isPow2(entries)) {
     io.count := Mux(maybe_full && ptr_match, entries.U, 0.U) | ptr_diff
   } else {
-    io.count := Mux(ptr_match,
-                    Mux(maybe_full,
-                      entries.asUInt, 0.U),
-                    Mux(deq_ptr.value > enq_ptr.value,
-                      entries.asUInt + ptr_diff, ptr_diff))
+    io.count := Mux(
+      ptr_match,
+      Mux(maybe_full, entries.asUInt, 0.U),
+      Mux(deq_ptr.value > enq_ptr.value, entries.asUInt + ptr_diff, ptr_diff)
+    )
   }
 
   when(io.flush) {
-    if(entries != 1) {
+    if (entries != 1) {
       enq_ptr.value := 0.U
       deq_ptr.value := 0.U
     }
@@ -95,14 +96,14 @@ class FlushableQueue[T <: Data](gen: T,
   }
 }
 
-/**
-  * Copied from chisel3.util.Queue
+/** Copied from chisel3.util.Queue
   */
 @chiselName
-class FlushableSlot[T <: Data](gen: T,
-                       pipe: Boolean = false,
-                       flow: Boolean = false)
-                      (implicit compileOptions: chisel3.CompileOptions)
+class FlushableSlot[T <: Data](
+    gen: T,
+    pipe: Boolean = false,
+    flow: Boolean = false
+)(implicit compileOptions: chisel3.CompileOptions)
     extends Module() {
   val genType = if (compileOptions.declaredTypeMustBeUnbound) {
     requireIsChiselType(gen)
@@ -126,7 +127,7 @@ class FlushableSlot[T <: Data](gen: T,
     slot := io.enq.bits
   }
 
-  when (do_enq =/= do_deq) {
+  when(do_enq =/= do_deq) {
     occupied := do_enq
   }
 
@@ -134,7 +135,7 @@ class FlushableSlot[T <: Data](gen: T,
   io.enq.ready := !occupied
   io.deq.bits := slot
 
-  if(flow) {
+  if (flow) {
     when(io.enq.valid) { io.deq.valid := true.B }
     when(!occupied) {
       io.deq.bits := io.enq.bits
@@ -144,7 +145,7 @@ class FlushableSlot[T <: Data](gen: T,
   }
 
   if (pipe) {
-    when (io.deq.ready) { io.enq.ready := true.B }
+    when(io.deq.ready) { io.enq.ready := true.B }
   }
 
   io.count := Mux(occupied, 1.U, 0.U)
@@ -153,4 +154,3 @@ class FlushableSlot[T <: Data](gen: T,
     occupied := false.B
   }
 }
-

@@ -8,8 +8,7 @@ import meowv64.core.CoreDef
 import meowv64.core.Satp
 import meowv64.core.SatpMode
 
-/**
-  * Lookup privilege mode. send both if its in supervisor and SUM = true
+/** Lookup privilege mode. send both if its in supervisor and SUM = true
   */
 object TLBLookupMode extends ChiselEnum {
   val U, S, both = Value
@@ -51,10 +50,14 @@ class TLB(implicit val coredef: CoreDef) extends MultiIOModule {
 
   val inStore = VecInit(hitMap).asUInt().orR()
   val ptwFaulted = RegInit(false.B)
-  val modeMismatch = MuxLookup(query.mode.asUInt(), false.B, Seq(
-    TLBLookupMode.S.asUInt -> hit.u,
-    TLBLookupMode.U.asUInt -> !hit.u
-  ))
+  val modeMismatch = MuxLookup(
+    query.mode.asUInt(),
+    false.B,
+    Seq(
+      TLBLookupMode.S.asUInt -> hit.u,
+      TLBLookupMode.U.asUInt -> !hit.u
+    )
+  )
   val accessFault = modeMismatch || query.isModify && !hit.d || !hit.a
   val fault = (ptwFaulted && refilling === query.vpn) || inStore && accessFault
   query.ppn := hit.fromVPN(query.vpn)
@@ -105,7 +108,8 @@ class TLB(implicit val coredef: CoreDef) extends MultiIOModule {
         random
       )
 
-      val written = TLBEntry.fromPTE(refilling, ptw.resp.bits.level, ptw.resp.bits.pte)
+      val written =
+        TLBEntry.fromPTE(refilling, ptw.resp.bits.level, ptw.resp.bits.pte)
 
       when(ptw.resp.valid) {
         when(!ptw.resp.bits.fault) {
@@ -118,7 +122,7 @@ class TLB(implicit val coredef: CoreDef) extends MultiIOModule {
   }
 
   when(flush) {
-    for(slot <- storage) {
+    for (slot <- storage) {
       slot.v := false.B
     }
   }

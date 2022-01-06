@@ -44,7 +44,7 @@ object PrivLevel extends ChiselEnum {
 }
 
 class Ctrl(implicit coredef: CoreDef) extends MultiIOModule {
-  val toIF = IO(new Bundle{
+  val toIF = IO(new Bundle {
     val ctrl = StageCtrl.ctrl()
 
     val pc = Output(UInt(coredef.XLEN.W))
@@ -64,7 +64,7 @@ class Ctrl(implicit coredef: CoreDef) extends MultiIOModule {
 
     val retCnt = Input(UInt(log2Ceil(coredef.RETIRE_NUM + 1).W))
     val nepc = Input(UInt(coredef.XLEN.W))
-    
+
     val int = Output(Bool())
     val intAck = Input(Bool())
 
@@ -153,7 +153,7 @@ class Ctrl(implicit coredef: CoreDef) extends MultiIOModule {
     // printf(p"PC: ${Hexadecimal(io.pc)}\n")
     pc := pc + (Const.INSTR_MIN_WIDTH / 8 * coredef.FETCH_NUM).U
   }
-  */
+   */
 
   /*
   printf("Ctrl status:\n")
@@ -167,7 +167,7 @@ class Ctrl(implicit coredef: CoreDef) extends MultiIOModule {
     printf("  Exec stall")
   }
   printf("\n")
-  */
+   */
 
   val mcycle = RegInit(0.U(coredef.XLEN.W))
   val minstret = RegInit(0.U(coredef.XLEN.W))
@@ -196,14 +196,14 @@ class Ctrl(implicit coredef: CoreDef) extends MultiIOModule {
 
   csr.mstatus.rdata := (
     status.asUInt & Status.mmask
-    | mwpri & Status.mwpri
-    | Status.hardwired.asUInt & ~(Status.mmask | Status.mwpri)
+      | mwpri & Status.mwpri
+      | Status.hardwired.asUInt & ~(Status.mmask | Status.mwpri)
   )
 
   csr.sstatus.rdata := (
     status.asUInt & Status.smask
-    | swpri & Status.swpri
-    | Status.hardwired.asUInt & ~(Status.smask | Status.swpri)
+      | swpri & Status.swpri
+      | Status.hardwired.asUInt & ~(Status.smask | Status.swpri)
   )
 
   when(csr.mstatus.write) {
@@ -235,7 +235,7 @@ class Ctrl(implicit coredef: CoreDef) extends MultiIOModule {
   ip.software.m := int.msip
   ip.external.s := int.seip
   // TODO: CSRW SEIP
-  
+
   val miewpri = RegInit(0.U(coredef.XLEN.W))
   val mipwpri = RegInit(0.U(coredef.XLEN.W))
   val siewpri = RegInit(0.U(coredef.XLEN.W))
@@ -243,14 +243,14 @@ class Ctrl(implicit coredef: CoreDef) extends MultiIOModule {
 
   csr.mie.rdata := (
     ie.asUInt & IntConf.mmask(false)
-    | mwpri & IntConf.mwpri
-    | IntConf.hardwired.asUInt & ~(Status.mmask | Status.mwpri)
+      | mwpri & IntConf.mwpri
+      | IntConf.hardwired.asUInt & ~(Status.mmask | Status.mwpri)
   )
 
   csr.sie.rdata := (
     ie.asUInt & IntConf.smask(false)
-    | swpri & IntConf.swpri
-    | IntConf.hardwired.asUInt & ~(Status.smask | Status.swpri)
+      | swpri & IntConf.swpri
+      | IntConf.hardwired.asUInt & ~(Status.smask | Status.swpri)
   )
 
   when(csr.mie.write) {
@@ -269,14 +269,14 @@ class Ctrl(implicit coredef: CoreDef) extends MultiIOModule {
 
   csr.mip.rdata := (
     ip.asUInt & IntConf.mmask(false)
-    | mwpri & IntConf.mwpri
-    | IntConf.hardwired.asUInt & ~(Status.mmask | Status.mwpri)
+      | mwpri & IntConf.mwpri
+      | IntConf.hardwired.asUInt & ~(Status.mmask | Status.mwpri)
   )
 
   csr.sip.rdata := (
     ip.asUInt & IntConf.smask(false)
-    | swpri & IntConf.swpri
-    | IntConf.hardwired.asUInt & ~(Status.smask | Status.swpri)
+      | swpri & IntConf.swpri
+      | IntConf.hardwired.asUInt & ~(Status.smask | Status.swpri)
   )
 
   when(csr.mip.write) {
@@ -330,17 +330,19 @@ class Ctrl(implicit coredef: CoreDef) extends MultiIOModule {
   val ex = (br.req.ex === ExReq.ex) || (toExec.intAck && intFired)
   val cause = Wire(UInt(coredef.XLEN.W))
   when(intFired) {
-    cause := (true.B << (coredef.XLEN-1)) | intCause
+    cause := (true.B << (coredef.XLEN - 1)) | intCause
   }.otherwise {
-    cause := (false.B << (coredef.XLEN-1)) | br.req.extype.asUInt()
+    cause := (false.B << (coredef.XLEN - 1)) | br.req.extype.asUInt()
   }
 
   // Exception delegated to S-mode
-  val delegs = WireDefault(Mux(
-    intFired,
-    intDeleg,
-    priv =/= PrivLevel.M && medeleg(cause(62, 0))
-  ))
+  val delegs = WireDefault(
+    Mux(
+      intFired,
+      intDeleg,
+      priv =/= PrivLevel.M && medeleg(cause(62, 0))
+    )
+  )
 
   when(priv === PrivLevel.M) {
     // When we are already in M-mode, don't delegate
@@ -348,10 +350,10 @@ class Ctrl(implicit coredef: CoreDef) extends MultiIOModule {
 
   val tvecBase = Mux(delegs, stvec, mtvec)
   val tvec = Wire(UInt(coredef.XLEN.W))
-  tvec := tvecBase(coredef.XLEN-1, 2) ## 0.U(2.W)
+  tvec := tvecBase(coredef.XLEN - 1, 2) ## 0.U(2.W)
   when(intFired && tvecBase(1, 0) === 1.U) {
     // Vectored trap
-    tvec := (tvecBase(coredef.XLEN-1, 2) + intCause) ## 0.U(2.W)
+    tvec := (tvecBase(coredef.XLEN - 1, 2) + intCause) ## 0.U(2.W)
   }
 
   // FIXME: interrupt at MRET

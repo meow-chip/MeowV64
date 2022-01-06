@@ -37,10 +37,13 @@ class Core(implicit val coredef: CoreDef) extends Module {
     val debug = Output(new CoreDebug)
   })
 
-  assert(coredef.FETCH_NUM % 2 == 0, "issue num can only be multiples of two, because we need to support compressed instructions")
+  assert(
+    coredef.FETCH_NUM % 2 == 0,
+    "issue num can only be multiples of two, because we need to support compressed instructions"
+  )
 
   val ctrl = Module(new Ctrl)
-  
+
   // Caches
   val l1i = Module(new L1IC(coredef.L1I))
   val l1d = Module(new L1DC(coredef.L1D))
@@ -56,7 +59,9 @@ class Core(implicit val coredef: CoreDef) extends Module {
   val bpu = Module(new BPU)
   val ras = Module(new RAS)
   val exec = Module(new Exec)
-  val reg = Module(new RegFile(coredef.XLEN, 32, coredef.ISSUE_NUM * 2, coredef.RETIRE_NUM))
+  val reg = Module(
+    new RegFile(coredef.XLEN, 32, coredef.ISSUE_NUM * 2, coredef.RETIRE_NUM)
+  )
 
   val (csrWriter, csr) = CSR.gen(coredef.XLEN, coredef.HART_ID)
 
@@ -80,7 +85,7 @@ class Core(implicit val coredef: CoreDef) extends Module {
   exec.toDC.w <> l1d.w
   exec.toDC.fs <> l1d.fs
   exec.toDC.u <> io.frontend.uc
-  
+
   exec.toCtrl.ctrl <> ctrl.toExec.ctrl
   exec.toCtrl.tlbrst := ctrl.toExec.tlbrst
 

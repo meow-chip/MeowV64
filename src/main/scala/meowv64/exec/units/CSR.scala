@@ -14,8 +14,11 @@ class CSRExt(implicit val coredef: CoreDef) extends Bundle {
 }
 
 class CSR(implicit val coredef: CoreDef)
-  extends MultiIOModule with ExecUnitInt with WithCSRWriter with WithPrivPort with WithStatus
-{
+    extends MultiIOModule
+    with ExecUnitInt
+    with WithCSRWriter
+    with WithPrivPort
+    with WithStatus {
   val DEPTH: Int = 0
 
   object CSRState extends ChiselEnum {
@@ -31,7 +34,9 @@ class CSR(implicit val coredef: CoreDef)
   val nstate = WireDefault(state)
   state := nstate
 
-  assert(!io.flush || io.next.instr.vacant) // CSR operations cannot happen when the pipeline is not empty
+  assert(
+    !io.flush || io.next.instr.vacant
+  ) // CSR operations cannot happen when the pipeline is not empty
   val instr = io.next.instr
   val addr = instr.instr.funct7 ## instr.instr.rs2
   writer.addr := addr
@@ -46,13 +51,21 @@ class CSR(implicit val coredef: CoreDef)
 
   writer.write := false.B
   writer.wdata := wdata
-  
+
   switch(instr.instr.funct3) {
-    is(Decoder.SYSTEM_FUNC("CSRRW"), Decoder.SYSTEM_FUNC("CSRRS"), Decoder.SYSTEM_FUNC("CSRRC")) {
+    is(
+      Decoder.SYSTEM_FUNC("CSRRW"),
+      Decoder.SYSTEM_FUNC("CSRRS"),
+      Decoder.SYSTEM_FUNC("CSRRC")
+    ) {
       wdiff := io.next.rs1val
     }
 
-    is(Decoder.SYSTEM_FUNC("CSRRWI"), Decoder.SYSTEM_FUNC("CSRRSI"), Decoder.SYSTEM_FUNC("CSRRCI")) {
+    is(
+      Decoder.SYSTEM_FUNC("CSRRWI"),
+      Decoder.SYSTEM_FUNC("CSRRSI"),
+      Decoder.SYSTEM_FUNC("CSRRCI")
+    ) {
       wdiff := instr.instr.rs1
     }
   }

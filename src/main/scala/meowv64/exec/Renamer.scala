@@ -25,13 +25,15 @@ class Renamer(implicit coredef: CoreDef) extends MultiIOModule {
 
   val toExec = IO(new Bundle {
     val input = Input(Vec(coredef.ISSUE_NUM, new InstrExt))
-    val commit = Input(UInt(log2Ceil(coredef.ISSUE_NUM+1).W))
-    val ntag = Input(UInt(log2Ceil(coredef.INFLIGHT_INSTR_LIMIT).W)) // Next tag also used for next rdname
+    val commit = Input(UInt(log2Ceil(coredef.ISSUE_NUM + 1).W))
+    val ntag = Input(
+      UInt(log2Ceil(coredef.INFLIGHT_INSTR_LIMIT).W)
+    ) // Next tag also used for next rdname
     val output = Output(Vec(coredef.ISSUE_NUM, new ReservedInstr))
     val allowBit = Output(Vec(coredef.ISSUE_NUM, Bool()))
 
     val releases = Vec(coredef.RETIRE_NUM, new Release)
-    val retire = Input(UInt(log2Ceil(coredef.RETIRE_NUM+1).W))
+    val retire = Input(UInt(log2Ceil(coredef.RETIRE_NUM + 1).W))
 
     val flush = Input(Bool())
   })
@@ -47,7 +49,9 @@ class Renamer(implicit coredef: CoreDef) extends MultiIOModule {
   val regMapped = RegInit(VecInit(Seq.fill(REG_NUM)(false.B)))
 
   // Is the value for a specific name already broadcasted on the CDB?
-  val nameReady = RegInit(VecInit(Seq.fill(coredef.INFLIGHT_INSTR_LIMIT)(true.B)))
+  val nameReady = RegInit(
+    VecInit(Seq.fill(coredef.INFLIGHT_INSTR_LIMIT)(true.B))
+  )
 
   def flush() = {
     reg2name := VecInit(Seq.fill(REG_NUM)(0.U(NAME_LENGTH.W)))
@@ -57,10 +61,12 @@ class Renamer(implicit coredef: CoreDef) extends MultiIOModule {
 
   // Storage for name -> value
   // By default, all reg is unmapped
-  val store = RegInit(VecInit(Seq.fill(coredef.INFLIGHT_INSTR_LIMIT)(0.U(coredef.XLEN.W))))
+  val store = RegInit(
+    VecInit(Seq.fill(coredef.INFLIGHT_INSTR_LIMIT)(0.U(coredef.XLEN.W)))
+  )
 
   // Update by CDB
-  for(ent <- cdb.entries) {
+  for (ent <- cdb.entries) {
     when(ent.valid) {
       nameReady(ent.name) := true.B
       store(ent.name) := ent.data
@@ -72,11 +78,11 @@ class Renamer(implicit coredef: CoreDef) extends MultiIOModule {
   val tags = (0 until coredef.ISSUE_NUM).map(idx => toExec.ntag +% idx.U)
 
   val canRename = (0 until coredef.ISSUE_NUM).map(idx => {
-    if(idx == 0) {
+    if (idx == 0) {
       true.B
     } else {
       val ret = WireDefault(true.B)
-      for(i <- (0 until idx)) {
+      for (i <- (0 until idx)) {
         when(toExec.input(idx).instr.getRs1 === toExec.input(i).instr.getRd) {
           ret := false.B
         }
@@ -97,7 +103,7 @@ class Renamer(implicit coredef: CoreDef) extends MultiIOModule {
     val value = WireDefault(store(name))
 
     // Loop through CDB
-    for(ent <- cdb.entries) {
+    for (ent <- cdb.entries) {
       when(ent.valid && ent.name === name) {
         ready := true.B
         value := ent.data
@@ -118,9 +124,9 @@ class Renamer(implicit coredef: CoreDef) extends MultiIOModule {
   }
 
   toExec.allowBit := VecInit(canRename)
-  
+
   // Release before allocation
-  for((release, idx) <- toExec.releases.zipWithIndex) {
+  for ((release, idx) <- toExec.releases.zipWithIndex) {
     val data = store(release.name)
     when(idx.U < toExec.retire) {
       regMapped(release.reg) := reg2name(release.reg) =/= release.name
@@ -133,7 +139,7 @@ class Renamer(implicit coredef: CoreDef) extends MultiIOModule {
     release.value := data
   }
 
-  for((instr, idx) <- toExec.input.zipWithIndex) {
+  for ((instr, idx) <- toExec.input.zipWithIndex) {
     val (rs1name, rs1ready, rs1val) = readRegs(rr(idx)(0), instr.instr.getRs1)
     val (rs2name, rs2ready, rs2val) = readRegs(rr(idx)(1), instr.instr.getRs2)
 

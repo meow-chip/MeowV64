@@ -31,21 +31,24 @@ trait UnitSelIO {
   val extras: mutable.HashMap[String, Data]
 }
 
-/**
- * Read instructions from reservation stations, and send them into (probably one of multiple) exec unit
- * 
- * <del> All units are buffered into the same delay cycle count, so that we can assert only one
- *  of them may retire an instr at within one cycle</del>
- * 
- * That is not true anymore. Now we use a MPSC FIFO to consume outputs of individual execution units.
- */
+/** Read instructions from reservation stations, and send them into (probably
+  * one of multiple) exec unit
+  *
+  * <del> All units are buffered into the same delay cycle count, so that we can
+  * assert only one of them may retire an instr at within one cycle</del>
+  *
+  * That is not true anymore. Now we use a MPSC FIFO to consume outputs of
+  * individual execution units.
+  */
 @chiselName
 class UnitSel(
-  gen : => Seq[ExecUnitInt],
-  arbitration: Instr => Seq[Bool],
-  bypassIdx: Option[Int] = None,
-  hasPipe: Boolean = true
-)(implicit val coredef: CoreDef) extends MultiIOModule with UnitSelIO {
+    gen: => Seq[ExecUnitInt],
+    arbitration: Instr => Seq[Bool],
+    bypassIdx: Option[Int] = None,
+    hasPipe: Boolean = true
+)(implicit val coredef: CoreDef)
+    extends MultiIOModule
+    with UnitSelIO {
   val units = gen
 
   val flush = IO(Input(Bool()))
@@ -54,15 +57,15 @@ class UnitSel(
 
   // Extra ports
   val extras = new mutable.HashMap[String, Data]()
-  for(u <- units) {
-    if(u.isInstanceOf[WithCSRWriter]) {
+  for (u <- units) {
+    if (u.isInstanceOf[WithCSRWriter]) {
       println("Found extra port: CSR")
       val csr = IO(new CSRWriter(coredef.XLEN))
       u.asInstanceOf[WithCSRWriter].writer <> csr
       extras.put("CSR", csr)
     }
 
-    if(u.isInstanceOf[WithPrivPort]) {
+    if (u.isInstanceOf[WithPrivPort]) {
       println("Found extra port: priv")
 
       val priv = extras.get("priv") match {
@@ -77,7 +80,7 @@ class UnitSel(
       u.asInstanceOf[WithPrivPort].priv := priv
     }
 
-    if(u.isInstanceOf[WithStatus]) {
+    if (u.isInstanceOf[WithStatus]) {
       println("Found extra port: status")
 
       val status = extras.get("status") match {
@@ -93,12 +96,12 @@ class UnitSel(
     }
   }
 
-  for(u <- units) {
+  for (u <- units) {
     u.io.flush := flush
   }
 
   // Arbitration
-  for(u <- units) {
+  for (u <- units) {
     u.io.next := PipeInstr.empty
   }
 
@@ -107,7 +110,7 @@ class UnitSel(
   // Asserts exactly one can exec this instr
 
   // Contains a bypass unit, bypassing all inval instructions to there
-  if(bypassIdx.isDefined) {
+  if (bypassIdx.isDefined) {
     when(rs.instr.inval) {
       execMap := VecInit(Seq.fill(units.length)(false.B))
       execMap(bypassIdx.get) := true.B
@@ -126,10 +129,10 @@ class UnitSel(
 
   rs.pop := false.B
 
-  if(hasPipe) {
+  if (hasPipe) {
     when(pipeInstrValid) {
       pipeInput := false.B
-      for((u, e) <- units.zip(pipeExecMap)) {
+      for ((u, e) <- units.zip(pipeExecMap)) {
         when(e) {
           u.io.next := pipeInstr
           pipeInput := !u.io.stall
@@ -149,7 +152,7 @@ class UnitSel(
     pipeInput := DontCare
     when(rs.valid) {
       rs.pop := !Mux1H(execMap.zip(units.map(_.io.stall)))
-      for((u, e) <- units.zip(execMap)) {
+      for ((u, e) <- units.zip(execMap)) {
         when(e) {
           u.io.next := rs.instr
         }
@@ -159,15 +162,16 @@ class UnitSel(
 
   // Retire FIFO and friends
 
-  // Puts into retire FIFO 
+  // Puts into retire FIFO
 
   val maxDepth = units.map(_.DEPTH).max
   val noDelayUnitCount = units.count(_.DEPTH == 0)
-  val fifoDepth = units.map(_.DEPTH).sum - maxDepth + units.size - noDelayUnitCount + 2
+  val fifoDepth =
+    units.map(_.DEPTH).sum - maxDepth + units.size - noDelayUnitCount + 2
 
   // One extra cell for asserting retireTail never reaches retireHead
 
-  if(units.length == 1) {
+  if (units.length == 1) {
     println("UnitSel: Single unit")
     val pipeRetire = RegInit(Retirement.empty)
     retire := pipeRetire
@@ -179,7 +183,7 @@ class UnitSel(
     when(flush) {
       pipeRetire := Retirement.empty
     }
-  } else if(maxDepth == 0) {
+  } else if (maxDepth == 0) {
     println("UnitSel: All units have 0 delay")
     val pipeRetire = RegInit(Retirement.empty)
     retire := pipeRetire
@@ -196,12 +200,12 @@ class UnitSel(
     val retireTail = RegInit(0.U(log2Ceil(fifoDepth).W))
 
     var prevTail = retireTail
-    for(u <- units) {
+    for (u <- units) {
       val newTail = Wire(UInt(log2Ceil(fifoDepth).W))
       newTail := prevTail
       when(!u.io.stall && !u.io.retired.instr.vacant) {
         retireFifo(prevTail) := Retirement.from(u.io)
-        newTail := Mux(prevTail === (fifoDepth-1).U, 0.U, prevTail +% 1.U)
+        newTail := Mux(prevTail === (fifoDepth - 1).U, 0.U, prevTail +% 1.U)
       }
 
       assert(prevTail === retireHead || newTail =/= retireHead)
@@ -215,7 +219,11 @@ class UnitSel(
       retire := Retirement.empty
     }.otherwise {
       retire := retireFifo(retireHead)
-      retireHead := Mux(retireHead === (fifoDepth-1).U, 0.U, retireHead +% 1.U)
+      retireHead := Mux(
+        retireHead === (fifoDepth - 1).U,
+        0.U,
+        retireHead +% 1.U
+      )
     }
 
     when(flush) {
@@ -231,7 +239,7 @@ class UnitSel(
 }
 
 object UnitSel {
-  class Retirement(implicit val coredef: CoreDef)  extends Bundle {
+  class Retirement(implicit val coredef: CoreDef) extends Bundle {
     val instr = new PipeInstr
     val info = new RetireInfo
   }

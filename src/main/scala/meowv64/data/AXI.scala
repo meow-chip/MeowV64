@@ -4,11 +4,11 @@ import chisel3._
 
 // AXI master port, without ACLK / ARSESTn
 class AXI(
-  val DATA_WIDTH: Int,
-  val ADDR_WIDTH: Int = 48,
-  val ID_WIDTH: Int = 4
+    val DATA_WIDTH: Int,
+    val ADDR_WIDTH: Int = 48,
+    val ID_WIDTH: Int = 4
 ) extends Bundle {
-  if(DATA_WIDTH == 32) throw new Error()
+  if (DATA_WIDTH == 32) throw new Error()
   // TODO: asserts DATA_wIDTH % 8 === 0
   val AWID = Output(UInt(ID_WIDTH.W))
   val AWADDR = Output(UInt(ADDR_WIDTH.W))
@@ -26,7 +26,7 @@ class AXI(
 
   // AXI4 removes WID
   val WDATA = Output(UInt(DATA_WIDTH.W))
-  val WSTRB = Output(UInt((DATA_WIDTH/8).W))
+  val WSTRB = Output(UInt((DATA_WIDTH / 8).W))
   val WLAST = Output(Bool())
   val WVALID = Output(Bool())
   val WREADY = Input(Bool())
@@ -75,14 +75,14 @@ object AXI {
       val S64 = 6
       val S128 = 7
 
-      def from(width: Int) : Int = width match {
-        case 1 => S1
-        case 2 => S2
-        case 4 => S4
-        case 8 => S8
-        case 16 => S16
-        case 32 => S32
-        case 64 => S64
+      def from(width: Int): Int = width match {
+        case 1   => S1
+        case 2   => S2
+        case 4   => S4
+        case 8   => S8
+        case 16  => S16
+        case 32  => S32
+        case 64  => S64
         case 128 => S128
       }
     }

@@ -11,8 +11,7 @@ class ALUExt(implicit val coredef: CoreDef) extends Bundle {
 }
 
 class ALU(override implicit val coredef: CoreDef)
-  extends ExecUnit(0, new ALUExt)
-{
+    extends ExecUnit(0, new ALUExt) {
   def map(stage: Int, pipe: PipeInstr, ext: Option[ALUExt]): (ALUExt, Bool) = {
     val ext = Wire(new ALUExt)
     val acc = Wire(SInt(coredef.XLEN.W))
@@ -20,25 +19,27 @@ class ALU(override implicit val coredef: CoreDef)
 
     val isDWord = (
       pipe.instr.instr.op === Decoder.Op("OP-IMM").ident
-      || pipe.instr.instr.op === Decoder.Op("OP").ident
+        || pipe.instr.instr.op === Decoder.Op("OP").ident
     )
 
     val op1f = pipe.rs1val.asSInt()
     val op2f = Wire(SInt(coredef.XLEN.W))
 
     val useSub = Wire(Bool())
-    when(pipe.instr.instr.op === Decoder.Op("OP-IMM").ident
-      || pipe.instr.instr.op === Decoder.Op("OP-IMM-32").ident) {
-        op2f := pipe.instr.instr.imm
-        useSub := false.B
-      }.otherwise {
-        op2f := pipe.rs2val.asSInt()
-        useSub := pipe.instr.instr.funct7(5)
-      }
+    when(
+      pipe.instr.instr.op === Decoder.Op("OP-IMM").ident
+        || pipe.instr.instr.op === Decoder.Op("OP-IMM-32").ident
+    ) {
+      op2f := pipe.instr.instr.imm
+      useSub := false.B
+    }.otherwise {
+      op2f := pipe.rs2val.asSInt()
+      useSub := pipe.instr.instr.funct7(5)
+    }
 
     val op1 = Wire(SInt(coredef.XLEN.W))
     val op2 = Wire(SInt(coredef.XLEN.W))
-    
+
     when(isDWord) {
       // Is 64-bit instr
       op1 := op1f.asSInt();

@@ -19,12 +19,17 @@ class BranchExt extends Bundle {
 }
 
 class Branch(override implicit val coredef: CoreDef)
-  extends ExecUnit(0, new BranchExt) with WithPrivPort with WithStatus
-{
+    extends ExecUnit(0, new BranchExt)
+    with WithPrivPort
+    with WithStatus {
   val priv = IO(Input(PrivLevel()))
   val status = IO(Input(new Status))
 
-  def map(stage: Int, pipe: PipeInstr, ext: Option[BranchExt]): (BranchExt, Bool) = {
+  def map(
+      stage: Int,
+      pipe: PipeInstr,
+      ext: Option[BranchExt]
+  ): (BranchExt, Bool) = {
     val ext = Wire(new BranchExt)
     ext.branched := false.B
     ext.ex := ExReq.none
@@ -80,11 +85,13 @@ class Branch(override implicit val coredef: CoreDef)
 
           is(Decoder.PRIV_RS2("ECALL")) {
             ext.ex := ExReq.ex
-            ext.extype := Mux1H(Seq(
-              (priv === PrivLevel.M) -> ExType.M_CALL,
-              (priv === PrivLevel.S) -> ExType.S_CALL,
-              (priv === PrivLevel.U) -> ExType.U_CALL
-            ))
+            ext.extype := Mux1H(
+              Seq(
+                (priv === PrivLevel.M) -> ExType.M_CALL,
+                (priv === PrivLevel.S) -> ExType.S_CALL,
+                (priv === PrivLevel.U) -> ExType.U_CALL
+              )
+            )
           }
 
           is(Decoder.PRIV_RS2("EBREAK")) {
@@ -157,7 +164,8 @@ class Branch(override implicit val coredef: CoreDef)
       // info.regWaddr := pipe.instr.instr.rd
       info.wb := linked.asUInt
 
-      val dest = (((pipe.rs1val.asSInt + pipe.instr.instr.imm) >> 1) << 1).asUInt
+      val dest =
+        (((pipe.rs1val.asSInt + pipe.instr.instr.imm) >> 1) << 1).asUInt
 
       when(pipe.instr.taken && dest === pipe.instr.predTarget) {
         info.branch.nofire()

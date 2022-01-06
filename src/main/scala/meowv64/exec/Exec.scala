@@ -26,20 +26,19 @@ import meowv64.core.Status
 import meowv64.core.Satp
 import meowv64.paging.TLBExt
 
-/**
- * Out-of-order exection (Tomasulo's algorithm)
- * 
- * First we check if instructions are eligible to be issues. Criterias include:
- * - Target reservation station has free slots
- * - Number of in-flight instructions haven't exceeded the limit.
- *   This limit affects our rob buffer length, as well as renamed reg tags' length
- * - Issue FIFO is not depleted
- */
+/** Out-of-order exection (Tomasulo's algorithm)
+  *
+  * First we check if instructions are eligible to be issues. Criterias include:
+  *   - Target reservation station has free slots
+  *   - Number of in-flight instructions haven't exceeded the limit. This limit
+  *     affects our rob buffer length, as well as renamed reg tags' length
+  *   - Issue FIFO is not depleted
+  */
 @chiselName
 class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
   val toCtrl = IO(new Bundle {
     val ctrl = StageCtrl.stage()
-    val retCnt = Output(UInt(log2Ceil(coredef.RETIRE_NUM+1).W))
+    val retCnt = Output(UInt(log2Ceil(coredef.RETIRE_NUM + 1).W))
     val nepc = Output(UInt(coredef.XLEN.W))
 
     val branch = Output(new BranchResult)
@@ -71,7 +70,7 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
   // We don't stall now
   toCtrl.ctrl.stall := false.B
 
-  val rr = IO(Vec(coredef.ISSUE_NUM*2, new RegReader))
+  val rr = IO(Vec(coredef.ISSUE_NUM * 2, new RegReader))
   val rw = IO(Vec(coredef.RETIRE_NUM, new RegWriter))
 
   val toIF = IO(new MultiQueueIO(new InstrExt, coredef.ISSUE_NUM))
@@ -86,7 +85,7 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
   val cdb = Wire(new CDB)
 
   val renamer = Module(new Renamer)
-  for(i <- (0 until coredef.ISSUE_NUM)) {
+  for (i <- (0 until coredef.ISSUE_NUM)) {
     renamer.rr(i)(0) <> rr(i * 2)
     renamer.rr(i)(1) <> rr(i * 2 + 1)
   }
@@ -95,7 +94,14 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
   renamer.toExec.flush := toCtrl.ctrl.flush
 
   // Inflight instr info
-  val inflights = Module(new MultiQueue(new InflightInstr, coredef.INFLIGHT_INSTR_LIMIT, coredef.ISSUE_NUM, coredef.RETIRE_NUM))
+  val inflights = Module(
+    new MultiQueue(
+      new InflightInstr,
+      coredef.INFLIGHT_INSTR_LIMIT,
+      coredef.ISSUE_NUM,
+      coredef.RETIRE_NUM
+    )
+  )
   inflights.flush := toCtrl.ctrl.flush
 
   // Delayed memory ops
@@ -105,68 +111,75 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
   // Units
   val lsu = Module(new LSU).suggestName("LSU");
   val units = Seq(
-    Module(new UnitSel(
-      Seq(
-        Module(new ALU).suggestName("ALU"),
-        Module(new Branch).suggestName("Branch"),
-        Module(new CSR).suggestName("CSR"),
-        Module(new Bypass).suggestName("Bypass")
-      ),
-      instr => {
-        val gotoALU = (
-          instr.op === Decoder.Op("OP").ident ||
-          instr.op === Decoder.Op("OP-IMM").ident ||
-          instr.op === Decoder.Op("OP-32").ident ||
-          instr.op === Decoder.Op("OP-IMM-32").ident
-        )
-
-        val gotoBr = (
-          instr.op === Decoder.Op("JALR").ident ||
-          instr.op === Decoder.Op("BRANCH").ident ||
-          instr.op === Decoder.Op("SYSTEM").ident && instr.funct3 === Decoder.SYSTEM_FUNC("PRIV")
-        )
-
-        val gotoCSR = (
-          instr.op === Decoder.Op("SYSTEM").ident && instr.funct3 =/= Decoder.SYSTEM_FUNC("PRIV")
-        )
-
+    Module(
+      new UnitSel(
         Seq(
-          gotoALU,
-          gotoBr,
-          gotoCSR,
-          !gotoALU && !gotoBr && !gotoCSR
-        )
-      },
-      Some(3),
-      hasPipe = false
-    )),
-    Module(new UnitSel(
-      Seq(
-        Module(new ALU).suggestName("ALU"),
-        Module(new Mul).suggestName("Mul"),
-        Module(new Div(16)).suggestName("Div")
-      ),
-      instr => {
-        val regALU = (
-          instr.op === Decoder.Op("OP").ident ||
-          instr.op === Decoder.Op("OP-32").ident
-        )
-        val isMul = (
-          regALU &&
-          instr.funct7 === Decoder.MULDIV_FUNCT7 && (
-            instr.funct3 === Decoder.MULDIV_FUNC("MUL") ||
-            instr.funct3 === Decoder.MULDIV_FUNC("MULH") ||
-            instr.funct3 === Decoder.MULDIV_FUNC("MULHSU") ||
-            instr.funct3 === Decoder.MULDIV_FUNC("MULHU")
+          Module(new ALU).suggestName("ALU"),
+          Module(new Branch).suggestName("Branch"),
+          Module(new CSR).suggestName("CSR"),
+          Module(new Bypass).suggestName("Bypass")
+        ),
+        instr => {
+          val gotoALU = (
+            instr.op === Decoder.Op("OP").ident ||
+              instr.op === Decoder.Op("OP-IMM").ident ||
+              instr.op === Decoder.Op("OP-32").ident ||
+              instr.op === Decoder.Op("OP-IMM-32").ident
           )
-        )
 
-        val isDiv = regALU && instr.funct7 === Decoder.MULDIV_FUNCT7 && !isMul
+          val gotoBr = (
+            instr.op === Decoder.Op("JALR").ident ||
+              instr.op === Decoder.Op("BRANCH").ident ||
+              instr.op === Decoder
+                .Op("SYSTEM")
+                .ident && instr.funct3 === Decoder.SYSTEM_FUNC("PRIV")
+          )
 
-        Seq(!isMul && !isDiv, isMul, isDiv)
-      },
-      hasPipe = false
-    )),
+          val gotoCSR = (
+            instr.op === Decoder.Op("SYSTEM").ident && instr.funct3 =/= Decoder
+              .SYSTEM_FUNC("PRIV")
+          )
+
+          Seq(
+            gotoALU,
+            gotoBr,
+            gotoCSR,
+            !gotoALU && !gotoBr && !gotoCSR
+          )
+        },
+        Some(3),
+        hasPipe = false
+      )
+    ),
+    Module(
+      new UnitSel(
+        Seq(
+          Module(new ALU).suggestName("ALU"),
+          Module(new Mul).suggestName("Mul"),
+          Module(new Div(16)).suggestName("Div")
+        ),
+        instr => {
+          val regALU = (
+            instr.op === Decoder.Op("OP").ident ||
+              instr.op === Decoder.Op("OP-32").ident
+          )
+          val isMul = (
+            regALU &&
+              instr.funct7 === Decoder.MULDIV_FUNCT7 && (
+                instr.funct3 === Decoder.MULDIV_FUNC("MUL") ||
+                  instr.funct3 === Decoder.MULDIV_FUNC("MULH") ||
+                  instr.funct3 === Decoder.MULDIV_FUNC("MULHSU") ||
+                  instr.funct3 === Decoder.MULDIV_FUNC("MULHU")
+              )
+          )
+
+          val isDiv = regALU && instr.funct7 === Decoder.MULDIV_FUNCT7 && !isMul
+
+          Seq(!isMul && !isDiv, isMul, isDiv)
+        },
+        hasPipe = false
+      )
+    ),
     lsu
   )
 
@@ -189,22 +202,24 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
   assume(units.length == coredef.UNIT_COUNT)
   // TODO: asserts Bypass is in unit 0
 
-  val stations = units.zipWithIndex.map({ case (u, idx)=> {
-    val rs = if(idx != 2) {
-      Module(new OoOResStation(idx)).suggestName(s"ResStation_${idx}")
-    } else {
-      val lsb = Module(new LSBuf(idx)).suggestName(s"LSBuf")
-      lsb.hasPending := hasPendingMem
-      lsb.fs := toDC.fs
-      lsb
+  val stations = units.zipWithIndex.map({
+    case (u, idx) => {
+      val rs = if (idx != 2) {
+        Module(new OoOResStation(idx)).suggestName(s"ResStation_${idx}")
+      } else {
+        val lsb = Module(new LSBuf(idx)).suggestName(s"LSBuf")
+        lsb.hasPending := hasPendingMem
+        lsb.fs := toDC.fs
+        lsb
+      }
+      rs.cdb := cdb
+      rs.egress <> u.rs
+
+      rs
     }
-    rs.cdb := cdb
-    rs.egress <> u.rs
+  })
 
-    rs
-  }})
-
-  for(s <- stations) {
+  for (s <- stations) {
     s.cdb := cdb
     s.ctrl.flush := toCtrl.ctrl.flush
 
@@ -213,12 +228,14 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
     s.ingress.push := false.B
   }
 
-  for(u <- units) {
+  for (u <- units) {
     u.flush := toCtrl.ctrl.flush
   }
 
   // ROB & ptrs
-  val rob = RegInit(VecInit(Seq.fill(coredef.INFLIGHT_INSTR_LIMIT)(ROBEntry.empty)))
+  val rob = RegInit(
+    VecInit(Seq.fill(coredef.INFLIGHT_INSTR_LIMIT)(ROBEntry.empty))
+  )
   val retirePtr = RegInit(0.U(log2Ceil(coredef.INFLIGHT_INSTR_LIMIT).W))
   val issuePtr = RegInit(0.U(log2Ceil(coredef.INFLIGHT_INSTR_LIMIT).W))
 
@@ -242,7 +259,8 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
   toCtrl.retCnt := retireNum
 
   // Issue
-  val maxIssueNum = retirePtr -% issuePtr -% 1.U // issuePtr cannot reach retirePtr
+  val maxIssueNum =
+    retirePtr -% issuePtr -% 1.U // issuePtr cannot reach retirePtr
   assert(issueNum <= maxIssueNum)
 
   val wasGFence = RegInit(false.B)
@@ -250,14 +268,16 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
   var taken = 0.U(coredef.UNIT_COUNT.W)
   issueNum := 0.U
 
-  for(idx <- (0 until coredef.ISSUE_NUM)) {
+  for (idx <- (0 until coredef.ISSUE_NUM)) {
     val selfCanIssue = Wire(Bool()).suggestName(s"selfCanIssue_$idx")
     val sending = Wire(UInt(coredef.UNIT_COUNT.W)).suggestName(s"sending_$idx")
     val instr = Wire(new ReservedInstr)
 
     // Is global fence? (FENCE.I, CSR)
     val isGFence = (
-      instr.instr.instr.op === Decoder.Op("SYSTEM").ident && instr.instr.instr.funct7 =/= Decoder.SYSTEM_FUNC("PRIV")
+      instr.instr.instr.op === Decoder
+        .Op("SYSTEM")
+        .ident && instr.instr.instr.funct7 =/= Decoder.SYSTEM_FUNC("PRIV")
     )
 
     // At most only one sending
@@ -266,7 +286,9 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
 
     instr := renamer.toExec.output(idx)
 
-    when(idx.U >= toIF.cnt || !renamer.toExec.allowBit(idx) || idx.U >= maxIssueNum) {
+    when(
+      idx.U >= toIF.cnt || !renamer.toExec.allowBit(idx) || idx.U >= maxIssueNum
+    ) {
       selfCanIssue := false.B
       sending := 0.U
     }.otherwise {
@@ -278,8 +300,8 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
 
       when(
         toIF.view(idx).fetchEx =/= FetchEx.none
-        || toIF.view(idx).instr.base === InstrType.RESERVED
-        || !applicables.orR()
+          || toIF.view(idx).instr.base === InstrType.RESERVED
+          || !applicables.orR()
       ) {
         // Is an invalid instruction
         selfCanIssue := stations(0).ingress.free && !taken(0)
@@ -297,13 +319,19 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
         mask.suggestName(s"mask_$idx")
 
         // Find lowest set
-        sending := MuxCase(0.U, (0 until coredef.UNIT_COUNT).map(idx => (
-          mask(idx), (1<<idx).U
-        )))
+        sending := MuxCase(
+          0.U,
+          (0 until coredef.UNIT_COUNT).map(idx =>
+            (
+              mask(idx),
+              (1 << idx).U
+            )
+          )
+        )
 
         selfCanIssue := mask.orR()
 
-        if(idx != 0) {
+        if (idx != 0) {
           // Cannot issue GFence that is not on the first slot
           when(isGFence) {
             selfCanIssue := false.B
@@ -317,20 +345,20 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
       }
     }
 
-    if(idx == 0) canIssue(idx) := selfCanIssue
-    else canIssue(idx) := selfCanIssue && canIssue(idx-1)
+    if (idx == 0) canIssue(idx) := selfCanIssue
+    else canIssue(idx) := selfCanIssue && canIssue(idx - 1)
 
     when(canIssue(idx)) {
-      issueNum := (idx+1).U
+      issueNum := (idx + 1).U
 
-      for((s, en) <- stations.zip(sending.asBools)) {
+      for ((s, en) <- stations.zip(sending.asBools)) {
         when(en) {
           s.ingress.push := true.B
           s.ingress.instr := instr
         }
       }
 
-      if(idx == 0) {
+      if (idx == 0) {
         wasGFence := isGFence
       }
     }
@@ -350,7 +378,11 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
 
   val brMask = Wire(Vec(units.size, UInt(coredef.INFLIGHT_INSTR_LIMIT.W)))
   val brMux = Wire(UInt(coredef.INFLIGHT_INSTR_LIMIT.W))
-  brMux := brMask.reduceTree(_ | _) | Mux(pendingBr, UIntToOH(pendingBrTag -% retirePtr), 0.U)
+  brMux := brMask.reduceTree(_ | _) | Mux(
+    pendingBr,
+    UIntToOH(pendingBrTag -% retirePtr),
+    0.U
+  )
   val brSel = VecInit(PriorityEncoderOH(brMux.asBools())).asUInt()
   val brSeled = Wire(Vec(units.size, Bool()))
   val brNormlalized = Wire(Vec(units.size, new BranchResult))
@@ -364,7 +396,7 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
   }
 
   // Filling ROB & CDB broadcast
-  for(((u, ent), idx) <- units.zip(cdb.entries).zipWithIndex) {
+  for (((u, ent), idx) <- units.zip(cdb.entries).zipWithIndex) {
     ent.valid := false.B
     ent.name := 0.U // Helps to debug, because we are asserting store(0) === 0
     ent.data := u.retire.info.wb
@@ -419,14 +451,14 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
   when(!retireNext.valid) {
     // First one invalid, cannot retire anything
     retireNum := 0.U
-    for(rwp <- rw) {
+    for (rwp <- rw) {
       rwp.addr := 0.U
       rwp.data := DontCare
     }
     toCtrl.branch := BranchResult.empty
   }.elsewhen(retireNext.hasMem) {
     // Is memory operation, wait for memAccSucc
-    for(rwp <- rw) {
+    for (rwp <- rw) {
       rwp.addr := 0.U
       rwp.data := DontCare
     }
@@ -459,7 +491,7 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
   }.elsewhen(toCtrl.int && toCtrl.intAck) {
     // Interrupts inbound, retires nothing
     retireNum := 0.U
-    for(rwp <- rw) {
+    for (rwp <- rw) {
       rwp.addr := 0.U
       rwp.data := DontCare
     }
@@ -482,21 +514,21 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
 
     // First only not memory operation, possible to do multiple retirement
     // Compute if we can retire a certain instruction
-    for(idx <- (0 until coredef.RETIRE_NUM)) {
+    for (idx <- (0 until coredef.RETIRE_NUM)) {
       val inflight = inflights.reader.view(idx)
       val tag = retirePtr +% idx.U
       val info = rob(tag)
 
       isBranch(idx) := (
         pendingBr && pendingBrTag === tag
-        || inflight.op === Decoder.Op("BRANCH").ident
+          || inflight.op === Decoder.Op("BRANCH").ident
       )
 
-      if(idx == 0) {
+      if (idx == 0) {
         blocked(idx) := !info.valid
       } else {
         // Only allow mem ops in the first retire slot
-        blocked(idx) := !info.valid || isBranch(idx-1) || info.hasMem
+        blocked(idx) := !info.valid || isBranch(idx - 1) || info.hasMem
       }
 
       when(idx.U < retireNum) {
@@ -515,12 +547,16 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
           toBPU.hist := inflight.pred
         }
 
-        when(pendingBr && pendingBrTag === tag && pendingBrResult.ex =/= ExReq.none) {
+        when(
+          pendingBr && pendingBrTag === tag && pendingBrResult.ex =/= ExReq.none
+        ) {
           // Don't write-back exceptioned instr
           rw(idx).addr := 0.U
         }
 
-        when(pendingBr && pendingBrTag === tag && pendingBrResult.ex === ExReq.ex) {
+        when(
+          pendingBr && pendingBrTag === tag && pendingBrResult.ex === ExReq.ex
+        ) {
           toCtrl.tval := pendingBrTval
           toCtrl.nepc := inflight.addr
         }
@@ -539,7 +575,7 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
   }
 
   // Renamer release
-  for(i <- (0 until coredef.RETIRE_NUM)) {
+  for (i <- (0 until coredef.RETIRE_NUM)) {
     // renamer.toExec.releases(i).name := rob(retirePtr +% i.U).retirement.instr.rdname
     renamer.toExec.releases(i).name := retirePtr + i.U
     renamer.toExec.releases(i).reg := inflights.reader.view(i).erd
@@ -564,7 +600,7 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
     retirePtr := 0.U
     pendingBr := false.B
 
-    for(row <- rob) {
+    for (row <- rob) {
       row.valid := false.B
     }
   }
@@ -592,11 +628,19 @@ object Exec {
     ret := 0.U
 
     switch(instr.op) {
-      is(Decoder.Op("LUI").ident, Decoder.Op("AUIPC").ident, Decoder.Op("JAL").ident) {
+      is(
+        Decoder.Op("LUI").ident,
+        Decoder.Op("AUIPC").ident,
+        Decoder.Op("JAL").ident
+      ) {
         ret := "b001".U(coredef.UNIT_COUNT.W)
       }
 
-      is(Decoder.Op("JALR").ident, Decoder.Op("SYSTEM").ident, Decoder.Op("BRANCH").ident) {
+      is(
+        Decoder.Op("JALR").ident,
+        Decoder.Op("SYSTEM").ident,
+        Decoder.Op("BRANCH").ident
+      ) {
         ret := "b001".U(coredef.UNIT_COUNT.W)
       }
 

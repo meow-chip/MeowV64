@@ -8,21 +8,22 @@ import meowv64.core.CoreDef
 import Chisel.experimental.chiselName
 
 class DivExt(implicit val coredef: CoreDef) extends Bundle {
-  val r = UInt((coredef.XLEN*2).W) // Dividend
+  val r = UInt((coredef.XLEN * 2).W) // Dividend
   val d = UInt(coredef.XLEN.W) // Shifted divider
   val q = UInt(coredef.XLEN.W)
 }
 
 @chiselName
-class Div(val ROUND_PER_STAGE: Int)(override implicit val coredef: CoreDef) extends ExecUnit(
-  coredef.XLEN / ROUND_PER_STAGE,
-  new DivExt
-) {
+class Div(val ROUND_PER_STAGE: Int)(override implicit val coredef: CoreDef)
+    extends ExecUnit(
+      coredef.XLEN / ROUND_PER_STAGE,
+      new DivExt
+    ) {
   val round = RegInit(0.U(log2Ceil(ROUND_PER_STAGE).W))
 
   var idle = true.B
 
-  for(r <- this.current) {
+  for (r <- this.current) {
     idle = idle && r.pipe.instr.vacant
   }
 
@@ -37,19 +38,19 @@ class Div(val ROUND_PER_STAGE: Int)(override implicit val coredef: CoreDef) exte
   val stall = !idle && !round.andR()
 
   def map(stage: Int, pipe: PipeInstr, _ext: Option[DivExt]): (DivExt, Bool) = {
-    if(stage == 0) {
+    if (stage == 0) {
       val init = Wire(new DivExt).suggestName("init")
       val op1s = Wire(SInt(coredef.XLEN.W))
       val op2s = Wire(SInt(coredef.XLEN.W))
 
       val isDWord = (
         pipe.instr.instr.op === Decoder.Op("OP-IMM").ident
-        || pipe.instr.instr.op === Decoder.Op("OP").ident
+          || pipe.instr.instr.op === Decoder.Op("OP").ident
       )
 
       val isUnsigned = (
         pipe.instr.instr.funct3 === Decoder.MULDIV_FUNC("DIVU")
-        || pipe.instr.instr.funct3 === Decoder.MULDIV_FUNC("REMU")
+          || pipe.instr.instr.funct3 === Decoder.MULDIV_FUNC("REMU")
       )
 
       when(isDWord) {
@@ -94,19 +95,19 @@ class Div(val ROUND_PER_STAGE: Int)(override implicit val coredef: CoreDef) exte
     val shift = ((this.DEPTH - stage + 1) * ROUND_PER_STAGE - 1).U - round
     val shifted = ext.d << shift
 
-    when(ext.r(coredef.XLEN*2-1) && ((stage != 1).B || round =/= 0.U)) { // Prev is negative
+    when(ext.r(coredef.XLEN * 2 - 1) && ((stage != 1).B || round =/= 0.U)) { // Prev is negative
       nExt.r := ext.r + shifted
     }.otherwise {
       nExt.r := ext.r - shifted
     }
 
-    nExt.q := ext.q ## (!nExt.r(coredef.XLEN*2-1))
+    nExt.q := ext.q ## (!nExt.r(coredef.XLEN * 2 - 1))
 
     /*
     printf(p"[DIV   ]: After stage ${stage} @ ${round}\n")
     printf(p"[DIV   ]:   q: ${Hexadecimal(nExt.q)}\n")
     printf(p"[DIV   ]:   r: ${Hexadecimal(nExt.r)}\n")
-    */
+     */
 
     (nExt, stall)
   }
@@ -117,7 +118,7 @@ class Div(val ROUND_PER_STAGE: Int)(override implicit val coredef: CoreDef) exte
 
     val isDWord = (
       pipe.instr.instr.op === Decoder.Op("OP-IMM").ident
-      || pipe.instr.instr.op === Decoder.Op("OP").ident
+        || pipe.instr.instr.op === Decoder.Op("OP").ident
     )
 
     when(isDWord) {
@@ -132,13 +133,15 @@ class Div(val ROUND_PER_STAGE: Int)(override implicit val coredef: CoreDef) exte
     val rneg = Wire(Bool())
     when(
       pipe.instr.instr.funct3 === Decoder.MULDIV_FUNC("DIVU")
-      || pipe.instr.instr.funct3 === Decoder.MULDIV_FUNC("REMU")
+        || pipe.instr.instr.funct3 === Decoder.MULDIV_FUNC("REMU")
     ) { // Unsigned
       qneg := false.B
       rneg := false.B
     }.otherwise {
-      qneg := (op1s(coredef.XLEN-1) ^ op2s(coredef.XLEN-1)) && op2s.asUInt().orR()
-      rneg := op1s(coredef.XLEN-1)
+      qneg := (op1s(coredef.XLEN - 1) ^ op2s(coredef.XLEN - 1)) && op2s
+        .asUInt()
+        .orR()
+      rneg := op1s(coredef.XLEN - 1)
     }
 
     val q = ext.q
@@ -179,7 +182,7 @@ class Div(val ROUND_PER_STAGE: Int)(override implicit val coredef: CoreDef) exte
     when(!io.stall) {
       printf(p"[DIV   ]: Finalized: q = ${Hexadecimal(fq)}, r = ${Hexadecimal(fr)}\n")
     }
-    */
+     */
 
     val info = WireDefault(RetireInfo.vacant)
 
@@ -188,7 +191,7 @@ class Div(val ROUND_PER_STAGE: Int)(override implicit val coredef: CoreDef) exte
 
     when(
       pipe.instr.instr.funct3 === Decoder.MULDIV_FUNC("DIV")
-      || pipe.instr.instr.funct3 === Decoder.MULDIV_FUNC("DIVU")
+        || pipe.instr.instr.funct3 === Decoder.MULDIV_FUNC("DIVU")
     ) {
       extended := fq
     }.otherwise {

@@ -35,12 +35,12 @@ class RAS(implicit val coredef: CoreDef) extends MultiIOModule {
         store(ptr) := toIF.push.bits
         empty := false.B
       }.otherwise { // is full and pushing
-        assert(ptr === (coredef.RAS_SIZE-1).U)
-        for(i <- (0 until coredef.RAS_SIZE)) {
-          if(i == coredef.RAS_SIZE-1) {
+        assert(ptr === (coredef.RAS_SIZE - 1).U)
+        for (i <- (0 until coredef.RAS_SIZE)) {
+          if (i == coredef.RAS_SIZE - 1) {
             store(i) := toIF.push.bits
           } else {
-            store(i) := store(i+1)
+            store(i) := store(i + 1)
           }
         }
       }

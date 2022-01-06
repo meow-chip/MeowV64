@@ -11,15 +11,19 @@ object CLINT {
   val CLINT_ADDR_WIDTH = log2Ceil(CLINT_REGION_SIZE)
 }
 
-object CLINTMMIODef extends {
-  override val ADDR_WIDTH: Int = CLINT.CLINT_ADDR_WIDTH
-  override val XLEN: Int = 64
-} with MMIODef
+object CLINTMMIODef
+    extends {
+      override val ADDR_WIDTH: Int = CLINT.CLINT_ADDR_WIDTH
+      override val XLEN: Int = 64
+    }
+    with MMIODef
 
-object CLINTMapping extends {
-  override val MAPPED_START = CLINT.CLINT_REGION_START
-  override val MAPPED_SIZE = BigInt(CLINT.CLINT_REGION_SIZE)
-} with MMIOMapping
+object CLINTMapping
+    extends {
+      override val MAPPED_START = CLINT.CLINT_REGION_START
+      override val MAPPED_SIZE = BigInt(CLINT.CLINT_REGION_SIZE)
+    }
+    with MMIOMapping
 
 class LocalInt extends Bundle {
   val msip = Bool()
@@ -42,12 +46,12 @@ class CLINT(implicit mcdef: MulticoreDef) extends MultiIOModule {
   time := mtime
 
   val mtimecmp = RegInit(VecInit(Seq.fill(mcdef.CORE_COUNT)(0.U(64.W))))
-  for((c, m) <- ints.zip(mtimecmp)) {
+  for ((c, m) <- ints.zip(mtimecmp)) {
     c.mtip := m < mtime
   }
 
   val msip = RegInit(VecInit(Seq.fill(mcdef.CORE_COUNT)(false.B)))
-  for((c, s) <- ints.zip(msip)) {
+  for ((c, s) <- ints.zip(msip)) {
     c.msip := s
   }
 
@@ -76,7 +80,7 @@ class CLINT(implicit mcdef: MulticoreDef) extends MultiIOModule {
       when(cur.addr < 0x4000.U) {
         seg := Seg.msip
         idx := cur.addr(11, 0) >> 2
-      }.elsewhen(cur.addr =/= 0xBFF8.U) {
+      }.elsewhen(cur.addr =/= 0xbff8.U) {
         seg := Seg.mtimecmp
         idx := cur.addr(11, 0) >> 3
       }.otherwise {

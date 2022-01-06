@@ -18,16 +18,21 @@ class MulExt(implicit val coredef: CoreDef) extends Bundle {
 }
 
 @chiselName
-class Mul(override implicit val coredef: CoreDef) extends ExecUnit(2, new MulExt) {
+class Mul(override implicit val coredef: CoreDef)
+    extends ExecUnit(2, new MulExt) {
   assert(coredef.XLEN == 64)
 
-  override def map(stage: Int, pipe: PipeInstr, _ext: Option[MulExt]): (MulExt, Bool) = {
+  override def map(
+      stage: Int,
+      pipe: PipeInstr,
+      _ext: Option[MulExt]
+  ): (MulExt, Bool) = {
     val isDWord = (
       pipe.instr.instr.op === Decoder.Op("OP-IMM").ident
-      || pipe.instr.instr.op === Decoder.Op("OP").ident
+        || pipe.instr.instr.op === Decoder.Op("OP").ident
     )
 
-    if(stage == 0) {
+    if (stage == 0) {
       // Pipelining requests
       val ext = Wire(new MulExt)
 
@@ -81,7 +86,7 @@ class Mul(override implicit val coredef: CoreDef) extends ExecUnit(2, new MulExt
       ext.mid2 := DontCare
 
       return (ext, false.B)
-    } else if(stage == 1) {
+    } else if (stage == 1) {
       // printf(p"[MUL  0]: COMP ${Hexadecimal(pipe.rs1val)} * ${Hexadecimal(pipe.rs2val)}\n")
       val prev = _ext.get
       val ext = Wire(new MulExt)
@@ -93,7 +98,7 @@ class Mul(override implicit val coredef: CoreDef) extends ExecUnit(2, new MulExt
       ext.x2 := prev.x1(63, 32) * prev.x2(63, 32)
 
       (ext, false.B)
-    } else if(stage == 2) {
+    } else if (stage == 2) {
       val prev = _ext.get
       val ext = Wire(new MulExt)
       ext := DontCare
@@ -103,8 +108,8 @@ class Mul(override implicit val coredef: CoreDef) extends ExecUnit(2, new MulExt
         val extended = Wire(SInt(coredef.XLEN.W))
         extended := prev.x1(31, 0).asSInt
         ext.x1 := extended.asUInt()
-      }.otherwise{
-        val added = Wire(UInt((coredef.XLEN*2).W))
+      }.otherwise {
+        val added = Wire(UInt((coredef.XLEN * 2).W))
         added := prev.x1 +& ((prev.mid1 +& prev.mid2) << 32) +& (prev.x2 << 64)
         when(pipe.instr.instr.funct3 === Decoder.MULDIV_FUNC("MUL")) {
           ext.x1 := added(63, 0)

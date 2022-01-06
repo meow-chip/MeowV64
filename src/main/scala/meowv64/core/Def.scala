@@ -21,11 +21,10 @@ abstract class CoreDef {
 
   val HART_ID: Int
 
-/**
- * This is one larger than the actual maximum number,
- * because we are reserving name 0 for reg 0
- */
-  val INFLIGHT_INSTR_LIMIT = 8 
+  /** This is one larger than the actual maximum number, because we are
+    * reserving name 0 for reg 0
+    */
+  val INFLIGHT_INSTR_LIMIT = 8
   val UNIT_COUNT: Int = 3
   val RESERVATION_STATION_DEPTHS = Seq(
     4,
@@ -37,25 +36,29 @@ abstract class CoreDef {
 
   val RAS_SIZE: Int = 8;
 
-  object L1I extends {
-    val ADDR_WIDTH: Int = outer.PADDR_WIDTH
-    val ASSOC: Int = 2
-    val LINE_WIDTH: Int = outer.L1_LINE_WIDTH
-    val SIZE: Int = 2048 // 4K L1 I
-    val TRANSFER_SIZE: Int = 64
-    val XLEN: Int = outer.XLEN
-  } with L1Opts
+  object L1I
+      extends {
+        val ADDR_WIDTH: Int = outer.PADDR_WIDTH
+        val ASSOC: Int = 2
+        val LINE_WIDTH: Int = outer.L1_LINE_WIDTH
+        val SIZE: Int = 2048 // 4K L1 I
+        val TRANSFER_SIZE: Int = 64
+        val XLEN: Int = outer.XLEN
+      }
+      with L1Opts
 
-  object L1D extends {
-    val ADDR_WIDTH: Int = outer.PADDR_WIDTH
-    val ASSOC: Int = 2
-    val LINE_WIDTH: Int = outer.L1_LINE_WIDTH
-    val SIZE: Int = 2048 // 4K L1 D
-    val TRANSFER_SIZE: Int = outer.XLEN // Currently, this is required
-    val XLEN: Int = outer.XLEN
+  object L1D
+      extends {
+        val ADDR_WIDTH: Int = outer.PADDR_WIDTH
+        val ASSOC: Int = 2
+        val LINE_WIDTH: Int = outer.L1_LINE_WIDTH
+        val SIZE: Int = 2048 // 4K L1 D
+        val TRANSFER_SIZE: Int = outer.XLEN // Currently, this is required
+        val XLEN: Int = outer.XLEN
 
-    val WRITE_BUF_DEPTH: Int = 4
-  } with L1DOpts
+        val WRITE_BUF_DEPTH: Int = 4
+      }
+      with L1DOpts
 
   def tlbIdxWidth = log2Ceil(TLB_SIZE)
   def vpnWidth = VADDR_WIDTH - 12

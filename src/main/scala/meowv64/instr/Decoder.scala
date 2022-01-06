@@ -6,10 +6,8 @@ import chisel3.experimental._
 import chisel3.internal.firrtl.Width
 import meowv64.instr.Decoder.InstrType
 
-/**
- * Instruction Decoder
- * We only supports 32-bit length instructions
- */
+/** Instruction Decoder We only supports 32-bit length instructions
+  */
 
 object Decoder {
   object InstrType extends ChiselEnum {
@@ -19,32 +17,33 @@ object Decoder {
   case class OpSpec(ident: UInt, t: InstrType.Type)
 
   object spec {
-    def apply(s: String, t: InstrType.Type) = OpSpec(Integer.parseInt(s, 2).U(5.W), t)
+    def apply(s: String, t: InstrType.Type) =
+      OpSpec(Integer.parseInt(s, 2).U(5.W), t)
   }
 
   val Op: Map[String, OpSpec] = Map(
-    "LOAD"      -> spec("00000", InstrType.I),
+    "LOAD" -> spec("00000", InstrType.I),
     // We don't have LOAD-FP @ 00001, as we don't have F extension
     // We don't have custom-0 @ 00010
-    "MEM-MISC"  -> spec("00011", InstrType.I), // Sort of
-    "OP-IMM"    -> spec("00100", InstrType.I),
-    "AUIPC"     -> spec("00101", InstrType.U),
+    "MEM-MISC" -> spec("00011", InstrType.I), // Sort of
+    "OP-IMM" -> spec("00100", InstrType.I),
+    "AUIPC" -> spec("00101", InstrType.U),
     "OP-IMM-32" -> spec("00110", InstrType.I), // Sort of
 
-    "STORE"     -> spec("01000", InstrType.S),
+    "STORE" -> spec("01000", InstrType.S),
     // We don't have STORE-FP @ 01001, as we don't have F extension
     // We don't have custom-1 @ 01010
-    "AMO"       -> spec("01011", InstrType.R),
-    "OP"        -> spec("01100", InstrType.R),
-    "LUI"       -> spec("01101", InstrType.U),
-    "OP-32"     -> spec("01110", InstrType.R),
+    "AMO" -> spec("01011", InstrType.R),
+    "OP" -> spec("01100", InstrType.R),
+    "LUI" -> spec("01101", InstrType.U),
+    "OP-32" -> spec("01110", InstrType.R),
 
     // 10xxx is for F extension
 
-    "BRANCH"    -> spec("11000", InstrType.B),
-    "JALR"      -> spec("11001", InstrType.I),
-    "JAL"       -> spec("11011", InstrType.J),
-    "SYSTEM"    -> spec("11100", InstrType.I) // Sort of
+    "BRANCH" -> spec("11000", InstrType.B),
+    "JALR" -> spec("11001", InstrType.I),
+    "JAL" -> spec("11011", InstrType.J),
+    "SYSTEM" -> spec("11100", InstrType.I) // Sort of
   )
 
   val BRANCH_FUNC: Map[String, UInt] = Map(
@@ -137,7 +136,10 @@ object Decoder {
 
   implicit class ConvertToInstr(self: Data) {
     def parseInstr(): (Instr, Bool) = {
-      assert(self.getWidth == 32, s"Unexpected decoder input width: ${self.getWidth}")
+      assert(
+        self.getWidth == 32,
+        s"Unexpected decoder input width: ${self.getWidth}"
+      )
       val result = Wire(new Instr)
       val isInstr16 = WireDefault(false.B)
       val ui = self.asUInt
@@ -157,7 +159,10 @@ object Decoder {
     }
 
     def tryAsInstr16(): (Instr, Bool) = {
-      assert(self.getWidth == 16, s"Unexpected decoder input width: ${self.getWidth}")
+      assert(
+        self.getWidth == 16,
+        s"Unexpected decoder input width: ${self.getWidth}"
+      )
       val result = Wire(new Instr)
       val success = Wire(Bool())
       val ui = self.asUInt
@@ -288,7 +293,9 @@ object Decoder {
             result.rd := 2.U
             result.rs1 := 2.U
             result.rs2 := DontCare
-            result.imm := (ui(12) ## ui(4, 3) ## ui(5) ## ui(2) ## ui(6)).asSInt << 4
+            result.imm := (ui(12) ## ui(4, 3) ## ui(5) ## ui(2) ## ui(
+              6
+            )).asSInt << 4
             result.funct3 := OP_FUNC("ADD/SUB") // ADDI
           }.otherwise { // LUI
             result.op := Op("LUI").ident
@@ -368,7 +375,9 @@ object Decoder {
           result.rs2 := DontCare
           result.rd := 0.U // Ignore result
           result.imm := (
-            ui(12) ## ui(8) ## ui(10, 9) ## ui(6) ## ui(7) ## ui(2) ## ui(11) ## ui(5, 3) ## 0.U(1.W)
+            ui(12) ## ui(8) ## ui(10, 9) ## ui(6) ## ui(7) ## ui(2) ## ui(
+              11
+            ) ## ui(5, 3) ## 0.U(1.W)
           ).asSInt
           result.funct3 := DontCare // TODO: trigger error on treadle when reading DontCare
         }
@@ -377,7 +386,10 @@ object Decoder {
           result.rs1 := rs1t
           result.rs2 := 0.U // Compare with zero
           result.rd := DontCare
-          result.imm := (ui(12) ## ui(6, 5) ## ui(2) ## ui(11, 10) ## ui(4, 3) ## 0.U(1.W)).asSInt
+          result.imm := (ui(12) ## ui(6, 5) ## ui(2) ## ui(11, 10) ## ui(
+            4,
+            3
+          ) ## 0.U(1.W)).asSInt
           result.funct3 := BRANCH_FUNC("BEQ")
         }
         is("01111".asBits(5.W)) { // BNEZ
@@ -385,7 +397,10 @@ object Decoder {
           result.rs1 := rs1t
           result.rs2 := 0.U // Compare with zero
           result.rd := DontCare
-          result.imm := (ui(12) ## ui(6, 5) ## ui(2) ## ui(11, 10) ## ui(4, 3) ## 0.U(1.W)).asSInt
+          result.imm := (ui(12) ## ui(6, 5) ## ui(2) ## ui(11, 10) ## ui(
+            4,
+            3
+          ) ## 0.U(1.W)).asSInt
           result.funct3 := BRANCH_FUNC("BNE")
         }
 
@@ -491,10 +506,10 @@ object Decoder {
 
       var ctx: Option[WhenContext] = None
 
-      for((op, OpSpec(pat, typ)) <- Op) {
+      for ((op, OpSpec(pat, typ)) <- Op) {
         ctx = Some(ctx match {
           case Some(c) => c.elsewhen(result.op === pat) { result.base := typ }
-          case None => when(result.op === pat) { result.base := typ }
+          case None    => when(result.op === pat) { result.base := typ }
         })
       }
 
@@ -517,13 +532,17 @@ object Decoder {
           result.imm := (ui(31, 25) ## ui(11, 7)).asSInt
         }
         is(InstrType.B) {
-          result.imm := (ui(31) ## ui(7) ## ui(30, 25) ## ui(11, 8) ## 0.U(1.W)).asSInt
+          result.imm := (ui(31) ## ui(7) ## ui(30, 25) ## ui(11, 8) ## 0.U(
+            1.W
+          )).asSInt
         }
         is(InstrType.U) {
           result.imm := ui(31, 12).asSInt << 12
         }
         is(InstrType.J) {
-          result.imm := (ui(31) ## ui(19, 12) ## ui(20) ## ui(30, 21) ## 0.U(1.W)).asSInt
+          result.imm := (ui(31) ## ui(19, 12) ## ui(20) ## ui(30, 21) ## 0.U(
+            1.W
+          )).asSInt
         }
       }
 
@@ -552,14 +571,14 @@ class Instr extends Bundle {
   override def toPrintable: Printable = {
     // Reverse check op
     p"Instr: \n" +
-    p"  Base: ${Decimal(base.asUInt())}\n" +
-    p"  Op:   0b${Binary(op)}\n" +
-    p"  Imm:  0x${Hexadecimal(imm)}\n" +
-    p"  RS1:  x${Decimal(rs1)}\n" +
-    p"  RS2:  x${Decimal(rs2)}\n" +
-    p"  RD:   x${Decimal(rd)}\n" +
-    p"  F7:   0b${Binary(funct7)}\n" +
-    p"  F3:   0b${Binary(funct3)}"
+      p"  Base: ${Decimal(base.asUInt())}\n" +
+      p"  Op:   0b${Binary(op)}\n" +
+      p"  Imm:  0x${Hexadecimal(imm)}\n" +
+      p"  RS1:  x${Decimal(rs1)}\n" +
+      p"  RS2:  x${Decimal(rs2)}\n" +
+      p"  RD:   x${Decimal(rd)}\n" +
+      p"  F7:   0b${Binary(funct7)}\n" +
+      p"  F3:   0b${Binary(funct3)}"
   }
 
   def getRd() = {
@@ -581,7 +600,11 @@ class Instr extends Bundle {
     // TODO: investigate if SYSTEM instrs can have a rs1 field containing non-zero values?
 
     switch(this.op) {
-      is(Decoder.Op("LUI").ident, Decoder.Op("AUIPC").ident, Decoder.Op("JAL").ident) {
+      is(
+        Decoder.Op("LUI").ident,
+        Decoder.Op("AUIPC").ident,
+        Decoder.Op("JAL").ident
+      ) {
         ret := 0.U
       }
     }
@@ -593,7 +616,11 @@ class Instr extends Bundle {
     val ret = WireDefault(rs2)
     switch(this.op) {
       // U-type and J-type
-      is(Decoder.Op("LUI").ident, Decoder.Op("AUIPC").ident, Decoder.Op("JAL").ident) {
+      is(
+        Decoder.Op("LUI").ident,
+        Decoder.Op("AUIPC").ident,
+        Decoder.Op("JAL").ident
+      ) {
         ret := 0.U
       }
 

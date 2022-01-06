@@ -2,13 +2,19 @@ package meowv64.util
 import chisel3._
 import chisel3.util._
 
-class MultiQueueIO[T <: Data](private val gen: T, val THROUGHPUT: Int) extends Bundle {
+class MultiQueueIO[T <: Data](private val gen: T, val THROUGHPUT: Int)
+    extends Bundle {
   val view = Input(Vec(THROUGHPUT, gen))
   val cnt = Input(UInt(log2Ceil(THROUGHPUT + 1).W))
   val accept = Output(UInt(log2Ceil(THROUGHPUT + 1).W))
 }
 
-class MultiQueue[T <: Data](private val gen: T, val DEPTH: Int, val INPUT: Int, val OUTPUT: Int) extends MultiIOModule {
+class MultiQueue[T <: Data](
+    private val gen: T,
+    val DEPTH: Int,
+    val INPUT: Int,
+    val OUTPUT: Int
+) extends MultiIOModule {
   val reader = IO(Flipped(new MultiQueueIO(gen, OUTPUT)))
   val writer = IO(new MultiQueueIO(gen, INPUT))
   val flush = IO(Input(Bool()))
@@ -23,7 +29,7 @@ class MultiQueue[T <: Data](private val gen: T, val DEPTH: Int, val INPUT: Int, 
     mod
   })
 
-  for(q <- queues) {
+  for (q <- queues) {
     q.io.flush := flush
   }
 
@@ -35,20 +41,20 @@ class MultiQueue[T <: Data](private val gen: T, val DEPTH: Int, val INPUT: Int, 
   val enqs = VecInit(queues.map(_.io.enq))
   val deqs = VecInit(queues.map(_.io.deq))
 
-  for(enq <- enqs) enq.noenq()
-  for(deq <- deqs) deq.nodeq()
+  for (enq <- enqs) enq.noenq()
+  for (deq <- deqs) deq.nodeq()
 
   val wptr = RegInit(0.U(log2Ceil(CNT).W))
   val rptr = RegInit(0.U(log2Ceil(CNT).W))
 
-  for(i <- (0 until INPUT)) {
+  for (i <- (0 until INPUT)) {
     when(writer.cnt > i.U) {
       enqs(wptr + i.U).enq(writer.view(i))
       assert(enqs(wptr + i.U).fire())
     }
   }
 
-  for(i <- (0 until OUTPUT)) {
+  for (i <- (0 until OUTPUT)) {
     reader.view(i) := deqs(rptr + i.U).bits
     when(reader.accept > i.U) {
       deqs(rptr + i.U).deq()

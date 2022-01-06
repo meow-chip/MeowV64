@@ -16,15 +16,19 @@ object PLIC {
   val PLIC_ADDR_WIDTH = log2Ceil(PLIC_REGION_SIZE)
 }
 
-object PLICMMIODef extends {
-  override val ADDR_WIDTH: Int = PLIC.PLIC_ADDR_WIDTH
-  override val XLEN: Int = 64
-} with MMIODef
+object PLICMMIODef
+    extends {
+      override val ADDR_WIDTH: Int = PLIC.PLIC_ADDR_WIDTH
+      override val XLEN: Int = 64
+    }
+    with MMIODef
 
-object PLICMapping extends {
-  override val MAPPED_START = PLIC.PLIC_REGION_START
-  override val MAPPED_SIZE = BigInt(PLIC.PLIC_REGION_SIZE)
-} with MMIOMapping
+object PLICMapping
+    extends {
+      override val MAPPED_START = PLIC.PLIC_REGION_START
+      override val MAPPED_SIZE = BigInt(PLIC.PLIC_REGION_SIZE)
+    }
+    with MMIOMapping
 
 object PLICAddrSpace extends ChiselEnum {
   val priority, pending, enable, context = Value
@@ -46,51 +50,69 @@ object PLICAddrSpace extends ChiselEnum {
 }
 
 class PLIC(val pdef: PLICDef) extends MultiIOModule {
-  val source = IO(Input(UInt((pdef.MAX_SOURCE+1).W))) // Interrupt source, don't use 0
+  val source = IO(
+    Input(UInt((pdef.MAX_SOURCE + 1).W))
+  ) // Interrupt source, don't use 0
   val eints = IO(Output(Vec(pdef.CONTEXT_COUNT, Bool())))
   val toL2 = IO(new MMIOAccess(PLICMMIODef))
 
-  val priorities = RegInit(VecInit(
-    Seq.fill(pdef.MAX_SOURCE + 1)(
-      0.U(log2Ceil(pdef.MAX_PRIORITY+1).W)
+  val priorities = RegInit(
+    VecInit(
+      Seq.fill(pdef.MAX_SOURCE + 1)(
+        0.U(log2Ceil(pdef.MAX_PRIORITY + 1).W)
+      )
     )
-  ))
-  val thresholds = RegInit(VecInit(
-    Seq.fill(pdef.CONTEXT_COUNT)(
-      0.U(log2Ceil(pdef.MAX_PRIORITY+1).W)
+  )
+  val thresholds = RegInit(
+    VecInit(
+      Seq.fill(pdef.CONTEXT_COUNT)(
+        0.U(log2Ceil(pdef.MAX_PRIORITY + 1).W)
+      )
     )
-  ))
-  val enables = RegInit(VecInit(
-    Seq.fill(pdef.CONTEXT_COUNT)(
-      VecInit(Seq.fill(Math.ceil((pdef.MAX_SOURCE + 1) / 32f).toInt)(0.U(32.W)))
+  )
+  val enables = RegInit(
+    VecInit(
+      Seq.fill(pdef.CONTEXT_COUNT)(
+        VecInit(
+          Seq.fill(Math.ceil((pdef.MAX_SOURCE + 1) / 32f).toInt)(0.U(32.W))
+        )
+      )
     )
-  ))
-  val claimed = RegInit(VecInit(
-    Seq.fill(pdef.CONTEXT_COUNT)(
-      VecInit(Seq.fill(pdef.MAX_SOURCE + 1)(false.B))
+  )
+  val claimed = RegInit(
+    VecInit(
+      Seq.fill(pdef.CONTEXT_COUNT)(
+        VecInit(Seq.fill(pdef.MAX_SOURCE + 1)(false.B))
+      )
     )
-  ))
+  )
 
   val masked = WireDefault(priorities)
   masked(0) := 0.U
-  val castedEnables = Wire(Vec(pdef.CONTEXT_COUNT, UInt((pdef.MAX_PRIORITY+1).W)))
-  for((casted, enable) <- castedEnables.zip(enables)) {
+  val castedEnables = Wire(
+    Vec(pdef.CONTEXT_COUNT, UInt((pdef.MAX_PRIORITY + 1).W))
+  )
+  for ((casted, enable) <- castedEnables.zip(enables)) {
     casted := enable.asUInt()
   }
-  val castedSource = Wire(Vec(Math.ceil((pdef.MAX_SOURCE + 1) / 32f).toInt, UInt(32.W)))
+  val castedSource = Wire(
+    Vec(Math.ceil((pdef.MAX_SOURCE + 1) / 32f).toInt, UInt(32.W))
+  )
   castedSource := source.asTypeOf(castedSource)
 
   // Priority > Threshold
-  val qualifieds = thresholds.map(
-    (threshold) => VecInit(masked.map(priority => priority > threshold)).asUInt()
+  val qualifieds = thresholds.map((threshold) =>
+    VecInit(masked.map(priority => priority > threshold)).asUInt()
   )
 
   // Qualified and enabled
-  val effectives = qualifieds.zip(castedEnables).map({ case (qualified, enable) => qualified & enable })
+  val effectives = qualifieds
+    .zip(castedEnables)
+    .map({ case (qualified, enable) => qualified & enable })
 
   // Gated inputs
-  val gated = claimed.foldLeft(source)({
-    case (acc, claimed) => acc & ~(claimed.asUInt())
+  val gated = claimed.foldLeft(source)({ case (acc, claimed) =>
+    acc & ~(claimed.asUInt())
   })
 
   // Gated & effective
@@ -104,7 +126,8 @@ class PLIC(val pdef: PLICDef) extends MultiIOModule {
   val req = toL2.req.deq()
   toL2.resp.valid := toL2.req.fire()
   toL2.resp.bits := DontCare
-  val offset = (req.addr -% PLIC.PLIC_REGION_START.U)(PLIC.PLIC_ADDR_WIDTH-1, 0)
+  val offset =
+    (req.addr -% PLIC.PLIC_REGION_START.U)(PLIC.PLIC_ADDR_WIDTH - 1, 0)
   switch(PLICAddrSpace.fromOffset(offset)) {
     is(PLICAddrSpace.priority) {
       toL2.resp.bits := priorities(offset >> 2)
@@ -120,7 +143,7 @@ class PLIC(val pdef: PLICDef) extends MultiIOModule {
 
     is(PLICAddrSpace.enable) {
       val inner = offset - 0x2000.U
-      val ctx = inner >> log2Ceil(1024/8)
+      val ctx = inner >> log2Ceil(1024 / 8)
       toL2.resp.bits := enables(ctx)(inner >> 2)
 
       when(toL2.req.fire() && req.op === MMIOReqOp.write) {

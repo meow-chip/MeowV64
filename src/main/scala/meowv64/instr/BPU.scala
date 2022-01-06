@@ -40,7 +40,11 @@ class BPUResult(implicit val coredef: CoreDef) extends Bundle {
 
   def prediction = Mux(
     valid,
-    Mux(history(coredef.BHT_WIDTH-1), BHTPrediction.taken, BHTPrediction.notTaken),
+    Mux(
+      history(coredef.BHT_WIDTH - 1),
+      BHTPrediction.taken,
+      BHTPrediction.notTaken
+    ),
     BHTPrediction.missed
   )
 
@@ -51,7 +55,11 @@ class BPUResult(implicit val coredef: CoreDef) extends Bundle {
     ret.tag := tag
 
     when(this.valid) {
-      ret.history := Mux(this.history.andR(), (-1).S(coredef.BHT_WIDTH.W).asUInt, this.history + 1.U)
+      ret.history := Mux(
+        this.history.andR(),
+        (-1).S(coredef.BHT_WIDTH.W).asUInt,
+        this.history + 1.U
+      )
     }.otherwise {
       ret.history := 1.U(1.W) ## 0.U((coredef.BHT_WIDTH - 1).W)
     }
@@ -78,12 +86,15 @@ class BPUResult(implicit val coredef: CoreDef) extends Bundle {
 }
 
 class BPU(implicit val coredef: CoreDef) extends MultiIOModule {
-  val toFetch = IO(new Bundle{
-    val pc = Input(UInt(coredef.VADDR_WIDTH.W)) // the address (pc) of the query branch
-    val results = Output(Vec(coredef.L1I.TRANSFER_SIZE / Const.INSTR_MIN_WIDTH, new BPUResult))
+  val toFetch = IO(new Bundle {
+    val pc =
+      Input(UInt(coredef.VADDR_WIDTH.W)) // the address (pc) of the query branch
+    val results = Output(
+      Vec(coredef.L1I.TRANSFER_SIZE / Const.INSTR_MIN_WIDTH, new BPUResult)
+    )
   })
 
-  val toExec = IO(new Bundle{
+  val toExec = IO(new Bundle {
     val valid = Input(Bool())
     val lpc = Input(UInt(coredef.XLEN.W)) // Only register on the last slot
     val hist = Input(new BPUResult)
@@ -96,10 +107,13 @@ class BPU(implicit val coredef: CoreDef) extends MultiIOModule {
   val INDEX_OFFSET_WIDTH = OFFSET_WIDTH + INDEX_WIDTH
   val TAG_WIDTH = coredef.VADDR_WIDTH - OFFSET_WIDTH - INDEX_WIDTH
 
-  def getIndex(addr: UInt) = addr(INDEX_OFFSET_WIDTH-1, OFFSET_WIDTH)
-  def getTag(addr: UInt) = addr(coredef.VADDR_WIDTH-1, INDEX_OFFSET_WIDTH)
-  def getOffset(addr: UInt) = addr(OFFSET_WIDTH-1, log2Ceil(Const.INSTR_MIN_WIDTH/8))
-  def toAligned(addr: UInt) = getTag(addr) ## getIndex(addr) ## 0.U(OFFSET_WIDTH.W) // The input address should be aligned anyway
+  def getIndex(addr: UInt) = addr(INDEX_OFFSET_WIDTH - 1, OFFSET_WIDTH)
+  def getTag(addr: UInt) = addr(coredef.VADDR_WIDTH - 1, INDEX_OFFSET_WIDTH)
+  def getOffset(addr: UInt) =
+    addr(OFFSET_WIDTH - 1, log2Ceil(Const.INSTR_MIN_WIDTH / 8))
+  def toAligned(addr: UInt) = getTag(addr) ## getIndex(addr) ## 0.U(
+    OFFSET_WIDTH.W
+  ) // The input address should be aligned anyway
 
   val store = Mem(coredef.BHT_SIZE, Vec(INLINE_COUNT, new BHTSlot))
 
@@ -116,7 +130,11 @@ class BPU(implicit val coredef: CoreDef) extends MultiIOModule {
   // Update part
   val updateTag = getTag(toExec.lpc)
   val updateOffset = getOffset(toExec.lpc)
-  assert(updateOffset.getWidth == log2Ceil(coredef.L1I.TRANSFER_SIZE / Const.INSTR_MIN_WIDTH))
+  assert(
+    updateOffset.getWidth == log2Ceil(
+      coredef.L1I.TRANSFER_SIZE / Const.INSTR_MIN_WIDTH
+    )
+  )
   val updated = toExec.hist.update(toExec.taken, updateTag)
   val updateMask = UIntToOH(updateOffset).asBools()
 
@@ -139,7 +157,9 @@ class BPU(implicit val coredef: CoreDef) extends MultiIOModule {
 
   val waddr = Mux(reseting, resetCnt, getIndex(toExec.lpc))
   val data = VecInit(
-    Seq.fill(coredef.L1I.TRANSFER_SIZE / Const.INSTR_MIN_WIDTH)(Mux(reseting, init, updated))
+    Seq.fill(coredef.L1I.TRANSFER_SIZE / Const.INSTR_MIN_WIDTH)(
+      Mux(reseting, init, updated)
+    )
   )
 
   store.write(waddr, data, we)

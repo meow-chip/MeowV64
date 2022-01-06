@@ -26,19 +26,20 @@ import meowv64.instr.BPUResult
 import meowv64.paging.TLBExt
 import meowv64.core.Satp
 
-/**
-  * Branch result
-  * 
-  * Branch are used to state an interrupt in pipelined execution, which comes from
-  * the execution of an instruction. Following conditions are considered as a branch:
-  * - Jumps and branches that don't match branch prediction results
-  * - Instructions caused an exceptions
-  * - Instructions have side-effects on previous stages, so that we need to flush the pipeline.
-  *   This includes:
-  *   - CSR writes (may alter instr fetch)
-  *   - FENCE.I
+/** Branch result
   *
-  * @param coredef: Core defination
+  * Branch are used to state an interrupt in pipelined execution, which comes
+  * from the execution of an instruction. Following conditions are considered as
+  * a branch:
+  *   - Jumps and branches that don't match branch prediction results
+  *   - Instructions caused an exceptions
+  *   - Instructions have side-effects on previous stages, so that we need to
+  *     flush the pipeline. This includes:
+  *     - CSR writes (may alter instr fetch)
+  *     - FENCE.I
+  *
+  * @param coredef:
+  *   Core defination
   */
 class BranchResult(implicit val coredef: CoreDef) extends Bundle {
   val branch = Bool()
@@ -120,12 +121,9 @@ object BranchResult {
   }
 }
 
-/**
-  * Execution result of an retiring instruction
-  * 
-  * wb: writeback data
-  * branch: branch info
-  * mem: sequential memory access info
+/** Execution result of an retiring instruction
+  *
+  * wb: writeback data branch: branch info mem: sequential memory access info
   *
   * @param coredef
   */
@@ -172,16 +170,17 @@ object RetireInfo {
   }
 }
 
-/**
-  * Instruction in execution pipeline, after both operands are ready
-  * 
-  * Besides the instruction from decoding, we have the following additional fields
-  * - rs1val: value of the rs1 operand
-  * - rs2val: value of the rs2 operand
-  * - rdname: Name of the rd register. This comes from renaming
-  * - tag: tag of this instruction. Tags are self-incrementing based on issue order, and wraps
-  *   around at length(rob) = 2^length(name) = MAX_INFLIGHT_INSTR.
-  *   When its execution finishes, this instruction is always put into rob[tag]
+/** Instruction in execution pipeline, after both operands are ready
+  *
+  * Besides the instruction from decoding, we have the following additional
+  * fields
+  *   - rs1val: value of the rs1 operand
+  *   - rs2val: value of the rs2 operand
+  *   - rdname: Name of the rd register. This comes from renaming
+  *   - tag: tag of this instruction. Tags are self-incrementing based on issue
+  *     order, and wraps around at length(rob) = 2^length(name) =
+  *     MAX_INFLIGHT_INSTR. When its execution finishes, this instruction is
+  *     always put into rob[tag]
   *
   * @param coredef
   */
@@ -195,14 +194,13 @@ class PipeInstr(implicit val coredef: CoreDef) extends Bundle {
   val tag = UInt(log2Ceil(coredef.INFLIGHT_INSTR_LIMIT).W)
 }
 
-/**
-  * Instruction in reservation station
-  * 
+/** Instruction in reservation station
+  *
   * Besides the fields in PipeStr, we have the following additional fields
-  * - rs1name: name of the rs1 operand
-  * - rs2name: name of the rs2 operand
-  * - rs1ready: is rs1 ready?
-  * - rs2ready: is rs2 ready?
+  *   - rs1name: name of the rs1 operand
+  *   - rs2name: name of the rs2 operand
+  *   - rs1ready: is rs1 ready?
+  *   - rs2ready: is rs2 ready?
   *
   * @param coredef
   */
@@ -212,14 +210,14 @@ class ReservedInstr(override implicit val coredef: CoreDef) extends PipeInstr {
   val rs1ready = Bool()
   val rs2ready = Bool()
 
-  def inval = instr.fetchEx =/= FetchEx.none || instr.instr.base === InstrType.RESERVED
+  def inval =
+    instr.fetchEx =/= FetchEx.none || instr.instr.base === InstrType.RESERVED
 
   def ready = (inval || rs1ready && rs2ready)
 }
 
-/**
- * Instruction pushed by issuer, and reused by rob
- */
+/** Instruction pushed by issuer, and reused by rob
+  */
 class InflightInstr(implicit val coredef: CoreDef) extends Bundle {
   // val rdname = UInt(coredef.XLEN.W)
   // rdname === tag, so we don't need this wire anymore
@@ -271,15 +269,14 @@ object ReservedInstr {
   }
 }
 
-/**
-  * IO port of an execution unit
-  * 
-  * - next: next instruction
-  * - stall: unit -> pipeline stall signal
-  * - pause: pipeline -> unit stall signal
-  * - flush: Flush signal
-  * - retired: The instruction that just finished executing
-  * - retirement: Result of execution
+/** IO port of an execution unit
+  *
+  *   - next: next instruction
+  *   - stall: unit -> pipeline stall signal
+  *   - pause: pipeline -> unit stall signal
+  *   - flush: Flush signal
+  *   - retired: The instruction that just finished executing
+  *   - retirement: Result of execution
   *
   * @param coredef
   */
@@ -293,48 +290,56 @@ class ExecUnitPort(implicit val coredef: CoreDef) extends Bundle {
   val retired = Output(new PipeInstr)
 }
 
-/**
-  * Trait repersenting an execution unit
-  * 
-  * DEPTH is the pipeline delay of this unit. For example, ALU, which works in and asynchronous manner,
-  * have DEPTH = 0. LSU have a DEPTH of 1, and Div's DEPTH depends on its configuration
+/** Trait repersenting an execution unit
+  *
+  * DEPTH is the pipeline delay of this unit. For example, ALU, which works in
+  * and asynchronous manner, have DEPTH = 0. LSU have a DEPTH of 1, and Div's
+  * DEPTH depends on its configuration
   */
 trait ExecUnitInt {
   val DEPTH: Int
   val io: ExecUnitPort
 }
 
-/**
-  * Base class of and execution unit
+/** Base class of and execution unit
   *
-  * This class automatically generates stage registers, which contains the instruction and an custom
-  * bundle specified by the implementation.
-  * 
+  * This class automatically generates stage registers, which contains the
+  * instruction and an custom bundle specified by the implementation.
+  *
   * Implementations are required to implement two methods:
-  * - def map(stage: Int, pipe: PipeInstr, ext: Option[T]): (T, Bool)
-  *   Mapping of one stage
-  * - def finalize(pipe: PipeInstr, ext: T): RetireInfo 
-  *   Mapping from the last stage's output into RetireInfo
+  *   - def map(stage: Int, pipe: PipeInstr, ext: Option[T]): (T, Bool) Mapping
+  *     of one stage
+  *   - def finalize(pipe: PipeInstr, ext: T): RetireInfo Mapping from the last
+  *     stage's output into RetireInfo
   *
-  * @param DEPTH: pipeline delay
-  * @param ExtData: extra data's type
-  * @param coredef: core defination
+  * @param DEPTH:
+  *   pipeline delay
+  * @param ExtData:
+  *   extra data's type
+  * @param coredef:
+  *   core defination
   */
 abstract class ExecUnit[T <: Data](
-  val DEPTH: Int,
-  val ExtData: T
-)(
-  implicit val coredef: CoreDef
-) extends MultiIOModule with ExecUnitInt {
+    val DEPTH: Int,
+    val ExtData: T
+)(implicit
+    val coredef: CoreDef
+) extends MultiIOModule
+    with ExecUnitInt {
   val io = IO(new ExecUnitPort)
 
-  var current = if(DEPTH != 0) {
-    val storeInit = Wire(Vec(DEPTH, new Bundle {
-      val pipe = new PipeInstr
-      val ext = ExtData.cloneType
-    }))
+  var current = if (DEPTH != 0) {
+    val storeInit = Wire(
+      Vec(
+        DEPTH,
+        new Bundle {
+          val pipe = new PipeInstr
+          val ext = ExtData.cloneType
+        }
+      )
+    )
 
-    for(i <- (0 until DEPTH)) {
+    for (i <- (0 until DEPTH)) {
       storeInit(i) := DontCare
       storeInit(i).pipe.instr.instr.imm := 0.S // Treadle bug?
       storeInit(i).pipe.instr.vacant := true.B
@@ -347,7 +352,7 @@ abstract class ExecUnit[T <: Data](
   }
 
   def init(): Unit = {
-    if(DEPTH != 0) {
+    if (DEPTH != 0) {
       val (fExt, fStall) = connectStage(0, io.next, None)
       var stall = fStall
 
@@ -356,38 +361,43 @@ abstract class ExecUnit[T <: Data](
         current(0).ext := fExt
       }
 
-      for(i <- (1 until DEPTH)) {
-        val (nExt, sStall) = connectStage(i, current(i-1).pipe, Some(current(i-1).ext))
+      for (i <- (1 until DEPTH)) {
+        val (nExt, sStall) =
+          connectStage(i, current(i - 1).pipe, Some(current(i - 1).ext))
         when(!io.stall) {
-          current(i).pipe := current(i-1).pipe
+          current(i).pipe := current(i - 1).pipe
           current(i).ext := nExt
         }
 
         when(sStall) {
-          current(i-1).ext := nExt
+          current(i - 1).ext := nExt
         }
 
         stall = stall || sStall
       }
 
-      val (nExt, lStall) = connectStage(DEPTH, current(DEPTH-1).pipe, Some(current(DEPTH-1).ext))
+      val (nExt, lStall) = connectStage(
+        DEPTH,
+        current(DEPTH - 1).pipe,
+        Some(current(DEPTH - 1).ext)
+      )
 
       when(lStall) {
-        current(DEPTH-1).ext := nExt
+        current(DEPTH - 1).ext := nExt
       }
 
       when(io.flush) { // Override current
-        for(c <- current) {
+        for (c <- current) {
           c.pipe := PipeInstr.empty
           c.ext := DontCare
         }
       }
 
-      io.retired := current(DEPTH-1).pipe
+      io.retired := current(DEPTH - 1).pipe
       when(io.retired.instr.vacant) {
         io.retirement := RetireInfo.vacant
       }.otherwise {
-        io.retirement := finalize(current(DEPTH-1).pipe, nExt)
+        io.retirement := finalize(current(DEPTH - 1).pipe, nExt)
       }
       io.stall := stall || lStall
     } else {
@@ -405,7 +415,7 @@ abstract class ExecUnit[T <: Data](
 
   def map(stage: Int, pipe: PipeInstr, ext: Option[T]): (T, Bool)
 
-  def finalize(pipe: PipeInstr, ext: T): RetireInfo 
+  def finalize(pipe: PipeInstr, ext: T): RetireInfo
 
   def connectStage(stage: Int, pipe: PipeInstr, ext: Option[T]): (T, Bool) = {
     val nExt = Wire(ExtData.cloneType)
@@ -424,14 +434,14 @@ abstract class ExecUnit[T <: Data](
   }
 }
 
-/**
-  * Entry of common data bus
-  * 
-  * - valid: does this entry have any data in it?
-  * - name: name of the broadcasted virtual register
-  * - data: value to be broadcasted
+/** Entry of common data bus
   *
-  * @param coredef core defination
+  *   - valid: does this entry have any data in it?
+  *   - name: name of the broadcasted virtual register
+  *   - data: value to be broadcasted
+  *
+  * @param coredef
+  *   core defination
   */
 class CDBEntry(implicit val coredef: CoreDef) extends Bundle {
   val valid = Bool()
@@ -439,17 +449,16 @@ class CDBEntry(implicit val coredef: CoreDef) extends Bundle {
   val data = UInt(coredef.XLEN.W)
 }
 
-/**
-  * Common data bus
+/** Common data bus
   *
-  * @param coredef core defination
+  * @param coredef
+  *   core defination
   */
 class CDB(implicit val coredef: CoreDef) extends Bundle {
-  val entries = Vec(coredef.UNIT_COUNT+1, new CDBEntry)
+  val entries = Vec(coredef.UNIT_COUNT + 1, new CDBEntry)
 }
 
-/**
-  * Additional ports
+/** Additional ports
   */
 
 class DelayedMemResult(implicit val coredef: CoreDef) extends Bundle {

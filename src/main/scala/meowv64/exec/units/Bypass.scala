@@ -14,8 +14,13 @@ class BypassExt(implicit val coredef: CoreDef) extends Bundle {
   val inval = Bool()
 }
 
-class Bypass(override implicit val coredef: CoreDef) extends ExecUnit(0, new BypassExt) {
-  def map(stage: Int, pipe: PipeInstr, ext: Option[BypassExt]): (BypassExt, chisel3.Bool) = {
+class Bypass(override implicit val coredef: CoreDef)
+    extends ExecUnit(0, new BypassExt) {
+  def map(
+      stage: Int,
+      pipe: PipeInstr,
+      ext: Option[BypassExt]
+  ): (BypassExt, chisel3.Bool) = {
     val ext = Wire(new BypassExt)
     ext.acc := DontCare
     ext.inval := true.B

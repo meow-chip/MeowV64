@@ -54,9 +54,11 @@ class PTW(implicit coredef: CoreDef) extends MultiIOModule {
 
   tlbSlot.io.flush := false.B
 
-  val segs = VecInit((0 until MAX_SEG).map({ case idx => {
-    tlbSlot.io.deq.bits.vpn((MAX_SEG-idx)*9 - 1, (MAX_SEG - idx-1)*9)
-  }}))
+  val segs = VecInit((0 until MAX_SEG).map({
+    case idx => {
+      tlbSlot.io.deq.bits.vpn((MAX_SEG - idx) * 9 - 1, (MAX_SEG - idx - 1) * 9)
+    }
+  }))
   val seg = segs(level)
 
   tlbSlot.io.deq.nodeq()
@@ -90,7 +92,9 @@ class PTW(implicit coredef: CoreDef) extends MultiIOModule {
           initSeg := segs(0)
         }
 
-        dc.req.enq(DCRead.load(satp.ppn ## initSeg ## 0.U(3.W))) // PTE are aligned in 64-bits
+        dc.req.enq(
+          DCRead.load(satp.ppn ## initSeg ## 0.U(3.W))
+        ) // PTE are aligned in 64-bits
         when(dc.req.fire()) {
           state := PTWState.reading
         }
@@ -105,7 +109,7 @@ class PTW(implicit coredef: CoreDef) extends MultiIOModule {
         // Waiting for DC reply
       }.elsewhen(pte.valid) {
         when(pte.intermediate) {
-          when(level === (MAX_SEG-1).U) {
+          when(level === (MAX_SEG - 1).U) {
             // Reached last level
             state := PTWState.idle
             resp.pte := pte

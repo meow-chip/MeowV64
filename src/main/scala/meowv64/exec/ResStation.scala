@@ -20,12 +20,11 @@ trait ResStation {
   val ingress: Bundle {
     val instr: ReservedInstr
 
-    /**
-     * This is not a simple decoupled valid-ready handshake
-     * 
-     * free should always be asserted before commit, because the issuer may need
-     * to decide between multiple applicable ready exec units
-     */
+    /** This is not a simple decoupled valid-ready handshake
+      *
+      * free should always be asserted before commit, because the issuer may
+      * need to decide between multiple applicable ready exec units
+      */
     val free: Bool
     val push: Bool
   }
@@ -38,13 +37,14 @@ trait ResStation {
   }
 }
 
-/**
- * Out-of-Order Reservation station
- * 
- * For every cycle, only one instr maybe issued into this station,
- * and only one ready instr may start executing
- */
-class OoOResStation(val idx: Int)(implicit val coredef: CoreDef) extends MultiIOModule with ResStation {
+/** Out-of-Order Reservation station
+  *
+  * For every cycle, only one instr maybe issued into this station, and only one
+  * ready instr may start executing
+  */
+class OoOResStation(val idx: Int)(implicit val coredef: CoreDef)
+    extends MultiIOModule
+    with ResStation {
 
   val DEPTH = coredef.RESERVATION_STATION_DEPTHS(idx)
 
@@ -68,7 +68,11 @@ class OoOResStation(val idx: Int)(implicit val coredef: CoreDef) extends MultiIO
   defIdx := DontCare
 
   // Exgress part
-  val egMask = WireDefault(VecInit(store.zip(occupied).map({ case (instr, valid) => valid && instr.ready })))
+  val egMask = WireDefault(
+    VecInit(
+      store.zip(occupied).map({ case (instr, valid) => valid && instr.ready })
+    )
+  )
   val egIdx = PriorityEncoder(egMask)
   val maskedStore = WireDefault(store)
 
@@ -85,9 +89,9 @@ class OoOResStation(val idx: Int)(implicit val coredef: CoreDef) extends MultiIO
   }
 
   // CDB data fetch
-  for((instr, idx) <- store.zipWithIndex) {
+  for ((instr, idx) <- store.zipWithIndex) {
     // Later entries takes priority
-    for(ent <- cdb.entries) {
+    for (ent <- cdb.entries) {
       when(ent.name === instr.rs1name && ent.valid) {
         // > This cannot happen because we limit the inflight instr count,
         // > so that reg names should not wrap around for in-flight instrs
@@ -131,15 +135,19 @@ class OoOResStation(val idx: Int)(implicit val coredef: CoreDef) extends MultiIO
     store(ingIdx) := ingress.instr
   }
 
-  assert(!(
-    ingress.push &&
-    egSlot.io.enq.fire() &&
-    ingIdx === egIdx
-  ))
+  assert(
+    !(
+      ingress.push &&
+        egSlot.io.enq.fire() &&
+        ingIdx === egIdx
+    )
+  )
 
-  assert(!(
-    egress.pop && !egSlot.io.deq.valid
-  ))
+  assert(
+    !(
+      egress.pop && !egSlot.io.deq.valid
+    )
+  )
 
   egSlot.io.flush := ctrl.flush
 
@@ -150,16 +158,17 @@ class OoOResStation(val idx: Int)(implicit val coredef: CoreDef) extends MultiIO
   }
 }
 
-
-/**
- * Load-Store Buffer
- * 
- * Instructions are executed in-order, so effects of all memory operations
- * become visible to the core itself in program order
- * 
- * L1 may do RAW and WAW reordering, so the effect may not be in program order for other cores
- */
-class LSBuf(val idx: Int)(implicit val coredef: CoreDef) extends MultiIOModule with ResStation {
+/** Load-Store Buffer
+  *
+  * Instructions are executed in-order, so effects of all memory operations
+  * become visible to the core itself in program order
+  *
+  * L1 may do RAW and WAW reordering, so the effect may not be in program order
+  * for other cores
+  */
+class LSBuf(val idx: Int)(implicit val coredef: CoreDef)
+    extends MultiIOModule
+    with ResStation {
 
   val DEPTH = coredef.RESERVATION_STATION_DEPTHS(idx)
 
@@ -178,26 +187,32 @@ class LSBuf(val idx: Int)(implicit val coredef: CoreDef) extends MultiIOModule w
     val flush = Input(Bool())
   })
 
-  val hasPending = IO(Input(Bool())) // Is there any unfinished pending memory operations?
+  val hasPending = IO(
+    Input(Bool())
+  ) // Is there any unfinished pending memory operations?
 
   val store = RegInit(VecInit(Seq.fill(DEPTH)(ReservedInstr.empty)))
 
   val head = RegInit(0.U(log2Ceil(DEPTH).W))
   val tail = RegInit(0.U(log2Ceil(DEPTH).W))
 
-  assume((DEPTH & (DEPTH-1)) == 0)
+  assume((DEPTH & (DEPTH - 1)) == 0)
 
   // Exgress part
   // Extra restrictions: no pending writes
 
   val headIsLoad = (
     store(head).instr.instr.op === Decoder.Op("LOAD").ident
-    || store(head).instr.instr.op === Decoder.Op("AMO").ident && store(head).instr.instr.funct7(6, 2) === Decoder.AMO_FUNC("LR")
+      || store(head).instr.instr.op === Decoder.Op("AMO").ident && store(
+        head
+      ).instr.instr.funct7(6, 2) === Decoder.AMO_FUNC("LR")
   )
   val headIsFence = (
     store(head).instr.instr.op === Decoder.Op("MEM-MISC").ident
     // Release ops cannot be reordered before any previous ops
-    || store(head).instr.instr.op === Decoder.Op("AMO").ident && store(head).instr.instr.funct7(1)
+      || store(head).instr.instr.op === Decoder.Op("AMO").ident && store(
+        head
+      ).instr.instr.funct7(1)
   )
 
   // FIXME: is there acquire ops dispatched?
@@ -220,9 +235,9 @@ class LSBuf(val idx: Int)(implicit val coredef: CoreDef) extends MultiIOModule w
   }
 
   // CDB data fetch
-  for(instr <- store) {
+  for (instr <- store) {
     // Later entries takes priority
-    for(ent <- cdb.entries) {
+    for (ent <- cdb.entries) {
       when(ent.name === instr.rs1name && ent.valid) {
         // > This cannot happen because we limit the inflight instr count,
         // > so that reg names should not wrap around for in-flight instrs

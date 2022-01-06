@@ -15,7 +15,12 @@ class RegWriter(val XLEN: Int = 64, val COUNT: Int = 32) extends Bundle {
 
 // Standard Registers
 // TODO: support multi port
-class RegFile(XLEN: Int = 64, COUNT: Int = 32, READ_COUNT: Int = 2, WRITE_COUNT: Int = 1) extends Module {
+class RegFile(
+    XLEN: Int = 64,
+    COUNT: Int = 32,
+    READ_COUNT: Int = 2,
+    WRITE_COUNT: Int = 1
+) extends Module {
   val io = IO(new Bundle {
     val reads = Vec(READ_COUNT, Flipped(new RegReader(XLEN, COUNT)))
     val writes = Flipped(Vec(WRITE_COUNT, new RegWriter(XLEN, COUNT)))
@@ -23,7 +28,7 @@ class RegFile(XLEN: Int = 64, COUNT: Int = 32, READ_COUNT: Int = 2, WRITE_COUNT:
 
   val regs = RegInit(VecInit(List.fill(COUNT)(0).map(_.U(XLEN.W))))
 
-  for(read <- io.reads) {
+  for (read <- io.reads) {
     when(read.addr === 0.U) {
       read.data := 0.U
     }.otherwise {
@@ -31,7 +36,7 @@ class RegFile(XLEN: Int = 64, COUNT: Int = 32, READ_COUNT: Int = 2, WRITE_COUNT:
     }
   }
 
-  for(write <- io.writes) {
+  for (write <- io.writes) {
     when(write.addr =/= 0.U) {
       regs(write.addr) := write.data
     }
@@ -45,5 +50,5 @@ class RegFile(XLEN: Int = 64, COUNT: Int = 32, READ_COUNT: Int = 2, WRITE_COUNT:
     printf(p" | $prefix: 0x${Hexadecimal(regs(i.U))}")
     if(i % 4 == 3) printf(" |\n")
   }
-  */
+   */
 }
