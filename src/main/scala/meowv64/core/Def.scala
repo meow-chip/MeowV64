@@ -1,6 +1,6 @@
 package meowv64.core
-import meowv64.cache._
 import chisel3.util.log2Ceil
+import meowv64.cache._
 
 abstract class CoreDef {
   outer =>

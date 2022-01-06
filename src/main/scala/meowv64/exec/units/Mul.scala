@@ -1,11 +1,11 @@
 package meowv64.exec.units
 
+import Chisel.experimental.chiselName
 import chisel3._
 import chisel3.util._
-import meowv64.instr.Decoder
-import meowv64.exec._
 import meowv64.core.CoreDef
-import Chisel.experimental.chiselName
+import meowv64.exec._
+import meowv64.instr.Decoder
 
 class MulExt(implicit val coredef: CoreDef) extends Bundle {
   val x1 = UInt((coredef.XLEN).W)

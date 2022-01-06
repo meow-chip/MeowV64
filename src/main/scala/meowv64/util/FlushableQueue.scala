@@ -1,8 +1,8 @@
 package meowv64.util
 
 import chisel3._
-import chisel3.util._
 import chisel3.experimental._
+import chisel3.util._
 
 class FlushableQueueIO[T <: Data](private val gen: T, val _entries: Int)
     extends QueueIO(gen, _entries) {

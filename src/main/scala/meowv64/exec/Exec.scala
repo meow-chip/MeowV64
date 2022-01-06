@@ -1,30 +1,26 @@
 package meowv64.exec
+import Chisel.experimental.chiselName
 import chisel3._
-import meowv64.reg._
-import meowv64.data._
-import meowv64.instr._
 import chisel3.util._
-import meowv64.core.StageCtrl
-import meowv64.instr.Decoder.InstrType
-import meowv64.instr.FetchEx
-import meowv64.core.CSRWriter
-import meowv64.core.CoreDef
-import meowv64.util._
+import meowv64.cache.DCFenceStatus
 import meowv64.cache.DCReader
 import meowv64.cache.DCWriter
-import meowv64.exec.units._
-import meowv64.exec.UnitSel.Retirement
-import meowv64.core.Core
-import meowv64.exec.Exec.ROBEntry
 import meowv64.cache.L1UCPort
+import meowv64.core.CSRWriter
+import meowv64.core.CoreDef
 import meowv64.core.ExReq
-import Chisel.experimental.chiselName
-import meowv64.cache.DCFenceStatus
-import meowv64.core.Const
 import meowv64.core.PrivLevel
-import meowv64.core.Status
 import meowv64.core.Satp
+import meowv64.core.StageCtrl
+import meowv64.core.Status
+import meowv64.exec.Exec.ROBEntry
+import meowv64.exec.units._
+import meowv64.instr.Decoder.InstrType
+import meowv64.instr.FetchEx
+import meowv64.instr._
 import meowv64.paging.TLBExt
+import meowv64.reg._
+import meowv64.util._
 
 /** Out-of-order exection (Tomasulo's algorithm)
   *

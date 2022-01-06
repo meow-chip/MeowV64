@@ -1,11 +1,8 @@
 package meowv64.multicore
-
-import meowv64.core.CoreDef
 import meowv64.cache.L2Opts
-import meowv64.interrupt.PLICDef
 import meowv64.interrupt.CLINTMapping
+import meowv64.interrupt.PLICDef
 import meowv64.interrupt.PLICMapping
-import meowv64.interrupt.MMIODef
 
 abstract class MulticoreDef {
   outer =>

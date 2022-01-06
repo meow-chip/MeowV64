@@ -1,12 +1,11 @@
 package meowv64.cache
 
-import chisel3._
 import chisel3.MultiIOModule
+import chisel3._
 import chisel3.experimental._
-import meowv64.data._
 import chisel3.util._
-import meowv64.cache.L1DCPort.L2Req
 import meowv64.cache.L1DCPort.L1Req
+import meowv64.data._
 import meowv64.interrupt._
 
 /** L2 cache

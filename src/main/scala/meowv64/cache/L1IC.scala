@@ -1,11 +1,10 @@
 package meowv64.cache
 
+import Chisel.experimental.chiselName
 import chisel3._
-import meowv64.data._
-import chisel3.util.log2Ceil
 import chisel3.experimental.ChiselEnum
 import chisel3.util._
-import Chisel.experimental.chiselName
+import chisel3.util.log2Ceil
 
 class ICPort(val opts: L1Opts) extends Bundle {
   val addr = Input(UInt(opts.ADDR_WIDTH.W))

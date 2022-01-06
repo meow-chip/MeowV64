@@ -2,14 +2,14 @@ package meowv64.exec.units
 
 import chisel3._
 import chisel3.util._
-import meowv64.instr.Decoder
-import meowv64.instr.Decoder.InstrType
-import meowv64.core.ExType
-import meowv64.core.ExReq
-import meowv64.exec._
 import meowv64.core.CoreDef
+import meowv64.core.ExReq
+import meowv64.core.ExType
 import meowv64.core.PrivLevel
 import meowv64.core.Status
+import meowv64.exec._
+import meowv64.instr.Decoder
+import meowv64.instr.Decoder.InstrType
 
 class BranchExt extends Bundle {
   val branched = Bool()

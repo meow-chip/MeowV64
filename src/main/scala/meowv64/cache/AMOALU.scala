@@ -2,7 +2,6 @@ package meowv64.cache
 
 import chisel3._
 import chisel3.util._
-import meowv64.core.CoreDef
 import chisel3.util.log2Ceil
 
 class AMOALU(val opts: L1DOpts) extends MultiIOModule {

@@ -1,22 +1,22 @@
 package meowv64.exec.units
 
 import chisel3._
-import chisel3.util._
-import meowv64.instr.Decoder
-import meowv64.cache._
 import chisel3.experimental.ChiselEnum
-import meowv64.exec._
+import chisel3.util._
+import meowv64.cache._
 import meowv64.core.CoreDef
 import meowv64.core.ExType
-import meowv64.core.ExReq
-import meowv64.util.FlushableQueue
-import meowv64.paging._
+import meowv64.core.PrivLevel
 import meowv64.core.Satp
 import meowv64.core.SatpMode
-import meowv64.exec.UnitSel.Retirement
-import scala.collection.mutable
-import meowv64.core.PrivLevel
 import meowv64.core.Status
+import meowv64.exec.UnitSel.Retirement
+import meowv64.exec._
+import meowv64.instr.Decoder
+import meowv64.paging._
+import meowv64.util.FlushableQueue
+
+import scala.collection.mutable
 
 /** DelayedMem = Delayed memory access, memory accesses that have side-effects
   * and thus needs to be preformed in-order.

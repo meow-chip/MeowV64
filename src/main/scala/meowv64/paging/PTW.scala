@@ -1,14 +1,14 @@
 package meowv64.paging
 
 import chisel3._
-import chisel3.util._
 import chisel3.experimental._
 import chisel3.util.RRArbiter
+import chisel3.util._
+import meowv64.cache._
 import meowv64.core.CoreDef
 import meowv64.core.Satp
-import meowv64.util.FlushableSlot
-import meowv64.cache._
 import meowv64.core.SatpMode
+import meowv64.util.FlushableSlot
 
 object PTWState extends ChiselEnum {
   val idle, reading, read = Value

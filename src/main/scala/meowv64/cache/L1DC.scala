@@ -1,15 +1,14 @@
 package meowv64.cache
 
+import Chisel.experimental.chiselName
 import chisel3._
-import meowv64.data._
-import chisel3.util.log2Ceil
 import chisel3.experimental.ChiselEnum
 import chisel3.util._
-import Chisel.experimental.chiselName
-import meowv64.cache.L1DCPort.L2Req
+import chisel3.util.log2Ceil
 import meowv64.cache.L1DCPort.L1Req
+import meowv64.cache.L1DCPort.L2Req
 import meowv64.core.CoreDef
-import meowv64.util.FlushableSlot
+import meowv64.data._
 
 class DCRead(implicit val coredef: CoreDef) extends Bundle {
   val addr = UInt(coredef.PADDR_WIDTH.W)

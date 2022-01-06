@@ -1,12 +1,11 @@
 package meowv64.core
 
 import chisel3._
-import meowv64.data._
-import meowv64.instr._
 import meowv64.cache._
-import meowv64.reg._
 import meowv64.exec.Exec
+import meowv64.instr._
 import meowv64.paging.PTW
+import meowv64.reg._
 
 class CoreInt extends Bundle {
   val meip = Bool()

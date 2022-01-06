@@ -1,11 +1,9 @@
 package meowv64.instr
 
 import chisel3._
-import meowv64.cache._
-import meowv64.core._
-import meowv64.data._
-import chisel3.util._
 import chisel3.experimental.ChiselEnum
+import chisel3.util._
+import meowv64.core._
 
 object BHTPrediction extends ChiselEnum {
   val taken, notTaken, missed = Value

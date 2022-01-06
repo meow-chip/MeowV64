@@ -1,12 +1,11 @@
 package meowv64.paging
 
 import chisel3._
+import chisel3.experimental.ChiselEnum
 import chisel3.util._
 import chisel3.util.random.LFSR
-import chisel3.experimental.ChiselEnum
 import meowv64.core.CoreDef
 import meowv64.core.Satp
-import meowv64.core.SatpMode
 
 /** Lookup privilege mode. send both if its in supervisor and SUM = true
   */

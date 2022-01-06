@@ -1,8 +1,8 @@
 package meowv64.instr
 
 import chisel3._
-import meowv64.core.CoreDef
 import chisel3.util._
+import meowv64.core.CoreDef
 
 class RAS(implicit val coredef: CoreDef) extends MultiIOModule {
   val toIF = IO(new Bundle {

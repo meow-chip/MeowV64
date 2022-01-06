@@ -1,12 +1,10 @@
 package meowv64.exec
-import meowv64.core.CoreDef
 import chisel3._
-import chisel3.util.MuxLookup
-import chisel3.util.log2Ceil
-import chisel3.util.MuxCase
-import meowv64.instr.Decoder
-import meowv64.cache.DCFenceStatus
 import chisel3.util.PriorityEncoder
+import chisel3.util.log2Ceil
+import meowv64.cache.DCFenceStatus
+import meowv64.core.CoreDef
+import meowv64.instr.Decoder
 import meowv64.util.FlushableSlot
 
 class ResStationExgress(implicit val coredef: CoreDef) extends Bundle {

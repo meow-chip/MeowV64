@@ -1,9 +1,9 @@
 package meowv64.instr
 
 import chisel3._
-import chisel3.util._
 import chisel3.experimental._
 import chisel3.internal.firrtl.Width
+import chisel3.util._
 import meowv64.instr.Decoder.InstrType
 
 /** Instruction Decoder We only supports 32-bit length instructions

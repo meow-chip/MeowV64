@@ -10,11 +10,11 @@ import com.goyeau.mill.scalafix.ScalafixModule
 val defaultVersions = Map(
   "chisel3" -> ("edu.berkeley.cs", "3.2.8", false),
   "chisel-iotesters" -> ("edu.berkeley.cs", "1.3.8", false),
-  "paradise" -> ("org.scalamacros", "2.1.0", true),
+  "paradise" -> ("org.scalamacros", "2.1.1", true),
   "scalatest" -> ("org.scalatest", "3.2.10", false)
 )
 
-val commonScalaVersion = "2.12.10"
+val commonScalaVersion = "2.12.14"
 
 def getVersion(dep: String) = {
   val (org, ver, cross) = defaultVersions(dep)
@@ -40,7 +40,12 @@ object meowv64 extends SbtModule with ScalafmtModule with ScalafixModule {
   )
 
   override def scalacOptions = super.scalacOptions() ++
-    Seq("-deprecation", "-unchecked", "-Xsource:2.11")
+    Seq("-deprecation", "-unchecked", "-Xsource:2.11") ++ // for chisel3
+    Seq("-Ywarn-unused", "-Ywarn-adapted-args", "-deprecation") // for scalafix
+
+  override def scalafixIvyDeps = Agg(
+    ivy"com.github.liancheng::organize-imports:0.5.0"
+  )
 
   object test extends Tests with TestModule.ScalaTest {
     override def ivyDeps = super.ivyDeps() ++ Agg(

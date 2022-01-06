@@ -1,28 +1,17 @@
 package meowv64.exec
 
-import chisel3._
-import meowv64.core.CoreDef
 import Chisel.experimental.chiselName
-import chisel3.util.MuxCase
-import meowv64.instr.Instr
-import meowv64.exec.UnitSel.Retirement
+import chisel3._
+import chisel3.util.Mux1H
 import chisel3.util.log2Ceil
 import meowv64.core.CSRWriter
-import scala.collection.mutable
-import meowv64.cache.DCReader
-import meowv64.core.ExType
-import meowv64.core.ExReq
-import meowv64.instr.Decoder
-import meowv64.core.Const
+import meowv64.core.CoreDef
 import meowv64.core.PrivLevel
 import meowv64.core.Status
-import meowv64.instr.BHTPrediction
-import meowv64.cache.L1UCPort
-import meowv64.cache.DCWriter
-import chisel3.util.EnqIO
-import chisel3.util.Mux1H
-import meowv64.core.Satp
-import meowv64.paging.TLBExt
+import meowv64.exec.UnitSel.Retirement
+import meowv64.instr.Instr
+
+import scala.collection.mutable
 
 trait UnitSelIO {
   val flush: Bool

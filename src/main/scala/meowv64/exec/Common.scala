@@ -1,30 +1,21 @@
 package meowv64.exec
 
-import meowv64.core.CoreDef
+import chisel3.MultiIOModule
 import chisel3._
 import chisel3.util._
-import chisel3.MultiIOModule
-import meowv64.instr.InstrExt
-import meowv64.instr.FetchEx
-import org.scalatest.tools.RerunningState
-import meowv64.exec._
 import chisel3.util.log2Ceil
-import chisel3.experimental.ChiselEnum
+import meowv64.core.CSRWriter
+import meowv64.core.CoreDef
 import meowv64.core.ExReq
 import meowv64.core.ExType
-import meowv64.core.CSRWriter
-import chisel3.util.MuxLookup
-import meowv64.instr.Decoder.InstrType
-import meowv64.cache.DCReader
 import meowv64.core.PrivLevel
 import meowv64.core.Status
-import meowv64.cache.DCWriter
-import meowv64.cache.L1UCPort
-import meowv64.instr.Decoder
 import meowv64.instr.BHTPrediction
 import meowv64.instr.BPUResult
-import meowv64.paging.TLBExt
-import meowv64.core.Satp
+import meowv64.instr.Decoder
+import meowv64.instr.Decoder.InstrType
+import meowv64.instr.FetchEx
+import meowv64.instr.InstrExt
 
 /** Branch result
   *

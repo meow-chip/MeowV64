@@ -1,12 +1,12 @@
 package meowv64.multicore
 
 import chisel3._
-import meowv64.data._
 import meowv64.cache.L2Cache
 import meowv64.core.Core
-import meowv64.core.CoreDef
-import meowv64.interrupt.CLINT
 import meowv64.core.CoreDebug
+import meowv64.core.CoreDef
+import meowv64.data._
+import meowv64.interrupt.CLINT
 import meowv64.interrupt.PLIC
 
 class Multicore(implicit val mcdef: MulticoreDef = DefaultDef) extends Module {

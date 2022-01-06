@@ -1,15 +1,15 @@
 package meowv64.instr
 
 import chisel3._
-import meowv64.cache._
-import Decoder._
-import meowv64.core._
-import meowv64.data._
-import chisel3.util._
-import chisel3.experimental.chiselName
 import chisel3.experimental.ChiselEnum
-import meowv64.util._
+import chisel3.experimental.chiselName
+import chisel3.util._
+import meowv64.cache._
+import meowv64.core._
 import meowv64.paging._
+import meowv64.util._
+
+import Decoder._
 
 object FetchEx extends ChiselEnum {
   val none, invalAddr, pageFault = Value
