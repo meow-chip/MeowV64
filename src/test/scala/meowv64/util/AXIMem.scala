@@ -1,17 +1,16 @@
-package util
+package meowv64.util
 
-import chisel3.util.experimental.loadMemoryFromFile
 import chisel3._
 import chisel3.util._
-import data.AXI
-import firrtl.annotations.MemoryLoadFileType
+import chisel3.util.experimental.loadMemoryFromFile
+import meowv64.data.AXI
 
 class AXIMem(
-  init: Option[String],
-  depth: Int = 65536,
-  addrWidth: Int = 48,
-  dataWidth: Int = 64,
-  serialAddr: Option[BigInt] = None
+    init: Option[String],
+    depth: Int = 65536,
+    addrWidth: Int = 48,
+    dataWidth: Int = 64,
+    serialAddr: Option[BigInt] = None
 ) extends Module {
   val io = IO(new Bundle {
     val axi = Flipped(new AXI(dataWidth, addrWidth))
@@ -19,9 +18,9 @@ class AXIMem(
 
   // Async read, sync write mem
   val memory = Mem(depth, UInt(8.W))
-  if(init.isDefined)
+  if (init.isDefined)
     loadMemoryFromFile(memory, init.get)
-  
+
   // default signals
   io.axi <> DontCare
   io.axi.ARREADY := false.B
@@ -40,7 +39,7 @@ class AXIMem(
   /*
   printf("Mem state:\n================\n")
   printf(p"State: ${state}\n\n")
-  */
+   */
 
   // Assumes Burst = INCR
   switch(state) {
@@ -57,7 +56,7 @@ class AXIMem(
         io.axi.AWREADY := true.B
         state := sWRITING
 
-        if(serialAddr.isDefined) {
+        if (serialAddr.isDefined) {
           val sa: BigInt = serialAddr.get
           when(io.axi.AWADDR === sa.U) {
             // Override
@@ -69,7 +68,9 @@ class AXIMem(
 
     is(sREADING) {
       // TODO: make 3 configurable
-      val output = (0 until dataWidth/8).map(i => memory(target(addrWidth-1, 3) ## i.U(3.W)))
+      val output = (0 until dataWidth / 8).map(i =>
+        memory(target(addrWidth - 1, 3) ## i.U(3.W))
+      )
       io.axi.RID := rid
       io.axi.RDATA := VecInit(output).asUInt
       io.axi.RVALID := true.B
@@ -80,7 +81,7 @@ class AXIMem(
         printf(p"AXIMEM READING:\n")
         printf(p"  ADDR: 0x${Hexadecimal(RegNext(target))}\n")
         printf(p"  DATA: 0x${Hexadecimal(io.axi.RDATA)}\n")
-        */
+         */
 
         target := target + 8.U
         remaining := remaining - 1.U
@@ -98,18 +99,18 @@ class AXIMem(
         printf(p"  ADDR: 0x${Hexadecimal(target)}\n")
         printf(p"  DATA: 0x${Hexadecimal(io.axi.WDATA)}\n")
         printf(p"  STRB: ${Hexadecimal(io.axi.WSTRB)}\n")
-        */
+         */
 
-        for(i <- 0 until (dataWidth/8)) {
+        for (i <- 0 until (dataWidth / 8)) {
           when(io.axi.WSTRB(i)) {
             memory.write(
-              target(addrWidth-1, 3) ## i.U(3.W),
-              io.axi.WDATA(i*8+7, i*8)
+              target(addrWidth - 1, 3) ## i.U(3.W),
+              io.axi.WDATA(i * 8 + 7, i * 8)
             )
           }
         }
 
-        target := target + (dataWidth/8).U
+        target := target + (dataWidth / 8).U
 
         when(io.axi.WLAST) {
           state := sRESP

@@ -1,18 +1,13 @@
-package util
-
-import core._
-import chisel3._
+package meowv64.util
 import chisel3.iotesters.PeekPokeTester
-import exec.Exec
 import chisel3.iotesters.TesterOptionsManager
-import chisel3.iotesters.TesterOptions
-import scala.collection.mutable
-import java.nio.file.Path
-import java.nio.file.Paths
+import meowv64.multicore.Multicore
+import meowv64.multicore.MulticoreDef
+
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
-import multicore.MulticoreDef
-import multicore.Multicore
+import java.nio.file.Paths
+import scala.collection.mutable
 
 object ExecDef extends MulticoreDef {
   override val INIT_VEC = BigInt(0x80000000L)
@@ -28,13 +23,13 @@ class ExecTest(dut: Multicore, file: String) extends PeekPokeTester(dut) {
     // Load up memory
     val bytes = java.nio.file.Files.readAllBytes(Paths.get(file))
     val len = bytes.length
-    val paddedLen = ((len + 7)/ 8) * 8
+    val paddedLen = ((len + 7) / 8) * 8
     val padded = bytes ++ Array.fill(paddedLen - len)(0.asInstanceOf[Byte])
     val buffer = ByteBuffer.wrap(padded)
     buffer.order(ByteOrder.LITTLE_ENDIAN)
     val longs = buffer.asLongBuffer()
     var idx = 0
-    while(longs.hasRemaining()) {
+    while (longs.hasRemaining()) {
       mem.put(idx * 8 + 0x80000000L, longs.get())
       idx += 1
     }
@@ -45,7 +40,7 @@ class ExecTest(dut: Multicore, file: String) extends PeekPokeTester(dut) {
 
     // Test pass signal through tohost
     var finished = false
-    for(i <- (0 until bound)) {
+    for (i <- (0 until bound)) {
       // Always have interrupt 1 set at high
       poke(dut.io.eints(1), true)
 
@@ -53,7 +48,7 @@ class ExecTest(dut: Multicore, file: String) extends PeekPokeTester(dut) {
       step(1)
 
       // TODO: handles multicore
-      if(peek(dut.io.debug(0).pc) == 0x100000 || finished) {
+      if (peek(dut.io.debug(0).pc) == 0x100000 || finished) {
         println(s"> Process ended at cycle ${i}")
 
         val mcycle = peek(dut.io.debug(0).mcycle)
@@ -67,31 +62,33 @@ class ExecTest(dut: Multicore, file: String) extends PeekPokeTester(dut) {
 
       // Simulate AXI
       // AR
-      if(reading.isEmpty && peek(axi.ARVALID) == 1) {
+      if (reading.isEmpty && peek(axi.ARVALID) == 1) {
         poke(axi.ARREADY, 1)
-        reading = Some((
-          peek(axi.ARID).longValue(),
-          peek(axi.ARADDR).longValue(),
-          peek(axi.ARLEN).longValue(),
-          peek(axi.ARSIZE).longValue()
-        ))
+        reading = Some(
+          (
+            peek(axi.ARID).longValue(),
+            peek(axi.ARADDR).longValue(),
+            peek(axi.ARLEN).longValue(),
+            peek(axi.ARSIZE).longValue()
+          )
+        )
         // println(s"Read: 0x${reading.get._2.toHexString}")
       } else {
         poke(axi.ARREADY, 0)
       }
 
       // R
-      if(reading.isDefined) {
+      if (reading.isDefined) {
         val (id, ptr, left, size) = reading.get
         poke(axi.RVALID, 1)
         poke(axi.RID, id)
-        val rdata = if(ptr == 0x10001014) { // LSR
+        val rdata = if (ptr == 0x10001014) { // LSR
           1L << (32 + 5)
         } else {
           mem.get((ptr >> 3) << 3).getOrElse(0L)
         }
-        val mask = if(size == 3) {
-          0xFFFFFFFFFFFFFFFFL
+        val mask = if (size == 3) {
+          0xffffffffffffffffL
         } else {
           (1L << ((1L << size) * 8)) - 1L
         }
@@ -103,8 +100,8 @@ class ExecTest(dut: Multicore, file: String) extends PeekPokeTester(dut) {
         poke(axi.RLAST, left == 0)
         // println(s"Returning: 0x${(shifted & mask).toHexString}")
 
-        if(peek(axi.RREADY) == 1) {
-          if(left == 0) reading = None
+        if (peek(axi.RREADY) == 1) {
+          if (left == 0) reading = None
           else reading = Some(id, ptr + (1 << size), left - 1, size)
         }
       } else {
@@ -112,13 +109,15 @@ class ExecTest(dut: Multicore, file: String) extends PeekPokeTester(dut) {
       }
 
       // AW
-      if(writing.isEmpty && peek(axi.AWVALID) == 1) {
+      if (writing.isEmpty && peek(axi.AWVALID) == 1) {
         poke(axi.AWREADY, 1)
-        writing = Some((
-          peek(axi.AWADDR).longValue(),
-          peek(axi.AWLEN).longValue(),
-          peek(axi.AWSIZE).longValue()
-        ))
+        writing = Some(
+          (
+            peek(axi.AWADDR).longValue(),
+            peek(axi.AWLEN).longValue(),
+            peek(axi.AWSIZE).longValue()
+          )
+        )
         writingFinished = false
         // println(s"Write: 0x${writing.get._1.toHexString}")
       } else {
@@ -126,13 +125,13 @@ class ExecTest(dut: Multicore, file: String) extends PeekPokeTester(dut) {
       }
 
       // W
-      if(writing.isDefined && !writingFinished) {
+      if (writing.isDefined && !writingFinished) {
         val (ptr, left, size) = writing.get
         poke(axi.WREADY, 1)
         val wdata = peek(axi.WDATA)
         val wstrb = peek(axi.WSTRB)
 
-        if(peek(axi.WVALID) == 1) {
+        if (peek(axi.WVALID) == 1) {
           val muxed = ExecTest.longMux(
             mem.get((ptr >> 3) << 3).getOrElse(0),
             wdata.longValue(),
@@ -145,20 +144,20 @@ class ExecTest(dut: Multicore, file: String) extends PeekPokeTester(dut) {
           writing match {
             case Some((addr, _, _)) if addr == 0x10001000L => {
               // Print to serial
-              print((wdata & 0xFF).toChar)
+              print((wdata & 0xff).toChar)
             }
             case Some((addr, _, _)) if addr == 0x20000000L => {
               // tohost in ISA testsuite
-              val data = (wdata & 0xFFFFFFFF).toLong
-              if(wdata == ((data & 0xFF) | BigInt("0101000000000000", 16))) {
+              val data = (wdata & 0xffffffff).toLong
+              if (wdata == ((data & 0xff) | BigInt("0101000000000000", 16))) {
                 // Is simple print
-                print((data & 0xFF).toChar)
-              } else if(data == 1) {
+                print((data & 0xff).toChar)
+              } else if (data == 1) {
                 println("ISA testsuite pass.")
                 finished = true
-              } else if((data & 1) == 1) {
+              } else if ((data & 1) == 1) {
                 val c = data >> 1
-                if(!failed.contains(c)) {
+                if (!failed.contains(c)) {
                   println(s"ISA testsuit failed case ${c}")
                   failed.add(c)
                 }
@@ -170,7 +169,7 @@ class ExecTest(dut: Multicore, file: String) extends PeekPokeTester(dut) {
           }
 
           writing = Some(ptr + (1 << size), left - 1, size)
-          if(peek(axi.WLAST) == 1) {
+          if (peek(axi.WLAST) == 1) {
             assume(left == 0)
             writingFinished = true
           }
@@ -179,13 +178,13 @@ class ExecTest(dut: Multicore, file: String) extends PeekPokeTester(dut) {
         poke(axi.WREADY, 0)
       }
 
-      if(writingFinished) {
+      if (writingFinished) {
         assume(writing.isDefined)
         poke(axi.BVALID, 1)
         poke(axi.BRESP, 0)
         poke(axi.BID, 0)
 
-        if(peek(axi.BREADY) == 1) {
+        if (peek(axi.BREADY) == 1) {
           writing = None
           writingFinished = false
         }
@@ -205,7 +204,7 @@ object ExecTest {
 
   def runFile(file: String, args: Option[Array[String]] = None): Boolean = {
     println(s"------------\nRunning file $file")
-    if(elaborated) {
+    if (elaborated) {
       return chisel3.iotesters.Driver.run(
         () => new Multicore()(ExecDef),
         "./tests/VMulticore"
@@ -229,30 +228,38 @@ object ExecTest {
     val parsed = args match {
       case None => manager
       case Some(args) => {
-        if(!manager.parse(args)) return false
+        if (!manager.parse(args)) return false
         manager
       }
     }
 
     elaborated = true
 
-    chisel3.iotesters.Driver.execute(() => new Multicore()(ExecDef), manager) { new ExecTest(_, file) }
+    chisel3.iotesters.Driver.execute(() => new Multicore()(ExecDef), manager) {
+      new ExecTest(_, file)
+    }
   }
 
-  def longMux(base: Long, input: Long, be: Byte, offset: Long, size: Long): Long = {
+  def longMux(
+      base: Long,
+      input: Long,
+      be: Byte,
+      offset: Long,
+      size: Long
+  ): Long = {
     var ret = 0L
     // println(s"Muxing: 0x${base.toHexString} <- 0x${input.toHexString} & 0x${be}, offset $offset, size $size")
-    for(i <- (0 until 8)) {
-      val sel = if(i < offset) {
-        (base >>> (i*8)) & 0xFF
-      } else if(i >= offset + size) {
-        (base >>> (i*8)) & 0xFF
-      } else if(((be >>> i) & 1) == 1) {
-        (input >>> (i*8)) & 0xFF
+    for (i <- (0 until 8)) {
+      val sel = if (i < offset) {
+        (base >>> (i * 8)) & 0xff
+      } else if (i >= offset + size) {
+        (base >>> (i * 8)) & 0xff
+      } else if (((be >>> i) & 1) == 1) {
+        (input >>> (i * 8)) & 0xff
       } else {
-        (base >>> (i*8)) & 0xFF
+        (base >>> (i * 8)) & 0xff
       }
-      ret = (sel << (i*8)) | ret
+      ret = (sel << (i * 8)) | ret
     }
 
     ret

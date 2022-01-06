@@ -47,10 +47,18 @@ object meowv64 extends SbtModule with ScalafmtModule with ScalafixModule {
     ivy"com.github.liancheng::organize-imports:0.5.0"
   )
 
-  object test extends Tests with TestModule.ScalaTest {
+  object test
+      extends Tests
+      with TestModule.ScalaTest
+      with ScalafmtModule
+      with ScalafixModule {
     override def ivyDeps = super.ivyDeps() ++ Agg(
       getVersion("scalatest"),
       getVersion("chisel-iotesters")
+    )
+
+    override def scalafixIvyDeps = Agg(
+      ivy"com.github.liancheng::organize-imports:0.5.0"
     )
   }
 }

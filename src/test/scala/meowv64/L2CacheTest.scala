@@ -1,4 +1,3 @@
-
 /*
 import core._
 import util._
@@ -203,4 +202,4 @@ object L2CacheTestMain extends App {
   println(s"Running with seed ${seed} for ${length} cycles...")
   L2CacheTest.run(seed, length, if(args.length > 0) { Some(args) } else { None })
 }
-*/
+ */

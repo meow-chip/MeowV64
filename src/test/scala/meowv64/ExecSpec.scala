@@ -1,7 +1,5 @@
-import core._
-import util._
-import chisel3._
-import chisel3.iotesters.PeekPokeTester
+package meowv64
+import meowv64.util._
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
@@ -31,7 +29,9 @@ class ExecSpec extends AnyFlatSpec with Matchers {
   behavior of "ExecSpec"
 
   for ((desc, file) <- ExecSpec.cases) {
-    it should s"run $desc successfully" in { ExecTest.runFile(file) should be(true) }
+    it should s"run $desc successfully" in {
+      ExecTest.runFile(file) should be(true)
+    }
   }
 }
 
