@@ -17,6 +17,9 @@ jobs:
       uses: actions/setup-java@v1
       with:
         java-version: 1.8
+    - name: Setup mill
+      run: |
+        curl -L https://github.com/com-lihaoyi/mill/releases/download/0.10.0-M5/0.10.0-M5 > /usr/local/bin/mill && chmod +x /usr/local/bin/mill
     - name: Checkout submodules
       run: |
         git submodule sync --recursive
@@ -38,9 +41,9 @@ jobs:
         make PREFIX=riscv64-unknown-elf-
         cd ../..
     - name: Test
-      run: sbt test
+      run: mill meowv64.test
     - name: Elaborate
-      run: sbt run
+      run: mill meowv64.runMain meowv64.Main
     - uses: actions/upload-artifact@v1
       with:
         name: RTL
