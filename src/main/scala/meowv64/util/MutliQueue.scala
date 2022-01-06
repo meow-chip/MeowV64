@@ -14,7 +14,7 @@ class MultiQueue[T <: Data](
     val DEPTH: Int,
     val INPUT: Int,
     val OUTPUT: Int
-) extends MultiIOModule {
+) extends Module {
   val reader = IO(Flipped(new MultiQueueIO(gen, OUTPUT)))
   val writer = IO(new MultiQueueIO(gen, INPUT))
   val flush = IO(Input(Bool()))
@@ -50,7 +50,7 @@ class MultiQueue[T <: Data](
   for (i <- (0 until INPUT)) {
     when(writer.cnt > i.U) {
       enqs(wptr + i.U).enq(writer.view(i))
-      assert(enqs(wptr + i.U).fire())
+      assert(enqs(wptr + i.U).fire)
     }
   }
 
@@ -58,7 +58,7 @@ class MultiQueue[T <: Data](
     reader.view(i) := deqs(rptr + i.U).bits
     when(reader.accept > i.U) {
       deqs(rptr + i.U).deq()
-      assert(deqs(rptr + i.U).fire())
+      assert(deqs(rptr + i.U).fire)
     }
   }
 

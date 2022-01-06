@@ -1,6 +1,6 @@
 package meowv64.cache
 
-import chisel3.MultiIOModule
+import chisel3.Module
 import chisel3._
 import chisel3.experimental._
 import chisel3.util._
@@ -115,7 +115,7 @@ object WBEntry {
   }
 }
 
-class L2Cache(val opts: L2Opts) extends MultiIOModule {
+class L2Cache(val opts: L2Opts) extends Module {
   val OFFSET_LENGTH = log2Ceil(opts.LINE_WIDTH)
   val INDEX_OFFSET_LENGTH = log2Ceil(opts.SIZE / opts.ASSOC)
   val INDEX_LENGTH = INDEX_OFFSET_LENGTH - OFFSET_LENGTH
@@ -1142,7 +1142,7 @@ class L2Cache(val opts: L2Opts) extends MultiIOModule {
             }
           }
 
-          when(VecInit(mmio.map((m) => m.req.fire())).asUInt.orR) {
+          when(VecInit(mmio.map((m) => m.req.fire)).asUInt.orR) {
             ucSendStage := UCSendStage.mmioResp
           }
         }

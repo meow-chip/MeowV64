@@ -52,7 +52,7 @@ object InstrExt {
   }
 }
 
-class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
+class InstrFetch(implicit val coredef: CoreDef) extends Module {
   val toCtrl = IO(new Bundle {
     val pc = Input(UInt(coredef.XLEN.W))
 

@@ -103,7 +103,7 @@ class DelayedMem(implicit val coredef: CoreDef) extends Bundle {
   }
 }
 
-class LSU(implicit val coredef: CoreDef) extends MultiIOModule with UnitSelIO {
+class LSU(implicit val coredef: CoreDef) extends Module with UnitSelIO {
   val flush = IO(Input(Bool()))
   val rs = IO(Flipped(new ResStationExgress))
   val retire = IO(Output(new Retirement))
@@ -162,7 +162,7 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with UnitSelIO {
   val pendings = Module(
     new FlushableQueue(new DelayedMem, coredef.INFLIGHT_INSTR_LIMIT)
   )
-  hasPending := pendings.io.count > 0.U || pendings.io.enq.fire()
+  hasPending := pendings.io.count > 0.U || pendings.io.enq.fire
 
   val l2stall = Wire(Bool())
   val l1pass = Wire(Bool())
@@ -307,7 +307,7 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with UnitSelIO {
     pipeInstr := next
     pipeAddr := addr
     pipeRawAddr := rawAddr
-    pipeDCRead := toMem.reader.req.fire()
+    pipeDCRead := toMem.reader.req.fire
     pipeInvalAddr := invalAddr
     pipeMisaligned := misaligned
     pipeRead := read
@@ -372,7 +372,7 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with UnitSelIO {
     when(pipeInstr.instr.instr.funct3 === Decoder.MEM_MISC_FUNC("FENCE.I")) {
       retire.info.branch.ifence(pipeInstr.instr.addr + 4.U)
     }.otherwise {
-      retire.info.branch.nofire()
+      retire.info.branch.nofire
     }
   }.elsewhen(pipeInvalAddr) {
     retire.info.wb := pipeRawAddr
@@ -402,7 +402,7 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with UnitSelIO {
       )
     )
   }.elsewhen(pipeRead && !pipeUncached) {
-    retire.info.branch.nofire()
+    retire.info.branch.nofire
     retire.info.wb := result
     when(pipeAMO) { // Must be LR
       mem.op := DelayedMemOp.s
@@ -411,7 +411,7 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with UnitSelIO {
       mem.data := result
     }
   }.elsewhen(pipeRead) {
-    retire.info.branch.nofire()
+    retire.info.branch.nofire
 
     mem.op := DelayedMemOp.ul
     mem.addr := pipeAddr
@@ -451,7 +451,7 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with UnitSelIO {
     retire.info.wb := DontCare
     mem.data := DontCare
   }.elsewhen(pipeWrite) {
-    retire.info.branch.nofire()
+    retire.info.branch.nofire
 
     mem.len := DontCare
     switch(pipeInstr.instr.instr.funct3) {
@@ -563,7 +563,7 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with UnitSelIO {
   )
   release.valid := finished
 
-  when(release.fire()) {
+  when(release.fire) {
     pendings.io.deq.deq()
   } otherwise {
     pendings.io.deq.nodeq()

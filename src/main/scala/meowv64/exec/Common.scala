@@ -1,6 +1,6 @@
 package meowv64.exec
 
-import chisel3.MultiIOModule
+import chisel3.Module
 import chisel3._
 import chisel3.util._
 import chisel3.util.log2Ceil
@@ -41,7 +41,7 @@ class BranchResult(implicit val coredef: CoreDef) extends Bundle {
   val ex = ExReq()
   val extype = ExType()
 
-  def nofire() = {
+  def nofire = {
     branch := false.B
     target := DontCare
     irst := false.B
@@ -107,7 +107,7 @@ class BranchResult(implicit val coredef: CoreDef) extends Bundle {
 object BranchResult {
   def empty(implicit coredef: CoreDef): BranchResult = {
     val ret = Wire(new BranchResult)
-    ret.nofire()
+    ret.nofire
     ret
   }
 }
@@ -132,12 +132,12 @@ class RetireInfo(implicit val coredef: CoreDef) extends Bundle {
       result := b
     }.elsewhen(op === Decoder.Op("JAL").ident) {
       // assert(instr.forcePred)
-      result.nofire()
+      result.nofire
     }.elsewhen(op === Decoder.Op("JALR").ident) {
       result := b
     }.otherwise {
       when(b.branch === taken) {
-        result.nofire()
+        result.nofire
       }.elsewhen(b.branch) {
         result := b
       }.otherwise {
@@ -153,7 +153,7 @@ object RetireInfo {
   def vacant(implicit coredef: CoreDef): RetireInfo = {
     val info = Wire(new RetireInfo)
 
-    info.branch.nofire()
+    info.branch.nofire
     info.wb := DontCare
     info.hasMem := false.B
 
@@ -315,7 +315,7 @@ abstract class ExecUnit[T <: Data](
     val ExtData: T
 )(implicit
     val coredef: CoreDef
-) extends MultiIOModule
+) extends Module
     with ExecUnitInt {
   val io = IO(new ExecUnitPort)
 

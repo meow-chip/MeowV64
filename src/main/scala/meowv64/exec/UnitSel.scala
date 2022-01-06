@@ -34,7 +34,7 @@ class UnitSel(
     bypassIdx: Option[Int] = None,
     hasPipe: Boolean = true
 )(implicit val coredef: CoreDef)
-    extends MultiIOModule
+    extends Module
     with UnitSelIO {
   val units = gen
 

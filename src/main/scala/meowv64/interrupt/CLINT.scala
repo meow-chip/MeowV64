@@ -30,7 +30,7 @@ class LocalInt extends Bundle {
   val mtip = Bool()
 }
 
-class CLINT(implicit mcdef: MulticoreDef) extends MultiIOModule {
+class CLINT(implicit mcdef: MulticoreDef) extends Module {
   val toL2 = IO(new MMIOAccess(CLINTMMIODef))
   val ints = IO(Output(Vec(mcdef.CORE_COUNT, new LocalInt)))
   val time = IO(Output(UInt(64.W)))
@@ -87,7 +87,7 @@ class CLINT(implicit mcdef: MulticoreDef) extends MultiIOModule {
         seg := Seg.mtime
       }
 
-      when(toL2.req.fire()) {
+      when(toL2.req.fire) {
         state := State.commit
       }
     }

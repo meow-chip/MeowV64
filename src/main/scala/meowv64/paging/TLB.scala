@@ -13,7 +13,7 @@ object TLBLookupMode extends ChiselEnum {
   val U, S, both = Value
 }
 
-class TLB(implicit val coredef: CoreDef) extends MultiIOModule {
+class TLB(implicit val coredef: CoreDef) extends Module {
   val ptw = IO(new TLBExt)
 
   val satp = IO(Input(new Satp))
@@ -90,7 +90,7 @@ class TLB(implicit val coredef: CoreDef) extends MultiIOModule {
 
       ptw.req.enq(refilling)
 
-      when(ptw.req.fire()) {
+      when(ptw.req.fire) {
         state := TLBState.resp
       }
     }

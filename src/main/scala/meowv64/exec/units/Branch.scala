@@ -143,7 +143,7 @@ class Branch(override implicit val coredef: CoreDef)
       when(pipe.instr.instr.funct7 === Decoder.PRIV_FUNCT7("SFENCE.VMA")) {
         info.branch.sfence(pipe.instr.addr +% 4.U)
       }.otherwise {
-        info.branch.nofire()
+        info.branch.nofire
       }
     }.elsewhen(pipe.instr.instr.op === Decoder.Op("BRANCH").ident) {
       // info.regWaddr := 0.U
@@ -152,7 +152,7 @@ class Branch(override implicit val coredef: CoreDef)
         target := pipe.instr.instr.imm + pipe.instr.addr.asSInt
         info.branch.fire(target.asUInt)
       }.otherwise {
-        info.branch.nofire()
+        info.branch.nofire
       }
     }.otherwise { // JAL/JALR, JAL is now in Bypass, so this must be JALR
       val linked = Wire(UInt(coredef.XLEN.W))
@@ -168,7 +168,7 @@ class Branch(override implicit val coredef: CoreDef)
         (((pipe.rs1val.asSInt + pipe.instr.instr.imm) >> 1) << 1).asUInt
 
       when(pipe.instr.taken && dest === pipe.instr.predTarget) {
-        info.branch.nofire()
+        info.branch.nofire
       }.otherwise {
         info.branch.fire(dest)
       }

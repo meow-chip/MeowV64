@@ -4,7 +4,7 @@ import chisel3._
 import chisel3.util._
 import meowv64.core.CoreDef
 
-class RAS(implicit val coredef: CoreDef) extends MultiIOModule {
+class RAS(implicit val coredef: CoreDef) extends Module {
   val toIF = IO(new Bundle {
     val push = Flipped(ValidIO(UInt(coredef.XLEN.W)))
     val pop = DecoupledIO(UInt(coredef.XLEN.W))
@@ -28,8 +28,8 @@ class RAS(implicit val coredef: CoreDef) extends MultiIOModule {
     when(toIF.push.valid) {
       val nptr = ptr +% 1.U
 
-      when(nptr =/= 0.U || !empty || toIF.pop.fire()) {
-        when(!toIF.pop.fire()) {
+      when(nptr =/= 0.U || !empty || toIF.pop.fire) {
+        when(!toIF.pop.fire) {
           ptr := nptr
         }
         store(ptr) := toIF.push.bits
@@ -44,7 +44,7 @@ class RAS(implicit val coredef: CoreDef) extends MultiIOModule {
           }
         }
       }
-    }.elsewhen(toIF.pop.fire()) {
+    }.elsewhen(toIF.pop.fire) {
       ptr := ptr -% 1.U
     }
   }.otherwise {

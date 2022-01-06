@@ -49,7 +49,7 @@ object PLICAddrSpace extends ChiselEnum {
   }
 }
 
-class PLIC(val pdef: PLICDef) extends MultiIOModule {
+class PLIC(val pdef: PLICDef) extends Module {
   val source = IO(
     Input(UInt((pdef.MAX_SOURCE + 1).W))
   ) // Interrupt source, don't use 0
@@ -124,7 +124,7 @@ class PLIC(val pdef: PLICDef) extends MultiIOModule {
 
   // MMIO interface
   val req = toL2.req.deq()
-  toL2.resp.valid := toL2.req.fire()
+  toL2.resp.valid := toL2.req.fire
   toL2.resp.bits := DontCare
   val offset =
     (req.addr -% PLIC.PLIC_REGION_START.U)(PLIC.PLIC_ADDR_WIDTH - 1, 0)
@@ -132,7 +132,7 @@ class PLIC(val pdef: PLICDef) extends MultiIOModule {
     is(PLICAddrSpace.priority) {
       toL2.resp.bits := priorities(offset >> 2)
 
-      when(toL2.req.fire() && req.op === MMIOReqOp.write) {
+      when(toL2.req.fire && req.op === MMIOReqOp.write) {
         priorities(offset >> 2) := req.wdata
       }
     }
@@ -146,7 +146,7 @@ class PLIC(val pdef: PLICDef) extends MultiIOModule {
       val ctx = inner >> log2Ceil(1024 / 8)
       toL2.resp.bits := enables(ctx)(inner >> 2)
 
-      when(toL2.req.fire() && req.op === MMIOReqOp.write) {
+      when(toL2.req.fire && req.op === MMIOReqOp.write) {
         enables(ctx)(inner >> 2) := req.wdata
       }
     }
@@ -159,14 +159,14 @@ class PLIC(val pdef: PLICDef) extends MultiIOModule {
         is(0.U) { // Priority threshold
           toL2.resp.bits := thresholds(ctx)
 
-          when(toL2.req.fire() && req.op === MMIOReqOp.write) {
+          when(toL2.req.fire && req.op === MMIOReqOp.write) {
             thresholds(ctx) := req.wdata
           }
         }
 
         is(1.U) { // Claim/complete
           toL2.resp.bits := claiming(ctx)
-          when(toL2.req.fire()) {
+          when(toL2.req.fire) {
             when(req.op === MMIOReqOp.read) {
               claimed(ctx)(claiming(ctx)) := true.B
             }.otherwise {

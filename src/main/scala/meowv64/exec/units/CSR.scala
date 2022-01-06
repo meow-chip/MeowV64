@@ -14,7 +14,7 @@ class CSRExt(implicit val coredef: CoreDef) extends Bundle {
 }
 
 class CSR(implicit val coredef: CoreDef)
-    extends MultiIOModule
+    extends Module
     with ExecUnitInt
     with WithCSRWriter
     with WithPrivPort
@@ -121,7 +121,7 @@ class CSR(implicit val coredef: CoreDef)
     info.branch.fire(instr.addr + 4.U)
     info.wb := pipeRdata
   } otherwise {
-    info.branch.nofire()
+    info.branch.nofire
     info.wb := pipeRdata
   }
 

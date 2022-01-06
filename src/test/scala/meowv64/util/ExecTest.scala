@@ -54,8 +54,8 @@ class ExecTest(dut: Multicore, file: String) {
       if (dut.io.debug(0).pc.peek.litValue == 0x100000 || finished) {
         println(s"> Process ended at cycle ${i}")
 
-        val mcycle = dut.io.debug(0).mcycle.peek.litValue()
-        val minstret = dut.io.debug(0).minstret.peek.litValue()
+        val mcycle = dut.io.debug(0).mcycle.peek.litValue
+        val minstret = dut.io.debug(0).minstret.peek.litValue
 
         println(s"> mcycle: ${mcycle}")
         println(s"> minstret: ${minstret}")
@@ -69,10 +69,10 @@ class ExecTest(dut: Multicore, file: String) {
         axi.ARREADY.poke(true.B)
         reading = Some(
           (
-            axi.ARID.peek.litValue().toLong,
-            axi.ARADDR.peek.litValue().toLong,
-            axi.ARLEN.peek.litValue().toLong,
-            axi.ARSIZE.peek.litValue().toLong
+            axi.ARID.peek.litValue.toLong,
+            axi.ARADDR.peek.litValue.toLong,
+            axi.ARLEN.peek.litValue.toLong,
+            axi.ARSIZE.peek.litValue.toLong
           )
         )
         // println(s"Read: 0x${reading.get._2.toHexString}")
@@ -105,7 +105,7 @@ class ExecTest(dut: Multicore, file: String) {
 
         if (axi.RREADY.peek == 1) {
           if (left == 0) reading = None
-          else reading = Some(id, ptr + (1 << size), left - 1, size)
+          else reading = Some((id, ptr + (1 << size), left - 1, size))
         }
       } else {
         axi.RVALID.poke(false.B)
@@ -116,9 +116,9 @@ class ExecTest(dut: Multicore, file: String) {
         axi.AWREADY.poke(true.B)
         writing = Some(
           (
-            axi.AWADDR.peek.litValue().toLong,
-            axi.AWLEN.peek.litValue().toLong,
-            axi.AWSIZE.peek.litValue().toLong
+            axi.AWADDR.peek.litValue.toLong,
+            axi.AWLEN.peek.litValue.toLong,
+            axi.AWSIZE.peek.litValue.toLong
           )
         )
         writingFinished = false
@@ -137,8 +137,8 @@ class ExecTest(dut: Multicore, file: String) {
         if (axi.WVALID.peek == 1) {
           val muxed = ExecTest.longMux(
             mem.get((ptr >> 3) << 3).getOrElse(0),
-            wdata.litValue().toLong,
-            wstrb.litValue().toByte,
+            wdata.litValue.toLong,
+            wstrb.litValue.toByte,
             ptr & 7,
             1L << size
           )
@@ -171,7 +171,7 @@ class ExecTest(dut: Multicore, file: String) {
             case _ => {}
           }
 
-          writing = Some(ptr + (1 << size), left - 1, size)
+          writing = Some((ptr + (1 << size), left - 1, size))
           if (axi.WLAST.peek == 1) {
             assume(left == 0)
             writingFinished = true

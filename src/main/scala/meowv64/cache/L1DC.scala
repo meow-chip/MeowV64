@@ -133,7 +133,7 @@ object DLine {
   }
 }
 
-class L1DC(val opts: L1DOpts)(implicit coredef: CoreDef) extends MultiIOModule {
+class L1DC(val opts: L1DOpts)(implicit coredef: CoreDef) extends Module {
   // Constants and helpers
   val IGNORED_WIDTH = log2Ceil(opts.TRANSFER_SIZE / 8)
   val OFFSET_WIDTH = log2Ceil(opts.LINE_WIDTH)
@@ -192,7 +192,7 @@ class L1DC(val opts: L1DOpts)(implicit coredef: CoreDef) extends MultiIOModule {
   rArbiter.io.in(1) <> mr.req
 
   val current = Reg(UInt())
-  when(rArbiter.io.out.fire()) {
+  when(rArbiter.io.out.fire) {
     current := rArbiter.io.chosen
   }
 

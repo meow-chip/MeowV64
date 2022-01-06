@@ -14,7 +14,7 @@ object PTWState extends ChiselEnum {
   val idle, reading, read = Value
 }
 
-class PTW(implicit coredef: CoreDef) extends MultiIOModule {
+class PTW(implicit coredef: CoreDef) extends Module {
   val itlb = IO(Flipped(new TLBExt))
   val dtlb = IO(Flipped(new TLBExt))
 
@@ -63,7 +63,7 @@ class PTW(implicit coredef: CoreDef) extends MultiIOModule {
 
   tlbSlot.io.deq.nodeq()
 
-  when(tlbSlot.io.deq.fire()) {
+  when(tlbSlot.io.deq.fire) {
     itlb.resp.valid := tlbSlot.io.deq.bits.src === 0.U
     dtlb.resp.valid := tlbSlot.io.deq.bits.src === 1.U
   }
@@ -95,7 +95,7 @@ class PTW(implicit coredef: CoreDef) extends MultiIOModule {
         dc.req.enq(
           DCRead.load(satp.ppn ## initSeg ## 0.U(3.W))
         ) // PTE are aligned in 64-bits
-        when(dc.req.fire()) {
+        when(dc.req.fire) {
           state := PTWState.reading
         }
       }
@@ -119,7 +119,7 @@ class PTW(implicit coredef: CoreDef) extends MultiIOModule {
           } otherwise {
             // Continue searching
             dc.req.enq(DCRead.load(pte.ppn ## segs(level + 1.U) ## 0.U(3.W)))
-            when(dc.req.fire()) { // Wait for request to go in
+            when(dc.req.fire) { // Wait for request to go in
               level := level + 1.U
               dcSlot.io.deq.deq()
             }

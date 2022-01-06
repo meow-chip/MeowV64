@@ -29,7 +29,7 @@ import meowv64.util._
   *     affects our rob buffer length, as well as renamed reg tags' length
   *   - Issue FIFO is not depleted
   */
-class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
+class Exec(implicit val coredef: CoreDef) extends Module {
   val toCtrl = IO(new Bundle {
     val ctrl = StageCtrl.stage()
     val retCnt = Output(UInt(log2Ceil(coredef.RETIRE_NUM + 1).W))
@@ -431,7 +431,7 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
 
   // Default: no branch if nothing is retired
   // nepc is set to the next retiring instruction for interrupts
-  toCtrl.branch.nofire()
+  toCtrl.branch.nofire
   toCtrl.tval := DontCare
   toCtrl.nepc := inflights.reader.view(0).addr
 
@@ -457,9 +457,9 @@ class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
       rwp.data := DontCare
     }
 
-    releaseMem.ready := !RegNext(releaseMem.fire())
+    releaseMem.ready := !RegNext(releaseMem.fire)
     val memResult = RegNext(releaseMem.bits)
-    val memFired = RegNext(releaseMem.fire())
+    val memFired = RegNext(releaseMem.fire)
 
     // For BPU mispredict on previous instructions
     toCtrl.branch := BranchResult.empty

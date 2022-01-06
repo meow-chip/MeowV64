@@ -40,7 +40,7 @@ object ILine {
 }
 
 // TODO: Change to xpm_tdpmem
-class L1IC(opts: L1Opts) extends MultiIOModule {
+class L1IC(opts: L1Opts) extends Module {
   val toCPU = IO(new ICPort(opts))
   val toL2 = IO(new L1ICPort(opts))
 

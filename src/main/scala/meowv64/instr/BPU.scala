@@ -83,7 +83,7 @@ class BPUResult(implicit val coredef: CoreDef) extends Bundle {
   def update(taken: Bool, tag: UInt) = Mux(taken, this.up(tag), this.down(tag))
 }
 
-class BPU(implicit val coredef: CoreDef) extends MultiIOModule {
+class BPU(implicit val coredef: CoreDef) extends Module {
   val toFetch = IO(new Bundle {
     val pc =
       Input(UInt(coredef.VADDR_WIDTH.W)) // the address (pc) of the query branch

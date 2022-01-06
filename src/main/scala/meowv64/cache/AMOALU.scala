@@ -4,7 +4,7 @@ import chisel3._
 import chisel3.util._
 import chisel3.util.log2Ceil
 
-class AMOALU(val opts: L1DOpts) extends MultiIOModule {
+class AMOALU(val opts: L1DOpts) extends Module {
   val io = IO(new Bundle {
     val op = Input(DCWriteOp()) // write is treated as idle
     val rdata = Input(UInt(opts.XLEN.W))

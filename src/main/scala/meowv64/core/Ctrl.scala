@@ -43,7 +43,7 @@ object PrivLevel extends ChiselEnum {
   val M = Value(3.U)
 }
 
-class Ctrl(implicit coredef: CoreDef) extends MultiIOModule {
+class Ctrl(implicit coredef: CoreDef) extends Module {
   val toIF = IO(new Bundle {
     val ctrl = StageCtrl.ctrl()
 

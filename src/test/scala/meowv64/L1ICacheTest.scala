@@ -101,7 +101,7 @@ class L1ICacheTest(dut: L1IC, seed: Long, len: Int) {
         if (heldCycles == Some(0)) {
           dut.toL2.stall.poke(false.B)
 
-          val addr = dut.toL2.addr.peek.litValue().toInt
+          val addr = dut.toL2.addr.peek.litValue.toInt
           var data = BigInt(0)
           for (i <- (0 until 4)) {
             val added = addr + i * 4;
@@ -132,7 +132,7 @@ object L1ICacheTest {
 
 object L1ICacheSpec {
   val DEFAULT_SEED = 0L
-  val DEFAULT_LENGTH = 100000
+  val DEFAULT_LENGTH = 1000
 }
 
 class L1ICacheSpec

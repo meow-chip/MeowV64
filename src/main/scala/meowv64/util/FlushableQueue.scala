@@ -40,8 +40,8 @@ class FlushableQueue[T <: Data](
   private val ptr_match = enq_ptr.value === deq_ptr.value
   private val empty = ptr_match && !maybe_full
   private val full = ptr_match && maybe_full
-  private val do_enq = WireDefault(io.enq.fire())
-  private val do_deq = WireDefault(io.deq.fire())
+  private val do_enq = WireDefault(io.enq.fire)
+  private val do_deq = WireDefault(io.deq.fire)
 
   when(do_enq) {
     ram(enq_ptr.value) := io.enq.bits
@@ -117,8 +117,8 @@ class FlushableSlot[T <: Data](
 
   private val slot = Reg(genType)
   private val occupied = RegInit(false.B)
-  private val do_enq = WireDefault(io.enq.fire())
-  private val do_deq = WireDefault(io.deq.fire())
+  private val do_enq = WireDefault(io.enq.fire)
+  private val do_deq = WireDefault(io.deq.fire)
 
   when(do_enq) {
     slot := io.enq.bits

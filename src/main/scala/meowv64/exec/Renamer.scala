@@ -13,7 +13,7 @@ class Release(implicit val coredef: CoreDef) extends Bundle {
   val value = Output(UInt(coredef.XLEN.W))
 }
 
-class Renamer(implicit coredef: CoreDef) extends MultiIOModule {
+class Renamer(implicit coredef: CoreDef) extends Module {
   val REG_NUM = 32 // TODO: do we need to make this configurable?
 
   val cdb = IO(Input(new CDB))

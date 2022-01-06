@@ -41,7 +41,7 @@ trait ResStation {
   * ready instr may start executing
   */
 class OoOResStation(val idx: Int)(implicit val coredef: CoreDef)
-    extends MultiIOModule
+    extends Module
     with ResStation {
 
   val DEPTH = coredef.RESERVATION_STATION_DEPTHS(idx)
@@ -82,7 +82,7 @@ class OoOResStation(val idx: Int)(implicit val coredef: CoreDef)
 
   egSlot.io.enq.bits := maskedStore(egIdx)
   egSlot.io.enq.valid := egMask.asUInt().orR
-  when(egSlot.io.enq.fire()) {
+  when(egSlot.io.enq.fire) {
     occupied(egIdx) := false.B
   }
 
@@ -136,7 +136,7 @@ class OoOResStation(val idx: Int)(implicit val coredef: CoreDef)
   assert(
     !(
       ingress.push &&
-        egSlot.io.enq.fire() &&
+        egSlot.io.enq.fire &&
         ingIdx === egIdx
     )
   )
@@ -165,7 +165,7 @@ class OoOResStation(val idx: Int)(implicit val coredef: CoreDef)
   * for other cores
   */
 class LSBuf(val idx: Int)(implicit val coredef: CoreDef)
-    extends MultiIOModule
+    extends Module
     with ResStation {
 
   val DEPTH = coredef.RESERVATION_STATION_DEPTHS(idx)
