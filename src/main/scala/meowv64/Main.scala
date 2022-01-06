@@ -2,5 +2,5 @@ package meowv64
 
 import meowv64.multicore.Multicore
 object Main extends App {
-  chisel3.Driver.execute(args, () => new Multicore)
+  (new chisel3.stage.ChiselStage()).emitVerilog(new Multicore, args)
 }

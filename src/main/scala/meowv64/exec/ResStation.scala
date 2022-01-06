@@ -147,7 +147,7 @@ class OoOResStation(val idx: Int)(implicit val coredef: CoreDef)
     )
   )
 
-  egSlot.io.flush := ctrl.flush
+  egSlot.io.flush.get := ctrl.flush
 
   when(ctrl.flush) {
     // We don't need to reset store

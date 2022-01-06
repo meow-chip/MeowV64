@@ -1,6 +1,5 @@
 package meowv64.exec
 
-import Chisel.experimental.chiselName
 import chisel3._
 import chisel3.util.log2Ceil
 import meowv64.core.CoreDef
@@ -14,7 +13,6 @@ class Release(implicit val coredef: CoreDef) extends Bundle {
   val value = Output(UInt(coredef.XLEN.W))
 }
 
-@chiselName
 class Renamer(implicit coredef: CoreDef) extends MultiIOModule {
   val REG_NUM = 32 // TODO: do we need to make this configurable?
 

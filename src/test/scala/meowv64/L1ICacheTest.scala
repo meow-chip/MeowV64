@@ -1,11 +1,14 @@
 package meowv64
-import chisel3.iotesters.PeekPokeTester
+
 import meowv64.cache._
+import chisel3._
+import chisel3.tester._
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
 import scala.collection.mutable.HashMap
 import scala.util.Random
+import chiseltest.simulator.WriteVcdAnnotation
 
 object L1CacheTestDef
     extends {
@@ -18,8 +21,7 @@ object L1CacheTestDef
     }
     with L1Opts;
 
-class L1ICacheTest(dut: L1IC, seed: Long, len: Int)
-    extends PeekPokeTester(dut) {
+class L1ICacheTest(dut: L1IC, seed: Long, len: Int) {
   println(s"Testing cache with seed: ${seed} for ${len} cycles")
 
   val rng = new Random(seed)
@@ -50,34 +52,33 @@ class L1ICacheTest(dut: L1IC, seed: Long, len: Int)
   def run(): Unit = {
     for (i <- (0 until len)) {
       // println("Cycle: " + i)
-      poke(dut.toCPU.read, addrs(cnt).isDefined)
-      poke(
-        dut.toCPU.addr,
-        addrs(cnt).getOrElse(rng.nextInt() % L1ICacheTest.RAM_SIZE)
+      dut.toCPU.read.poke(addrs(cnt).isDefined.B)
+      dut.toCPU.addr.poke(
+        (addrs(cnt).getOrElse(rng.nextInt().abs % L1ICacheTest.RAM_SIZE)).U
       )
 
-      if (peek(dut.toCPU.stall) == 0) {
+      if (dut.toCPU.stall.peek.litToBoolean == false) {
         // Check last
         if (cnt == 0 || addrs(cnt - 1).isEmpty) {
-          if (!expect(dut.toCPU.vacant, 1)) {
+          if (dut.toCPU.vacant.peek.litToBoolean != true) {
             if (failed < 10) {
               println(s"[${i}] Expected vacant output on req ${cnt}")
               failed += 1;
             }
           }
         } else {
-          if (!expect(dut.toCPU.vacant, 0)) {
+          if (dut.toCPU.vacant.peek.litToBoolean != false) {
             if (failed < 10) {
               println(s"[${i}] Expected non-vacant output on req ${cnt}")
               failed += 1;
             }
           }
 
-          if (!expect(dut.toCPU.data, ref(addrs(cnt - 1).get))) {
+          if (dut.toCPU.data.peek.litValue != ref(addrs(cnt - 1).get)) {
             if (failed < 10) {
               println(
                 s"[${i}] ${cnt - 1}: 0x${addrs(cnt - 1).get.toHexString}, Expected 0x${ref(addrs(cnt - 1).get)
-                  .toString(16)}, got 0x${peek(dut.toCPU.data).toString(16)}"
+                  .toString(16)}, got 0x${dut.toCPU.data.peek.litValue.toString(16)}"
               )
               failed += 1;
             }
@@ -89,8 +90,8 @@ class L1ICacheTest(dut: L1IC, seed: Long, len: Int)
 
       var heldCycles: Option[Int] = None
 
-      if (peek(dut.toL2.read) == 1) {
-        // Randomily waits on L2
+      if (dut.toL2.read.peek.litToBoolean == true) {
+        // Randomly waits on L2
 
         heldCycles = heldCycles match {
           case None    => Some(rng.nextInt(4))
@@ -98,9 +99,9 @@ class L1ICacheTest(dut: L1IC, seed: Long, len: Int)
         }
 
         if (heldCycles == Some(0)) {
-          poke(dut.toL2.stall, false)
+          dut.toL2.stall.poke(false.B)
 
-          val addr = peek(dut.toL2.addr).toInt
+          val addr = dut.toL2.addr.peek.litValue().toInt
           var data = BigInt(0)
           for (i <- (0 until 4)) {
             val added = addr + i * 4;
@@ -108,15 +109,15 @@ class L1ICacheTest(dut: L1IC, seed: Long, len: Int)
             data = data | (v << (i * 32))
           }
 
-          poke(dut.toL2.data, data)
+          dut.toL2.data.poke(data.U)
         } else {
-          poke(dut.toL2.stall, true)
+          dut.toL2.stall.poke(true.B)
         }
       } else {
-        poke(dut.toL2.stall, false)
+        dut.toL2.stall.poke(false.B)
       }
 
-      step(1)
+      dut.clock.step(1)
     }
   }
 
@@ -127,22 +128,6 @@ class L1ICacheTest(dut: L1IC, seed: Long, len: Int)
 object L1ICacheTest {
   val RAM_SIZE = 65536
   val W_RATIO = 0.1
-
-  def run(seed: Long, len: Int, args: Option[Array[String]] = None): Boolean = {
-    args match {
-      case None =>
-        chisel3.iotesters.Driver(
-          () => new L1IC(L1CacheTestDef),
-          "verilator"
-        ) { new L1ICacheTest(_, seed, len) }
-
-      case Some(args) =>
-        chisel3.iotesters.Driver.execute(
-          args,
-          () => new L1IC(L1CacheTestDef)
-        ) { new L1ICacheTest(_, seed, len) }
-    }
-  }
 }
 
 object L1ICacheSpec {
@@ -150,33 +135,21 @@ object L1ICacheSpec {
   val DEFAULT_LENGTH = 100000
 }
 
-class L1ICacheSpec extends AnyFlatSpec with Matchers {
+class L1ICacheSpec
+    extends AnyFlatSpec
+    with Matchers
+    with ChiselScalatestTester {
   behavior of "CacheSpec"
 
   it should s"run successfully" in {
-    L1ICacheTest.run(
-      L1ICacheSpec.DEFAULT_SEED,
-      L1ICacheSpec.DEFAULT_LENGTH
-    ) should be(true)
+    val seed = L1ICacheSpec.DEFAULT_SEED
+    val len = L1ICacheSpec.DEFAULT_LENGTH
+    test(new L1IC(L1CacheTestDef)).withAnnotations(
+      Seq(
+        WriteVcdAnnotation
+      )
+    ) { dut =>
+      new L1ICacheTest(dut, seed, len)
+    }
   }
-}
-
-object L1ICacheTestMain extends App {
-  var seed = L1ICacheSpec.DEFAULT_SEED
-  var length = L1ICacheSpec.DEFAULT_LENGTH
-
-  if (args.length > 2) {
-    seed = java.lang.Long.parseLong(args(args.length - 2))
-    length = Integer.parseInt(args(args.length - 1))
-  } else if (args.length > 1) {
-    seed = java.lang.Long.parseLong(args(args.length - 1))
-  }
-
-  println(s"Running with seed ${seed} for ${length} cycles...")
-  L1ICacheTest.run(
-    seed,
-    length,
-    if (args.length > 0) { Some(args) }
-    else { None }
-  )
 }

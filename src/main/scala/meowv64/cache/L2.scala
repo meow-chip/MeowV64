@@ -115,7 +115,6 @@ object WBEntry {
   }
 }
 
-@chiselName
 class L2Cache(val opts: L2Opts) extends MultiIOModule {
   val OFFSET_LENGTH = log2Ceil(opts.LINE_WIDTH)
   val INDEX_OFFSET_LENGTH = log2Ceil(opts.SIZE / opts.ASSOC)

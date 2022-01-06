@@ -8,13 +8,14 @@ import com.goyeau.mill.scalafix.ScalafixModule
 
 // learned from https://github.com/OpenXiangShan/fudian/blob/main/build.sc
 val defaultVersions = Map(
-  "chisel3" -> ("edu.berkeley.cs", "3.2.8", false),
-  "chisel-iotesters" -> ("edu.berkeley.cs", "1.3.8", false),
+  "chisel3" -> ("edu.berkeley.cs", "3.5.0-RC2", false),
+  "chisel3-plugin" -> ("edu.berkeley.cs", "3.5.0-RC2", true),
+  "chiseltest" -> ("edu.berkeley.cs", "0.5.0-RC2", false),
   "paradise" -> ("org.scalamacros", "2.1.1", true),
   "scalatest" -> ("org.scalatest", "3.2.10", false)
 )
 
-val commonScalaVersion = "2.12.14"
+val commonScalaVersion = "2.12.13"
 
 def getVersion(dep: String) = {
   val (org, ver, cross) = defaultVersions(dep)
@@ -36,6 +37,7 @@ object meowv64 extends SbtModule with ScalafmtModule with ScalafixModule {
   )
 
   override def scalacPluginIvyDeps = super.scalacPluginIvyDeps() ++ Agg(
+    getVersion("chisel3-plugin"),
     getVersion("paradise")
   )
 
@@ -54,7 +56,7 @@ object meowv64 extends SbtModule with ScalafmtModule with ScalafixModule {
       with ScalafixModule {
     override def ivyDeps = super.ivyDeps() ++ Agg(
       getVersion("scalatest"),
-      getVersion("chisel-iotesters")
+      getVersion("chiseltest")
     )
 
     override def scalafixIvyDeps = Agg(

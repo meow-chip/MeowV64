@@ -1,5 +1,4 @@
 package meowv64.exec
-import Chisel.experimental.chiselName
 import chisel3._
 import chisel3.util._
 import meowv64.cache.DCFenceStatus
@@ -30,7 +29,6 @@ import meowv64.util._
   *     affects our rob buffer length, as well as renamed reg tags' length
   *   - Issue FIFO is not depleted
   */
-@chiselName
 class Exec(implicit val coredef: CoreDef) extends MultiIOModule {
   val toCtrl = IO(new Bundle {
     val ctrl = StageCtrl.stage()

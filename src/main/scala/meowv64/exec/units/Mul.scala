@@ -1,6 +1,5 @@
 package meowv64.exec.units
 
-import Chisel.experimental.chiselName
 import chisel3._
 import chisel3.util._
 import meowv64.core.CoreDef
@@ -17,7 +16,6 @@ class MulExt(implicit val coredef: CoreDef) extends Bundle {
   val neg = Bool()
 }
 
-@chiselName
 class Mul(override implicit val coredef: CoreDef)
     extends ExecUnit(2, new MulExt) {
   assert(coredef.XLEN == 64)

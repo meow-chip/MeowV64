@@ -30,7 +30,7 @@ class MultiQueue[T <: Data](
   })
 
   for (q <- queues) {
-    q.io.flush := flush
+    q.io.flush.get := flush
   }
 
   val readies = PopCount(queues.map(_.io.enq.ready))

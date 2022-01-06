@@ -167,7 +167,7 @@ class LSU(implicit val coredef: CoreDef) extends MultiIOModule with UnitSelIO {
   val l2stall = Wire(Bool())
   val l1pass = Wire(Bool())
 
-  pendings.io.flush := flush
+  pendings.io.flush.get := flush
 
   // Let's do this without helper
 

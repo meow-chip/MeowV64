@@ -5,13 +5,11 @@ import chisel3.experimental._
 import chisel3.util._
 
 class FlushableQueueIO[T <: Data](private val gen: T, val _entries: Int)
-    extends QueueIO(gen, _entries) {
-  val flush = Input(Bool())
+    extends QueueIO(gen, _entries, hasFlush=true) {
 }
 
 /** Copied from chisel3.util.Queue
   */
-@chiselName
 class FlushableQueue[T <: Data](
     gen: T,
     val entries: Int,
@@ -87,7 +85,7 @@ class FlushableQueue[T <: Data](
     )
   }
 
-  when(io.flush) {
+  when(io.flush.get) {
     if (entries != 1) {
       enq_ptr.value := 0.U
       deq_ptr.value := 0.U
@@ -98,7 +96,6 @@ class FlushableQueue[T <: Data](
 
 /** Copied from chisel3.util.Queue
   */
-@chiselName
 class FlushableSlot[T <: Data](
     gen: T,
     pipe: Boolean = false,
@@ -150,7 +147,7 @@ class FlushableSlot[T <: Data](
 
   io.count := Mux(occupied, 1.U, 0.U)
 
-  when(io.flush) {
+  when(io.flush.get) {
     occupied := false.B
   }
 }

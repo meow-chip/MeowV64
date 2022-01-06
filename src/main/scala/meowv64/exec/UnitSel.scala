@@ -1,6 +1,5 @@
 package meowv64.exec
 
-import Chisel.experimental.chiselName
 import chisel3._
 import chisel3.util.Mux1H
 import chisel3.util.log2Ceil
@@ -29,7 +28,6 @@ trait UnitSelIO {
   * That is not true anymore. Now we use a MPSC FIFO to consume outputs of
   * individual execution units.
   */
-@chiselName
 class UnitSel(
     gen: => Seq[ExecUnitInt],
     arbitration: Instr => Seq[Bool],

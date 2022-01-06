@@ -2,7 +2,6 @@ package meowv64.instr
 
 import chisel3._
 import chisel3.experimental.ChiselEnum
-import chisel3.experimental.chiselName
 import chisel3.util._
 import meowv64.cache._
 import meowv64.core._
@@ -53,7 +52,6 @@ object InstrExt {
   }
 }
 
-@chiselName
 class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
   val toCtrl = IO(new Bundle {
     val pc = Input(UInt(coredef.XLEN.W))
@@ -341,8 +339,8 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
   val pendingTLBRst = RegInit(false.B)
   val pendingFlush = RegInit(false.B)
 
-  ICQueue.io.flush := false.B
-  ICHead.io.flush := false.B
+  ICQueue.io.flush.get := false.B
+  ICHead.io.flush.get := false.B
   issueFifo.flush := false.B
 
   // Speculative branch
@@ -362,8 +360,8 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
   )
 
   when(pipeSpecBr) {
-    ICQueue.io.flush := true.B
-    ICHead.io.flush := true.B
+    ICQueue.io.flush.get := true.B
+    ICHead.io.flush.get := true.B
     // Do not push into issue fifo in this cycle
     issueFifo.writer.cnt := 0.U
     // Do not commit RAS
@@ -392,8 +390,8 @@ class InstrFetch(implicit val coredef: CoreDef) extends MultiIOModule {
     // External flushing, wait for one tick
     // This is to ensure priv level and other environment are set up correctly
     issueFifo.flush := true.B
-    ICQueue.io.flush := true.B
-    ICHead.io.flush := true.B
+    ICQueue.io.flush.get := true.B
+    ICHead.io.flush.get := true.B
     toCtrl.ctrl.stall := false.B
 
     val ICAlign = log2Ceil(coredef.L1I.TRANSFER_SIZE / 8)

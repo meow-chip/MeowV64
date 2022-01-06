@@ -1,6 +1,5 @@
 package meowv64.cache
 
-import Chisel.experimental.chiselName
 import chisel3._
 import chisel3.experimental.ChiselEnum
 import chisel3.util._
@@ -41,7 +40,6 @@ object ILine {
 }
 
 // TODO: Change to xpm_tdpmem
-@chiselName
 class L1IC(opts: L1Opts) extends MultiIOModule {
   val toCPU = IO(new ICPort(opts))
   val toL2 = IO(new L1ICPort(opts))

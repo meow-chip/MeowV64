@@ -52,7 +52,7 @@ class PTW(implicit coredef: CoreDef) extends MultiIOModule {
   tlbSlot.io.enq.valid <> arbiter.io.out.valid
   tlbSlot.io.enq.ready <> arbiter.io.out.ready
 
-  tlbSlot.io.flush := false.B
+  tlbSlot.io.flush.get := false.B
 
   val segs = VecInit((0 until MAX_SEG).map({
     case idx => {
@@ -69,7 +69,7 @@ class PTW(implicit coredef: CoreDef) extends MultiIOModule {
   }
 
   val dcSlot = Module(new FlushableSlot(UInt(), false, true))
-  dcSlot.io.flush := false.B
+  dcSlot.io.flush.get := false.B
   dcSlot.io.enq.bits := dc.resp.bits
   dcSlot.io.enq.valid := dc.resp.valid
   when(dc.resp.valid) {

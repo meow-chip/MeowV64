@@ -1,6 +1,5 @@
 package meowv64.cache
 
-import Chisel.experimental.chiselName
 import chisel3._
 import chisel3.experimental.ChiselEnum
 import chisel3.util._
@@ -134,7 +133,6 @@ object DLine {
   }
 }
 
-@chiselName
 class L1DC(val opts: L1DOpts)(implicit coredef: CoreDef) extends MultiIOModule {
   // Constants and helpers
   val IGNORED_WIDTH = log2Ceil(opts.TRANSFER_SIZE / 8)

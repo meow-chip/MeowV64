@@ -18,7 +18,7 @@ meow:
 	make -C meow -f Makefile all PREFIX=$(PREFIX)
 
 riscv-tests:
-	bash -c "cd riscv-tests && autoconf && mkdir build && cd build && ../configure"
+	bash -c "cd riscv-tests && autoconf && mkdir -p build && cd build && ../configure"
 	make -C riscv-tests/build -f Makefile isa RISCV_PREFIX=$(PREFIX)
 
 # end

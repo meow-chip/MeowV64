@@ -1,6 +1,5 @@
 package meowv64.exec.units
 
-import Chisel.experimental.chiselName
 import chisel3._
 import chisel3.util._
 import meowv64.core.CoreDef
@@ -13,7 +12,6 @@ class DivExt(implicit val coredef: CoreDef) extends Bundle {
   val q = UInt(coredef.XLEN.W)
 }
 
-@chiselName
 class Div(val ROUND_PER_STAGE: Int)(override implicit val coredef: CoreDef)
     extends ExecUnit(
       coredef.XLEN / ROUND_PER_STAGE,
