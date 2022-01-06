@@ -2,8 +2,8 @@ import core._
 import util._
 import chisel3._
 import chisel3.iotesters.PeekPokeTester
-import org.scalatest.FlatSpec
-import org.scalatest.Matchers
+import org.scalatest.flatspec.AnyFlatSpec
+import org.scalatest.matchers.should.Matchers
 
 object ExecSpec {
   val cases = List(
@@ -27,7 +27,7 @@ object ExecSpec {
   )
 }
 
-class ExecSpec extends FlatSpec with Matchers {
+class ExecSpec extends AnyFlatSpec with Matchers {
   behavior of "ExecSpec"
 
   for ((desc, file) <- ExecSpec.cases) {

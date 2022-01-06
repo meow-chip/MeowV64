@@ -3,8 +3,8 @@ import util._
 import cache._
 import chisel3._
 import chisel3.iotesters.PeekPokeTester
-import org.scalatest.FlatSpec
-import org.scalatest.Matchers
+import org.scalatest.flatspec.AnyFlatSpec
+import org.scalatest.matchers.should.Matchers
 import scala.util.Random
 import scala.collection.mutable.HashMap
 
@@ -141,7 +141,7 @@ object L1ICacheSpec {
   val DEFAULT_LENGTH = 100000
 }
 
-class L1ICacheSpec extends FlatSpec with Matchers {
+class L1ICacheSpec extends AnyFlatSpec with Matchers {
   behavior of "CacheSpec"
 
   it should s"run successfully" in { L1ICacheTest.run(L1ICacheSpec.DEFAULT_SEED, L1ICacheSpec.DEFAULT_LENGTH) should be(true) }

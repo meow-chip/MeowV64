@@ -2,8 +2,8 @@ import core._
 import util._
 import chisel3._
 import chisel3.iotesters.PeekPokeTester
-import org.scalatest.FlatSpec
-import org.scalatest.Matchers
+import org.scalatest.flatspec.AnyFlatSpec
+import org.scalatest.matchers.should.Matchers
 import org.scalatest.ConfigMap
 import java.io.File
 
@@ -15,7 +15,7 @@ object RiscvTestsSpec {
     .map(_.getPath).toList
 }
 
-class RiscvTestsSpec extends FlatSpec with Matchers {
+class RiscvTestsSpec extends AnyFlatSpec with Matchers {
   behavior of "RiscvTestsSpec"
 
   for (file <- RiscvTestsSpec.cases) {
