@@ -3,7 +3,7 @@ import mill.scalalib.publish._
 import scalalib._
 import scalafmt._
 import coursier.maven.MavenRepository
-import $ivy.`com.goyeau::mill-scalafix:0.2.5`
+import $ivy.`com.goyeau::mill-scalafix:0.2.6`
 import com.goyeau.mill.scalafix.ScalafixModule
 
 // learned from https://github.com/OpenXiangShan/fudian/blob/main/build.sc
