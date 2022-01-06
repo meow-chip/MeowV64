@@ -41,7 +41,7 @@ class CSRPort(val XLEN: Int) extends Bundle {
   }
 }
 
-object CSRPort extends Bundle {
+object CSRPort {
   def fromReg(XLEN: Int, reg: UInt): CSRPort = {
     val port = Wire(new CSRPort(XLEN))
 

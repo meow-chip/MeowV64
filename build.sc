@@ -11,7 +11,6 @@ val defaultVersions = Map(
   "chisel3" -> ("edu.berkeley.cs", "3.5.0-RC2", false),
   "chisel3-plugin" -> ("edu.berkeley.cs", "3.5.0-RC2", true),
   "chiseltest" -> ("edu.berkeley.cs", "0.5.0-RC2", false),
-  "paradise" -> ("org.scalamacros", "2.1.1", true),
   "scalatest" -> ("org.scalatest", "3.2.10", false)
 )
 
@@ -37,8 +36,7 @@ object meowv64 extends SbtModule with ScalafmtModule with ScalafixModule {
   )
 
   override def scalacPluginIvyDeps = super.scalacPluginIvyDeps() ++ Agg(
-    getVersion("chisel3-plugin"),
-    getVersion("paradise")
+    getVersion("chisel3-plugin")
   )
 
   override def scalacOptions = super.scalacOptions() ++
@@ -61,6 +59,10 @@ object meowv64 extends SbtModule with ScalafmtModule with ScalafixModule {
 
     override def scalafixIvyDeps = Agg(
       ivy"com.github.liancheng::organize-imports:0.5.0"
+    )
+
+    override def scalacPluginIvyDeps = super.scalacPluginIvyDeps() ++ Agg(
+      getVersion("chisel3-plugin")
     )
   }
 }
