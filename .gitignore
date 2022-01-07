@@ -352,3 +352,6 @@ test_run_dir
 
 Multicore.fir
 Multicore.v
+Multicore.anno.json
+
+ucli.key
