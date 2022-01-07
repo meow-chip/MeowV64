@@ -68,7 +68,7 @@ class CSR(val XLEN: Int) {
 
   val writers = CSR.addrMap.values
     .flatMap(_ match {
-      case (name, true) => Some(name -> (Wire(UInt(XLEN.W)), Wire(Bool())))
+      case (name, true) => Some(name -> ((Wire(UInt(XLEN.W)), Wire(Bool()))))
       case (_, false)   => None
     })
     .toMap
@@ -99,45 +99,45 @@ object CSR {
   // Is mutable on the second parameter
   val addrMap = Map(
     // Machine
-    0xf11 -> ("mvendorid", false),
-    0xf12 -> ("marchid", false),
-    0xf13 -> ("mimpid", false),
-    0xf14 -> ("mhartid", false),
-    0x300 -> ("mstatus", true),
-    0x301 -> ("misa", false),
-    0x302 -> ("medeleg", true),
-    0x303 -> ("mideleg", true),
-    0x304 -> ("mie", true),
-    0x305 -> ("mtvec", true),
-    0x306 -> ("mcounteren", false), // TODO: impl counter
-    0x320 -> ("mcountinhibit", true),
-    0x340 -> ("mscratch", true),
-    0x341 -> ("mepc", true),
-    0x342 -> ("mcause", true),
-    0x343 -> ("mtval", true),
-    0x344 -> ("mip", true),
-    0xb00 -> ("mcycle", true),
-    0xb02 -> ("minstret", true),
+    0xf11 -> (("mvendorid", false)),
+    0xf12 -> (("marchid", false)),
+    0xf13 -> (("mimpid", false)),
+    0xf14 -> (("mhartid", false)),
+    0x300 -> (("mstatus", true)),
+    0x301 -> (("misa", false)),
+    0x302 -> (("medeleg", true)),
+    0x303 -> (("mideleg", true)),
+    0x304 -> (("mie", true)),
+    0x305 -> (("mtvec", true)),
+    0x306 -> (("mcounteren", false)), // TODO: impl counter
+    0x320 -> (("mcountinhibit", true)),
+    0x340 -> (("mscratch", true)),
+    0x341 -> (("mepc", true)),
+    0x342 -> (("mcause", true)),
+    0x343 -> (("mtval", true)),
+    0x344 -> (("mip", true)),
+    0xb00 -> (("mcycle", true)),
+    0xb02 -> (("minstret", true)),
 
     // Supervisor
-    0x100 -> ("sstatus", true),
+    0x100 -> (("sstatus", true)),
     // No N extension
-    // 0x102 -> ("sedeleg", true),
-    // 0x103 -> ("sideleg", true),
-    0x104 -> ("sie", true),
-    0x105 -> ("stvec", true),
-    0x106 -> ("scounteren", false),
-    0x140 -> ("sscratch", true),
-    0x141 -> ("sepc", true),
-    0x142 -> ("scause", true),
-    0x143 -> ("stval", true),
-    0x144 -> ("sip", true),
-    0x180 -> ("satp", true),
+    // 0x102 -> (("sedeleg", true)),
+    // 0x103 -> (("sideleg", true)),
+    0x104 -> (("sie", true)),
+    0x105 -> (("stvec", true)),
+    0x106 -> (("scounteren", false)),
+    0x140 -> (("sscratch", true)),
+    0x141 -> (("sepc", true)),
+    0x142 -> (("scause", true)),
+    0x143 -> (("stval", true)),
+    0x144 -> (("sip", true)),
+    0x180 -> (("satp", true)),
 
     // User
-    0xc00 -> ("cycle", false),
-    0xc01 -> ("time", false),
-    0xc02 -> ("instret", false)
+    0xc00 -> (("cycle", false)),
+    0xc01 -> (("time", false)),
+    0xc02 -> (("instret", false))
   )
 
   /*

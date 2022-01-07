@@ -7,7 +7,6 @@ import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
 import java.io.File
-import chiseltest.simulator.IcarusBackendAnnotation
 import chiseltest.simulator.VerilatorBackendAnnotation
 
 object RiscvTestsSpec {

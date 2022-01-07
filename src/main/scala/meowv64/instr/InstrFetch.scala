@@ -356,8 +356,9 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
     pipeSpecBrMask.zip(pipeSpecBrTargets)
   )
   pipeSpecBr := VecInit(pipeSpecBrMask).asUInt.orR && RegNext(
-    !toCtrl.ctrl.flush && !pipeSpecBr
-  , false.B)
+    !toCtrl.ctrl.flush && !pipeSpecBr,
+    false.B
+  )
 
   when(pipeSpecBr) {
     ICQueue.io.flush.get := true.B

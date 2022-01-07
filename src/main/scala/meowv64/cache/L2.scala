@@ -1068,7 +1068,11 @@ class L2Cache(val opts: L2Opts) extends Module {
           val gotoMMIO = mmioMap.orR && (
             directs(ucWalkPtr).read || directs(ucWalkPtr).write
           )
-          assert(PopCount(mmioMap) <= 1.U)
+
+          // at most one
+          when(ucWalkPtr =/= (opts.CORE_COUNT - 1).U) {
+            assert(PopCount(mmioMap) <= 1.U)
+          }
 
           pipeMMIOWrite := directs(ucWalkPtr).write
           pipeMMIOMap := mmioMap
