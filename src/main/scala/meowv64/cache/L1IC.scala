@@ -115,11 +115,16 @@ class L1IC(opts: L1Opts) extends Module {
   val pipeHitMap = VecInit(
     pipeReadouts.map(r => r.valid && r.tag === getTag(pipeAddr))
   )
-  assert(PopCount(hitMap) <= 1.U)
 
   // Stage 2, data mux, refilling, reset
   val state = RegInit(S2State.rst)
   val nstate = Wire(S2State())
+
+  // when reset, hitMap contains X
+  when(state =/= S2State.rst) {
+    // at most one hit
+    assert(PopCount(hitMap) <= 1.U)
+  }
 
   val rand = chisel3.util.random.LFSR(8)
   val victim = RegInit(0.U(log2Ceil(opts.ASSOC)))

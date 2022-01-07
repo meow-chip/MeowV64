@@ -336,7 +336,9 @@ class L2Cache(val opts: L2Opts) extends Module {
   val hit = VecInit(hits).asUInt().orR
   val pipeHit = RegNext(hit)
   val hitCount = PopCount(hits)
-  assert(hitCount <= 1.U)
+  when(state =/= L2MainState.reset) {
+    assert(hitCount <= 1.U)
+  }
   val hitIdx = OHToUInt(hits)
   val pipeHitIdx = RegNext(hitIdx)
 

@@ -679,7 +679,12 @@ class L1DC(val opts: L1DOpts)(implicit coredef: CoreDef) extends Module {
   val hitCount = PopCount(
     lookups.map(line => line.valid && line.tag === getTag(pipeAddr))
   )
-  assert(hitCount <= 1.U)
+  // when reset, hitMap contains X
+  when(state =/= MainState.rst) {
+    // at most one hit
+    assert(hitCount <= 1.U)
+  }
+
 
   val hits = lookups.map(line => line.valid && line.tag === getTag(pipeAddr))
   val hit = VecInit(hits).asUInt().orR

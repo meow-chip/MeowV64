@@ -15,6 +15,7 @@ import chisel3._
 import chisel3.tester._
 import chiseltest.simulator.WriteVcdAnnotation
 import chiseltest.simulator.VerilatorBackendAnnotation
+import chiseltest.simulator.IcarusBackendAnnotation
 
 object ExecDef extends MulticoreDef {
   override val INIT_VEC = BigInt(0x80000000L)
@@ -272,7 +273,7 @@ class ExecSpec extends AnyFlatSpec with Matchers with ChiselScalatestTester {
       println(s"------------\nRunning file $file")
       test(
         new Multicore()(ExecDef)
-      ).withAnnotations(Seq(WriteVcdAnnotation, VerilatorBackendAnnotation)) {
+      ).withAnnotations(Seq(WriteVcdAnnotation, IcarusBackendAnnotation)) {
         new ExecTest(_, file)
       }
     }
