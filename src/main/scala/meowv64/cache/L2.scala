@@ -107,8 +107,8 @@ class WBEntry(val opts: L2Opts) extends Bundle {
 object WBEntry {
   def default(opts: L2Opts): WBEntry = {
     val ret = Wire(new WBEntry(opts))
-    ret.lineaddr := 0.U
-    ret.data := 0.U
+    ret.lineaddr := DontCare
+    ret.data := DontCare
     ret.valid := false.B
 
     ret

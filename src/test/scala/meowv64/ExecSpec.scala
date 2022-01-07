@@ -13,8 +13,6 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.file.Paths
 import scala.collection.mutable
-import chiseltest.internal.CachingAnnotation
-import chiseltest.simulator.VerilatorBackendAnnotation
 
 object ExecDef extends MulticoreDef {
   override val INIT_VEC = BigInt(0x80000000L)
@@ -272,7 +270,7 @@ class ExecSpec extends AnyFlatSpec with Matchers with ChiselScalatestTester {
       test(
         new Multicore()(ExecDef)
       ).withAnnotations(
-        Seq(WriteVcdAnnotation, VerilatorBackendAnnotation, CachingAnnotation)
+        Seq(WriteVcdAnnotation, IcarusBackendAnnotation)
       ) {
         new ExecTest(_, file)
       }

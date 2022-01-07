@@ -7,8 +7,9 @@ import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
 import java.io.File
-import chiseltest.simulator.VerilatorBackendAnnotation
-import chiseltest.internal.CachingAnnotation
+import chiseltest.simulator.IcarusBackendAnnotation
+import firrtl.stage.RunFirrtlTransformAnnotation
+import firrtl.options.Dependency
 
 object RiscvTestsSpec {
   val knownFails = Seq("rv64mi-p-scall.bin")
@@ -30,14 +31,22 @@ class RiscvTestsSpec
 
   it should s"run successfully" in {
     for (file <- RiscvTestsSpec.cases) {
-      println(s"------------\nRunning file $file")
-      test(
-        new Multicore()(ExecDef)
-      ).withAnnotations(Seq(WriteVcdAnnotation, VerilatorBackendAnnotation, CachingAnnotation)) {
-        // triggers bug in chisel:
-        // https://github.com/chipsalliance/chisel3/pull/2329
-        // so use verilator here
-        new ExecTest(_, file)
+      if (file.contains("sll")) {
+        println(s"------------\nRunning file $file")
+        test(
+          new Multicore()(ExecDef)
+        ).withAnnotations(
+          Seq(
+            WriteVcdAnnotation,
+            IcarusBackendAnnotation,
+            RunFirrtlTransformAnnotation(Dependency(ZeroInit)) // for RRArbiter
+          )
+        ) {
+          // triggers bug in chisel:
+          // https://github.com/chipsalliance/chisel3/pull/2329
+          // so use verilator here
+          new ExecTest(_, file)
+        }
       }
     }
   }
