@@ -7,7 +7,7 @@ import meowv64.core.CoreDef
 import meowv64.instr.Decoder
 import meowv64.util.FlushableSlot
 
-class ResStationExgress(implicit val coredef: CoreDef) extends Bundle {
+class ResStationEgress(implicit val coredef: CoreDef) extends Bundle {
   val instr = Output(new ReservedInstr)
   val valid = Output(Bool())
   val pop = Input(Bool())
@@ -27,7 +27,7 @@ trait ResStation {
     val push: Bool
   }
 
-  val egress: ResStationExgress
+  val egress: ResStationEgress
 
   val cdb: CDB
   val ctrl: Bundle {
@@ -52,7 +52,7 @@ class OoOResStation(val idx: Int)(implicit val coredef: CoreDef)
     val push = Input(Bool())
   })
 
-  val egress = IO(new ResStationExgress)
+  val egress = IO(new ResStationEgress)
 
   val cdb = IO(Input(new CDB))
   val ctrl = IO(new Bundle {
@@ -65,7 +65,7 @@ class OoOResStation(val idx: Int)(implicit val coredef: CoreDef)
   val defIdx = Wire(UInt(log2Ceil(DEPTH).W))
   defIdx := DontCare
 
-  // Exgress part
+  // Egress part
   val egMask = WireDefault(
     VecInit(
       store.zip(occupied).map({ case (instr, valid) => valid && instr.ready })
@@ -176,7 +176,7 @@ class LSBuf(val idx: Int)(implicit val coredef: CoreDef)
     val push = Input(Bool())
   })
 
-  val egress = IO(new ResStationExgress)
+  val egress = IO(new ResStationEgress)
 
   val fs = IO(new DCFenceStatus(coredef.L1D))
 
@@ -196,7 +196,7 @@ class LSBuf(val idx: Int)(implicit val coredef: CoreDef)
 
   assume((DEPTH & (DEPTH - 1)) == 0)
 
-  // Exgress part
+  // Egress part
   // Extra restrictions: no pending writes
 
   val headIsLoad = (

@@ -105,7 +105,7 @@ class DelayedMem(implicit val coredef: CoreDef) extends Bundle {
 
 class LSU(implicit val coredef: CoreDef) extends Module with UnitSelIO {
   val flush = IO(Input(Bool()))
-  val rs = IO(Flipped(new ResStationExgress))
+  val rs = IO(Flipped(new ResStationEgress))
   val retire = IO(Output(new Retirement))
   val extras = new mutable.HashMap[String, Data]()
 

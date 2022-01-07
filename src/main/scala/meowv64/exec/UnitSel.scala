@@ -14,7 +14,7 @@ import scala.collection.mutable
 
 trait UnitSelIO {
   val flush: Bool
-  val rs: ResStationExgress
+  val rs: ResStationEgress
   val retire: Retirement
   val extras: mutable.HashMap[String, Data]
 }
@@ -39,7 +39,7 @@ class UnitSel(
   val units = gen
 
   val flush = IO(Input(Bool()))
-  val rs = IO(Flipped(new ResStationExgress))
+  val rs = IO(Flipped(new ResStationEgress))
   val retire = IO(Output(new Retirement))
 
   // Extra ports

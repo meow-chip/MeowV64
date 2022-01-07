@@ -379,13 +379,13 @@ class Exec(implicit val coredef: CoreDef) extends Module {
   )
   val brSel = VecInit(PriorityEncoderOH(brMux.asBools())).asUInt()
   val brSeled = Wire(Vec(units.size, Bool()))
-  val brNormlalized = Wire(Vec(units.size, new BranchResult))
+  val brNormalized = Wire(Vec(units.size, new BranchResult))
   val brTvals = Wire(Vec(units.size, UInt(coredef.XLEN.W)))
 
   when(brSeled.asUInt.orR()) {
     pendingBr := true.B
     pendingBrTag := OHToUInt(brSel) +% retirePtr // Actually this is always true
-    pendingBrResult := Mux1H(brSeled, brNormlalized)
+    pendingBrResult := Mux1H(brSeled, brNormalized)
     pendingBrTval := Mux1H(brSeled, brTvals)
   }
 
@@ -406,7 +406,7 @@ class Exec(implicit val coredef: CoreDef) extends Module {
     val canBr = !u.retire.instr.instr.vacant && normalized.branched()
     brMask(idx) := Mux(canBr, oh, 0.U)
     brSeled(idx) := brSel === oh && canBr
-    brNormlalized(idx) := normalized
+    brNormalized(idx) := normalized
     brTvals(idx) := u.retire.info.wb
 
     when(!u.retire.instr.instr.vacant) {
