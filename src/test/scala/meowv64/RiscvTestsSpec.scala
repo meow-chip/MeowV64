@@ -8,6 +8,7 @@ import org.scalatest.matchers.should.Matchers
 
 import java.io.File
 import chiseltest.simulator.VerilatorBackendAnnotation
+import chiseltest.internal.CachingAnnotation
 
 object RiscvTestsSpec {
   val knownFails = Seq("rv64mi-p-scall.bin")
@@ -27,12 +28,12 @@ class RiscvTestsSpec
     with ChiselScalatestTester {
   behavior of "RiscvTestsSpec"
 
-  for (file <- RiscvTestsSpec.cases) {
-    it should s"run $file successfully" in {
+  it should s"run successfully" in {
+    for (file <- RiscvTestsSpec.cases) {
       println(s"------------\nRunning file $file")
       test(
         new Multicore()(ExecDef)
-      ).withAnnotations(Seq(WriteVcdAnnotation, VerilatorBackendAnnotation)) {
+      ).withAnnotations(Seq(WriteVcdAnnotation, VerilatorBackendAnnotation, CachingAnnotation)) {
         // triggers bug in chisel:
         // https://github.com/chipsalliance/chisel3/pull/2329
         // so use verilator here

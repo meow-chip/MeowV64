@@ -13,6 +13,8 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.file.Paths
 import scala.collection.mutable
+import chiseltest.internal.CachingAnnotation
+import chiseltest.simulator.VerilatorBackendAnnotation
 
 object ExecDef extends MulticoreDef {
   override val INIT_VEC = BigInt(0x80000000L)
@@ -264,12 +266,14 @@ object ExecSpec {
 class ExecSpec extends AnyFlatSpec with Matchers with ChiselScalatestTester {
   behavior of "ExecSpec"
 
-  for ((desc, file) <- ExecSpec.cases) {
-    it should s"run $desc successfully" in {
+  it should s"run successfully" in {
+    for ((desc, file) <- ExecSpec.cases) {
       println(s"------------\nRunning file $file")
       test(
         new Multicore()(ExecDef)
-      ).withAnnotations(Seq(WriteVcdAnnotation, IcarusBackendAnnotation)) {
+      ).withAnnotations(
+        Seq(WriteVcdAnnotation, VerilatorBackendAnnotation, CachingAnnotation)
+      ) {
         new ExecTest(_, file)
       }
     }
