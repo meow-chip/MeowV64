@@ -201,8 +201,8 @@ class L1DC(val opts: L1DOpts)(implicit coredef: CoreDef) extends Module {
   // assert((!w.write) || w.addr(IGNORED_WIDTH-1, 0) === 0.U)
   //   The check for write is no longer true, because of AMO
 
-  toL2.wdata := DontCare
-  toL2.l1addr := DontCare
+  toL2.wdata := 0.U
+  toL2.l1addr := 0.U
   toL2.l1req := L1Req.idle
 
   // Read pipes

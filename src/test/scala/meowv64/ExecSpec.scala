@@ -20,6 +20,9 @@ object ExecDef extends MulticoreDef {
 
 class ExecTest(dut: Multicore, file: String) {
   def doTest(bound: Int): Unit = {
+    // for timer interrupt test
+    dut.clock.setTimeout(0)
+
     val mem: mutable.HashMap[Long, BigInt] = mutable.HashMap() // Addr to 4-byte
     var reading: Option[(Long, Long, Long, Long)] = None // ID, Ptr, Left, Size
     var writing: Option[(Long, Long, Long)] = None // Ptr, Left, Size
@@ -210,10 +213,6 @@ class ExecTest(dut: Multicore, file: String) {
 }
 
 object ExecTest {
-  def runFile(file: String, args: Option[Array[String]] = None): Boolean = {
-    return true
-  }
-
   def longMux(
       base: BigInt,
       input: BigInt,
@@ -275,10 +274,4 @@ class ExecSpec extends AnyFlatSpec with Matchers with ChiselScalatestTester {
       }
     }
   }
-}
-
-object ExecTestMain extends App {
-  val fn = args.last
-  println(s"Running $fn...")
-  ExecTest.runFile(fn, Some(args))
 }

@@ -196,6 +196,7 @@ object L1DCPort {
   def empty(opts: L1Opts): L1DCPort = {
     val port = Wire(Flipped(new L1DCPort(opts)))
     port := DontCare
+    port.l1addr := 0.U
     port.l1req := L1Req.idle
     port.l2stall := false.B
 
