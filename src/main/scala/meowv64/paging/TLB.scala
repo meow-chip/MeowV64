@@ -43,7 +43,11 @@ class TLB(implicit val coredef: CoreDef) extends Module {
   val storage = RegInit(VecInit(Seq.fill(coredef.TLB_SIZE)(TLBEntry.empty)))
   val hitMap = storage.map(_.hit(query.vpn))
   val hit = Mux1H(hitMap, storage)
-  assert(PopCount(hitMap) <= 1.U)
+
+  // at most one hit
+  when(query.query) {
+    assert(PopCount(hitMap) <= 1.U)
+  }
 
   val refilling = Reg(UInt())
 
