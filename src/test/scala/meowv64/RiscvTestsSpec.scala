@@ -20,6 +20,7 @@ object RiscvTestsSpec {
       knownFails.foldLeft(true)((ret, cur) => ret && !f.getName().endsWith(cur))
     )
     .map(_.getPath)
+    .sorted
     .toList
 }
 
@@ -40,9 +41,11 @@ class RiscvTestsSpec
       )
     ) { dut =>
       for (file <- RiscvTestsSpec.cases) {
-        println("------------")
-        println(s"Running file $file")
-        new ExecTest(dut, file)
+        if (file.contains("rv64ui-p")) {
+          println("------------")
+          println(s"Running file $file")
+          new ExecTest(dut, file)
+        }
       }
     }
   }

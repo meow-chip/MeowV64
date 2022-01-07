@@ -125,6 +125,13 @@ class BPU(implicit val coredef: CoreDef) extends Module {
   val pipeTag = RegNext(tag)
   toFetch.results := VecInit(pipeReadout.map(_.taken(pipeTag)))
 
+  // valid is stale when in reset state
+  when(reseting) {
+    for (res <- toFetch.results) {
+      res.valid := false.B
+    }
+  }
+
   // Update part
   val updateTag = getTag(toExec.lpc)
   val updateOffset = getOffset(toExec.lpc)
