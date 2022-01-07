@@ -1,13 +1,13 @@
+package meowv64
+
 import chiseltest.ChiselScalatestTester
-import chiseltest.simulator.VerilatorBackendAnnotation
 import chiseltest.simulator.WriteVcdAnnotation
-import meowv64.ExecDef
-import meowv64.ExecTest
 import meowv64.multicore.Multicore
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
 import java.io.File
+import chiseltest.simulator.IcarusBackendAnnotation
 
 object RiscvTestsSpec {
   val knownFails = Seq("rv64mi-p-scall.bin")
@@ -32,7 +32,7 @@ class RiscvTestsSpec
       println(s"------------\nRunning file $file")
       test(
         new Multicore()(ExecDef)
-      ).withAnnotations(Seq(WriteVcdAnnotation, VerilatorBackendAnnotation)) {
+      ).withAnnotations(Seq(WriteVcdAnnotation, IcarusBackendAnnotation)) {
         new ExecTest(_, file)
       }
     }
