@@ -32,7 +32,7 @@ class ILine(val opts: L1Opts) extends Bundle {
 object ILine {
   def default(opts: L1Opts): ILine = {
     val ret = Wire(new ILine(opts))
-    ret.tag := DontCare
+    ret.tag := 0.U
     ret.valid := false.B
 
     ret
@@ -44,8 +44,8 @@ class L1IC(opts: L1Opts) extends Module {
   val toCPU = IO(new ICPort(opts))
   val toL2 = IO(new L1ICPort(opts))
 
-  toCPU.data := DontCare
-  toL2.addr := DontCare
+  toCPU.data := 0.U
+  toL2.addr := 0.U
   toL2.read := false.B
 
   val LINE_COUNT = opts.SIZE / opts.LINE_WIDTH
