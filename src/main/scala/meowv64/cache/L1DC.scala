@@ -685,7 +685,6 @@ class L1DC(val opts: L1DOpts)(implicit coredef: CoreDef) extends Module {
     assert(hitCount <= 1.U)
   }
 
-
   val hits = lookups.map(line => line.valid && line.tag === getTag(pipeAddr))
   val hit = VecInit(hits).asUInt().orR
   val storeJustWrittenData = RegNext(writingData)

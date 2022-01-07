@@ -5,8 +5,7 @@ import chisel3.experimental._
 import chisel3.util._
 
 class FlushableQueueIO[T <: Data](private val gen: T, val _entries: Int)
-    extends QueueIO(gen, _entries, hasFlush=true) {
-}
+    extends QueueIO(gen, _entries, hasFlush = true) {}
 
 /** Copied from chisel3.util.Queue
   */

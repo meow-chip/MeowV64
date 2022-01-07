@@ -1,14 +1,14 @@
 package meowv64
 
-import meowv64.cache._
 import chisel3._
 import chisel3.tester._
+import chiseltest.simulator.WriteVcdAnnotation
+import meowv64.cache._
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
 import scala.collection.mutable.HashMap
 import scala.util.Random
-import chiseltest.simulator.WriteVcdAnnotation
 
 object L1CacheTestDef
     extends {

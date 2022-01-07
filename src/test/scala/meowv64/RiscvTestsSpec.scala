@@ -1,14 +1,13 @@
-import meowv64.util._
+import chiseltest.ChiselScalatestTester
+import chiseltest.simulator.VerilatorBackendAnnotation
+import chiseltest.simulator.WriteVcdAnnotation
+import meowv64.ExecDef
+import meowv64.ExecTest
+import meowv64.multicore.Multicore
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
 import java.io.File
-import chiseltest.ChiselScalatestTester
-import meowv64.multicore.Multicore
-import meowv64.ExecDef
-import meowv64.ExecTest
-import chiseltest.simulator.WriteVcdAnnotation
-import chiseltest.simulator.VerilatorBackendAnnotation
 
 object RiscvTestsSpec {
   val knownFails = Seq("rv64mi-p-scall.bin")

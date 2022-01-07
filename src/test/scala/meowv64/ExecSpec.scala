@@ -1,21 +1,18 @@
 package meowv64
 
-import org.scalatest.flatspec.AnyFlatSpec
-import org.scalatest.matchers.should.Matchers
-
+import chisel3._
+import chisel3.tester._
+import chiseltest.simulator.IcarusBackendAnnotation
+import chiseltest.simulator.WriteVcdAnnotation
 import meowv64.multicore.Multicore
 import meowv64.multicore.MulticoreDef
+import org.scalatest.flatspec.AnyFlatSpec
+import org.scalatest.matchers.should.Matchers
 
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.file.Paths
 import scala.collection.mutable
-
-import chisel3._
-import chisel3.tester._
-import chiseltest.simulator.WriteVcdAnnotation
-import chiseltest.simulator.VerilatorBackendAnnotation
-import chiseltest.simulator.IcarusBackendAnnotation
 
 object ExecDef extends MulticoreDef {
   override val INIT_VEC = BigInt(0x80000000L)
