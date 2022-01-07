@@ -30,20 +30,19 @@ class RiscvTestsSpec
   behavior of "RiscvTestsSpec"
 
   it should s"run successfully" in {
-    for (file <- RiscvTestsSpec.cases) {
-      if (file.contains("sll")) {
-        println(s"------------\nRunning file $file")
-        test(
-          new Multicore()(ExecDef)
-        ).withAnnotations(
-          Seq(
-            WriteVcdAnnotation,
-            IcarusBackendAnnotation,
-            RunFirrtlTransformAnnotation(Dependency(ZeroInit)) // for RRArbiter
-          )
-        ) {
-          new ExecTest(_, file)
-        }
+    test(
+      new Multicore()(ExecDef)
+    ).withAnnotations(
+      Seq(
+        WriteVcdAnnotation,
+        IcarusBackendAnnotation,
+        RunFirrtlTransformAnnotation(Dependency(ZeroInit)) // for RRArbiter
+      )
+    ) { dut =>
+      for (file <- RiscvTestsSpec.cases) {
+        println("------------")
+        println(s"Running file $file")
+        new ExecTest(dut, file)
       }
     }
   }

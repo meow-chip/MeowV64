@@ -471,7 +471,8 @@ class L1DC(val opts: L1DOpts)(implicit coredef: CoreDef) extends Module {
     is(MainState.reading) {
       val reservedCollision = (wlookups(victim).valid
         && getIndex(pipeAddr) === getIndex(reserved)
-        && wlookups(victim).tag === getTag(reserved))
+        && wlookups(victim).tag === getTag(reserved)
+        && resValid)
       when(if (ASSOC_IDX_WIDTH == 0) { false.B }
       else { reservedCollision }) {
         // Reselect victim
