@@ -1,13 +1,11 @@
 package meowv64
 
 import chiseltest.ChiselScalatestTester
-import chiseltest.simulator.WriteVcdAnnotation
 import meowv64.multicore.Multicore
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
 import java.io.File
-import chiseltest.simulator.IcarusBackendAnnotation
 import firrtl.stage.RunFirrtlTransformAnnotation
 import firrtl.options.Dependency
 
@@ -34,16 +32,17 @@ class RiscvTestsSpec
     test(
       new Multicore()(ExecDef)
     ).withAnnotations(
-      Seq(
-        WriteVcdAnnotation,
-        IcarusBackendAnnotation,
-        RunFirrtlTransformAnnotation(Dependency(ZeroInit)) // for RRArbiter
-      )
+      Simulator.getAnnotations() ++
+        Seq(
+          RunFirrtlTransformAnnotation(Dependency(ZeroInit)) // for RRArbiter
+        )
     ) { dut =>
       for (file <- RiscvTestsSpec.cases) {
-        println("------------")
-        println(s"Running file $file")
-        new ExecTest(dut, file)
+        if (file.contains("rv64ui-v-and")) {
+          println("------------")
+          println(s"Running file $file")
+          new ExecTest(dut, file)
+        }
       }
     }
   }

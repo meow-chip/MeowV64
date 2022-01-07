@@ -87,6 +87,8 @@ class BPU(implicit val coredef: CoreDef) extends Module {
   val toFetch = IO(new Bundle {
     val pc =
       Input(UInt(coredef.VADDR_WIDTH.W)) // the address (pc) of the query branch
+    // for each possible branch instruction
+    // return a BPUResult
     val results = Output(
       Vec(coredef.L1I.TRANSFER_SIZE / Const.INSTR_MIN_WIDTH, new BPUResult)
     )
