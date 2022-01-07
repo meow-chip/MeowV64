@@ -42,9 +42,6 @@ class RiscvTestsSpec
             RunFirrtlTransformAnnotation(Dependency(ZeroInit)) // for RRArbiter
           )
         ) {
-          // triggers bug in chisel:
-          // https://github.com/chipsalliance/chisel3/pull/2329
-          // so use verilator here
           new ExecTest(_, file)
         }
       }

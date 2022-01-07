@@ -23,6 +23,11 @@ class ExecTest(dut: Multicore, file: String) {
     // for timer interrupt test
     dut.clock.setTimeout(0)
 
+    // reset for some time
+    dut.reset.poke(true.B)
+    dut.clock.step(16)
+    dut.reset.poke(false.B)
+
     val mem: mutable.HashMap[Long, BigInt] = mutable.HashMap() // Addr to 4-byte
     var reading: Option[(Long, Long, Long, Long)] = None // ID, Ptr, Left, Size
     var writing: Option[(Long, Long, Long)] = None // Ptr, Left, Size
@@ -265,14 +270,15 @@ class ExecSpec extends AnyFlatSpec with Matchers with ChiselScalatestTester {
   behavior of "ExecSpec"
 
   it should s"run successfully" in {
-    for ((desc, file) <- ExecSpec.cases) {
-      println(s"------------\nRunning file $file")
-      test(
-        new Multicore()(ExecDef)
-      ).withAnnotations(
-        Seq(WriteVcdAnnotation, IcarusBackendAnnotation)
-      ) {
-        new ExecTest(_, file)
+    test(
+      new Multicore()(ExecDef)
+    ).withAnnotations(
+      Seq(WriteVcdAnnotation, IcarusBackendAnnotation)
+    ) { dut => 
+      for ((desc, file) <- ExecSpec.cases) {
+        println("------------")
+        println(s"Running file $file")
+        new ExecTest(dut, file)
       }
     }
   }
