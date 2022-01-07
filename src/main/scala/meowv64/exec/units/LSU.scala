@@ -268,7 +268,7 @@ class LSU(implicit val coredef: CoreDef) extends Module with UnitSelIO {
   toMem.reader.req.bits.reserve := next.instr.instr.op =/= Decoder
     .Op("LOAD")
     .ident
-  toMem.reader.req.bits.addr := aligned
+  toMem.reader.req.bits.addr := Mux(canRead, aligned, 0.U)
   toMem.reader.req.valid := canRead
 
   when(next.instr.vacant) {

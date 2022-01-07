@@ -21,6 +21,7 @@ class PTW(implicit coredef: CoreDef) extends Module {
   val satp = IO(Input(new Satp))
   val dc = IO(new DCReader)
   dc.req.noenq()
+  dc.req.bits.addr := 0.U
 
   val arbiter = Module(new RRArbiter(UInt(coredef.vpnWidth.W), 2))
   arbiter.io.in(0) <> itlb.req
