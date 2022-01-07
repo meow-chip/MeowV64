@@ -12,4 +12,4 @@ exec_test:
     - cd testcases
     - make
     - cd ..
-    - mill mewov64.test.test
+    - mill meowv64.test.test
