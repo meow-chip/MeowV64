@@ -43,7 +43,7 @@ class BranchResult(implicit val coredef: CoreDef) extends Bundle {
 
   def nofire = {
     branch := false.B
-    target := DontCare
+    target := 0.U
     irst := false.B
     tlbrst := false.B
 

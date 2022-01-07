@@ -349,3 +349,6 @@ test_run_dir
 
 .jvmopts
 .sbtopts
+
+Multicore.fir
+Multicore.v

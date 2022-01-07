@@ -8,6 +8,7 @@ import org.scalatest.matchers.should.Matchers
 
 import java.io.File
 import chiseltest.simulator.IcarusBackendAnnotation
+import chiseltest.simulator.VerilatorBackendAnnotation
 
 object RiscvTestsSpec {
   val knownFails = Seq("rv64mi-p-scall.bin")
@@ -32,7 +33,10 @@ class RiscvTestsSpec
       println(s"------------\nRunning file $file")
       test(
         new Multicore()(ExecDef)
-      ).withAnnotations(Seq(WriteVcdAnnotation, IcarusBackendAnnotation)) {
+      ).withAnnotations(Seq(WriteVcdAnnotation, VerilatorBackendAnnotation)) {
+        // triggers bug in chisel:
+        // https://github.com/chipsalliance/chisel3/pull/2329
+        // so use verilator here
         new ExecTest(_, file)
       }
     }
