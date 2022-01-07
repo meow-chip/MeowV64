@@ -11,7 +11,7 @@ import java.io.File
 
 object RiscvTestsSpec {
   val knownFails = Seq("rv64mi-p-scall.bin")
-  val cases = new File("./testcases/riscv-tests/isa").listFiles
+  val cases = new File("./testcases/riscv-tests/build/isa").listFiles
     .filter(_.isFile)
     .filter(_.getName.endsWith(".bin"))
     .filter(f =>
