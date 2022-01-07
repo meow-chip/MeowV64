@@ -12,4 +12,4 @@ exec_test:
     - cd testcases
     - make
     - cd ..
-    - sbt test
+    - mill mewov64.test.test

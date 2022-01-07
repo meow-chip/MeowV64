@@ -12,3 +12,4 @@ RUN apt install -y openjdk-11-jdk
 RUN touch build.sc
 RUN mill -i resolve _
 RUN rm build.sc
+RUN apt install -y make bsdextrautils autoconf g++ build-essential
