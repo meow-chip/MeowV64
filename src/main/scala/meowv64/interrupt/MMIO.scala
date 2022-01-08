@@ -25,6 +25,6 @@ class MMIOReq(val mmiodef: MMIODef) extends Bundle {
 }
 
 class MMIOAccess(val mmiodef: MMIODef) extends Bundle {
-  val req = Flipped(DecoupledIO(new MMIOReq(mmiodef)))
-  val resp = ValidIO(UInt(mmiodef.XLEN.W))
+  val req = Flipped(Decoupled(new MMIOReq(mmiodef)))
+  val resp = Valid(UInt(mmiodef.XLEN.W))
 }

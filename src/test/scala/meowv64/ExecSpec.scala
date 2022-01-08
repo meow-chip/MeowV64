@@ -16,6 +16,8 @@ import scala.collection.mutable
 import chiseltest.simulator.VerilatorBackendAnnotation
 import firrtl.AnnotationSeq
 import chiseltest.simulator.VcsBackendAnnotation
+import firrtl.stage.RunFirrtlTransformAnnotation
+import firrtl.options.Dependency
 
 object ExecDef extends MulticoreDef {
   override val INIT_VEC = BigInt(0x80000000L)
@@ -183,7 +185,12 @@ class ExecTest(dut: Multicore, file: String) {
             case Some((addr, _, _)) if addr == 0x20000000L => {
               // tohost in ISA testsuite
               val data = (wdata.litValue & 0xffffffff).toLong
-              if (wdata.litValue == ((data & 0xff) | BigInt("0101000000000000", 16))) {
+              if (
+                wdata.litValue == ((data & 0xff) | BigInt(
+                  "0101000000000000",
+                  16
+                ))
+              ) {
                 // Is simple print
                 print((data & 0xff).toChar)
               } else if (data == 1) {
@@ -289,9 +296,7 @@ class ExecSpec extends AnyFlatSpec with Matchers with ChiselScalatestTester {
   it should s"run successfully" in {
     test(
       new Multicore()(ExecDef)
-    ).withAnnotations(
-      Seq(WriteVcdAnnotation, IcarusBackendAnnotation)
-    ) { dut =>
+    ).withAnnotations(Simulator.getAnnotations()) { dut =>
       for ((desc, file) <- ExecSpec.cases) {
         println("------------")
         println(s"Running file $file")
@@ -324,7 +329,7 @@ object Simulator {
       useIcarus: Boolean = true,
       useVerilator: Boolean = true
   ): AnnotationSeq = {
-    val annotations = if (vcsFound && useVCS) {
+    var annotations: AnnotationSeq = if (vcsFound && useVCS) {
       println("Using VCS")
       Seq(
         VcsBackendAnnotation
@@ -343,6 +348,10 @@ object Simulator {
       throw new RuntimeException("No usable simulator")
       Seq()
     }
+    annotations = annotations ++
+      Seq(
+        RunFirrtlTransformAnnotation(Dependency(ZeroInit)) // for RRArbiter
+      )
     // do not write vcd in ci by default
     // annotations ++ Seq(WriteVcdAnnotation)
     annotations

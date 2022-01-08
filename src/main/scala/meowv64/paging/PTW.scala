@@ -22,6 +22,7 @@ class PTW(implicit coredef: CoreDef) extends Module {
   val dc = IO(new DCReader)
   dc.req.noenq()
   dc.req.bits.addr := 0.U
+  dc.req.bits.reserve := false.B
 
   val arbiter = Module(new RRArbiter(UInt(coredef.vpnWidth.W), 2))
   arbiter.io.in(0) <> itlb.req
@@ -41,11 +42,11 @@ class PTW(implicit coredef: CoreDef) extends Module {
 
   resp.fault := fault
   resp.level := level
-  resp.pte := DontCare
+  resp.pte := PTE.empty
 
   class TLBReq extends Bundle {
     val vpn = UInt(coredef.vpnWidth.W)
-    val src = UInt(1.W) // Source
+    val src = UInt(1.W) // Source, ITLB/DTLB
   }
   val tlbSlot = Module(new FlushableSlot(new TLBReq, false, true))
   tlbSlot.io.enq.bits.src := arbiter.io.chosen
@@ -53,6 +54,7 @@ class PTW(implicit coredef: CoreDef) extends Module {
   tlbSlot.io.enq.valid <> arbiter.io.out.valid
   tlbSlot.io.enq.ready <> arbiter.io.out.ready
 
+  // never flush
   tlbSlot.io.flush.get := false.B
 
   val segs = VecInit((0 until MAX_SEG).map({
@@ -64,11 +66,13 @@ class PTW(implicit coredef: CoreDef) extends Module {
 
   tlbSlot.io.deq.nodeq()
 
+  // route to itlb/dtlb
   when(tlbSlot.io.deq.fire) {
     itlb.resp.valid := tlbSlot.io.deq.bits.src === 0.U
     dtlb.resp.valid := tlbSlot.io.deq.bits.src === 1.U
   }
 
+  // buffer dcache resp
   val dcSlot = Module(new FlushableSlot(UInt(), false, true))
   dcSlot.io.flush.get := false.B
   dcSlot.io.enq.bits := dc.resp.bits

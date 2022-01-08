@@ -30,8 +30,8 @@ object DCRead {
 }
 
 class DCReader(implicit val coredef: CoreDef) extends Bundle {
-  val req = DecoupledIO(new DCRead)
-  val resp = Input(ValidIO(UInt(coredef.XLEN.W)))
+  val req = Decoupled(new DCRead)
+  val resp = Input(Valid(UInt(coredef.XLEN.W)))
 }
 
 class DCInnerReader(val opts: L1DOpts) extends Bundle {

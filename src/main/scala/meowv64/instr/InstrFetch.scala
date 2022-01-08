@@ -90,8 +90,8 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
   })
 
   val toRAS = IO(new Bundle {
-    val push = ValidIO(UInt(coredef.XLEN.W))
-    val pop = Flipped(DecoupledIO(UInt(coredef.XLEN.W)))
+    val push = Valid(UInt(coredef.XLEN.W))
+    val pop = Flipped(Decoupled(UInt(coredef.XLEN.W)))
   })
 
   val debug = IO(new Bundle {

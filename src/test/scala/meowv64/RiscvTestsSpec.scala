@@ -6,8 +6,6 @@ import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
 import java.io.File
-import firrtl.stage.RunFirrtlTransformAnnotation
-import firrtl.options.Dependency
 
 object RiscvTestsSpec {
   val knownFails = Seq("rv64mi-p-scall.bin")
@@ -29,10 +27,7 @@ class RiscvTestsSpec
   behavior of "RiscvTestsSpec"
 
   val annotations =
-    Simulator.getAnnotations() ++
-      Seq(
-        RunFirrtlTransformAnnotation(Dependency(ZeroInit)) // for RRArbiter
-      )
+    Simulator.getAnnotations()
 
   it should s"run physical testcases successfully" in {
     test(

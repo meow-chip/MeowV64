@@ -56,10 +56,11 @@ class TLB(implicit val coredef: CoreDef) extends Module {
     assert(PopCount(hitMap) <= 1.U)
   }
 
+  // save last ptw faulted information
   val refilling = Reg(UInt())
+  val ptwFaulted = RegInit(false.B)
 
   val inStore = VecInit(hitMap).asUInt().orR()
-  val ptwFaulted = RegInit(false.B)
   val modeMismatch = MuxLookup(
     query.req.bits.mode.asUInt(),
     false.B,
@@ -72,13 +73,17 @@ class TLB(implicit val coredef: CoreDef) extends Module {
     modeMismatch || (query.req.bits.isModify && !hit.d) || !hit.a
   val fault =
     (ptwFaulted && refilling === query.req.bits.vpn) || (inStore && accessFault)
-  query.resp.ppn := hit.fromVPN(query.req.bits.vpn)
-  query.resp.fault := fault
-  query.req.ready := (inStore || fault) && !flush
 
-  when(inStore && accessFault) {
-    query.resp.fault := true.B
+  query.resp.ppn := 0.U
+  query.resp.fault := false.B
+
+  // response when a match is found or faulted
+  when(query.req.fire) {
+    query.resp.ppn := hit.fromVPN(query.req.bits.vpn)
+    query.resp.fault := fault
   }
+
+  query.req.ready := (inStore || fault) && !flush
 
   ptw.req.noenq()
 
@@ -125,6 +130,7 @@ class TLB(implicit val coredef: CoreDef) extends Module {
 
       when(ptw.resp.valid) {
         when(!ptw.resp.bits.fault) {
+          // save ptw entry to tlb
           storage(victim) := written
         }
         ptwFaulted := ptw.resp.bits.fault

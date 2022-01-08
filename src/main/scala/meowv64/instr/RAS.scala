@@ -6,12 +6,12 @@ import meowv64.core.CoreDef
 
 class RAS(implicit val coredef: CoreDef) extends Module {
   val toIF = IO(new Bundle {
-    val push = Flipped(ValidIO(UInt(coredef.XLEN.W)))
-    val pop = DecoupledIO(UInt(coredef.XLEN.W))
+    val push = Flipped(Valid(UInt(coredef.XLEN.W)))
+    val pop = Decoupled(UInt(coredef.XLEN.W))
   })
 
   val toExec = IO(new Bundle {
-    val realign = Flipped(ValidIO(new Bundle {
+    val realign = Flipped(Valid(new Bundle {
       val ptr = UInt(log2Ceil(coredef.RAS_SIZE).W)
       val empty = Bool()
     }))
