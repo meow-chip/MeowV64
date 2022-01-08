@@ -5,6 +5,9 @@ import chisel3.experimental.ChiselEnum
 import chisel3.util._
 import meowv64.core._
 
+/**
+  * BHT prediction type: branch taken, branch not taken, or missing in BHT
+  */
 object BHTPrediction extends ChiselEnum {
   val taken, notTaken, missed = Value
 }
@@ -36,6 +39,7 @@ class BPUResult(implicit val coredef: CoreDef) extends Bundle {
   val valid = Bool()
   val history = UInt(coredef.BHT_WIDTH.W)
 
+  // predict by msb: <1/2 not taken, >1/2 taken
   def prediction = Mux(
     valid,
     Mux(
@@ -53,6 +57,7 @@ class BPUResult(implicit val coredef: CoreDef) extends Bundle {
     ret.tag := tag
 
     when(this.valid) {
+      // saturating add
       ret.history := Mux(
         this.history.andR(),
         (-1).S(coredef.BHT_WIDTH.W).asUInt,
@@ -72,6 +77,7 @@ class BPUResult(implicit val coredef: CoreDef) extends Bundle {
     ret.tag := tag
 
     when(this.valid) {
+      // saturating sub
       ret.history := Mux(this.history.orR(), this.history - 1.U, 0.U)
     }.otherwise {
       ret.history := 0.U(1.W) ## (-1).S((coredef.BHT_WIDTH - 1).W).asUInt
@@ -80,6 +86,13 @@ class BPUResult(implicit val coredef: CoreDef) extends Bundle {
     ret
   }
 
+  /**
+    * Update BPU prediction history
+    *
+    * @param taken
+    * @param tag
+    * @return
+    */
   def update(taken: Bool, tag: UInt) = Mux(taken, this.up(tag), this.down(tag))
 }
 

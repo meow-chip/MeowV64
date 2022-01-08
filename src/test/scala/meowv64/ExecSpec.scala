@@ -66,6 +66,14 @@ class ExecTest(dut: Multicore, file: String) {
       dut.io.eints(1).poke(true.B)
 
       // println("Cycle: " + i)
+      if (i % 10000 == 0) {
+        println("Cycle: " + i)
+        val mcycle = dut.io.debug(0).mcycle.peek.litValue
+        val minstret = dut.io.debug(0).minstret.peek.litValue
+
+        println(s"> mcycle: ${mcycle}")
+        println(s"> minstret: ${minstret}")
+      }
       dut.clock.step(1)
 
       // TODO: handles multicore
@@ -277,7 +285,7 @@ class ExecSpec extends AnyFlatSpec with Matchers with ChiselScalatestTester {
       new Multicore()(ExecDef)
     ).withAnnotations(
       Seq(WriteVcdAnnotation, IcarusBackendAnnotation)
-    ) { dut => 
+    ) { dut =>
       for ((desc, file) <- ExecSpec.cases) {
         println("------------")
         println(s"Running file $file")
@@ -286,7 +294,6 @@ class ExecSpec extends AnyFlatSpec with Matchers with ChiselScalatestTester {
     }
   }
 }
-
 
 object Simulator {
 
@@ -324,7 +331,7 @@ object Simulator {
     } else if (verilatorFound && useVerilator) {
       println("Using Verilator")
       Seq(
-        VerilatorBackendAnnotation,
+        VerilatorBackendAnnotation
       )
     } else {
       throw new RuntimeException("No usable simulator")
