@@ -1,10 +1,10 @@
 package meowv64
 
-import firrtl.Transform
 import firrtl.CircuitState
-import firrtl.ir._
 import firrtl.DependencyAPIMigration
+import firrtl.Transform
 import firrtl.ir.ExtModule
+import firrtl.ir._
 
 /** Zero-initialized registers if no reset is specified.
   */

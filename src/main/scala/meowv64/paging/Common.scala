@@ -4,6 +4,8 @@ import chisel3._
 import chisel3.util._
 import meowv64.core.CoreDef
 
+/** Page table entry
+  */
 class PTE(implicit val coredef: CoreDef) extends Bundle {
   val RESERVED1 = UInt(10.W)
   val ppn = UInt(coredef.ppnWidth.W)
@@ -17,7 +19,10 @@ class PTE(implicit val coredef: CoreDef) extends Bundle {
   val r = Bool()
   val v = Bool()
 
+  /** pointer to next level of page table(X=W=R=0) */
   def intermediate = v && !w && !r && !x
+
+  /** R=0,W=1 means reserved */
   def valid = v && !((!r) && w)
   def misaligned(level: UInt)(implicit coredef: CoreDef) = {
     val MAX_SEG = coredef.vpnWidth / 9
@@ -134,6 +139,6 @@ class PTWResp(implicit val coredef: CoreDef) extends Bundle {
 }
 
 class TLBExt(implicit val coredef: CoreDef) extends Bundle {
-  val req = DecoupledIO(UInt(coredef.vpnWidth.W))
-  val resp = Flipped(ValidIO(new PTWResp))
+  val req = Decoupled(UInt(coredef.vpnWidth.W))
+  val resp = Flipped(Valid(new PTWResp))
 }

@@ -21,8 +21,7 @@ object Decoder {
       OpSpec(Integer.parseInt(s, 2).U(5.W), t)
   }
 
-  /**
-    * Instruction op types(inst[6:2]), see RISC-V base opcode map
+  /** Instruction op types(inst[6:2]), see RISC-V base opcode map
     */
   val Op: Map[String, OpSpec] = Map(
     "LOAD" -> spec("00000", InstrType.I),
@@ -554,9 +553,8 @@ object Decoder {
   }
 }
 
-/**
- * Raw RISC-V Instruction
- */
+/** Raw RISC-V Instruction
+  */
 class Instr extends Bundle {
   // Opcode
   val op = UInt(5.W)

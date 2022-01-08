@@ -1,9 +1,9 @@
 package meowv64
 
-import meowv64.multicore.Multicore
 import chisel3.stage.ChiselGeneratorAnnotation
-import firrtl.stage.RunFirrtlTransformAnnotation
 import firrtl.options.Dependency
+import firrtl.stage.RunFirrtlTransformAnnotation
+import meowv64.multicore.Multicore
 
 object Main extends App {
   (new chisel3.stage.ChiselStage()).execute(

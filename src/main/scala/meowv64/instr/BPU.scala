@@ -5,8 +5,7 @@ import chisel3.experimental.ChiselEnum
 import chisel3.util._
 import meowv64.core._
 
-/**
-  * BHT prediction type: branch taken, branch not taken, or missing in BHT
+/** BHT prediction type: branch taken, branch not taken, or missing in BHT
   */
 object BHTPrediction extends ChiselEnum {
   val taken, notTaken, missed = Value
@@ -86,8 +85,7 @@ class BPUResult(implicit val coredef: CoreDef) extends Bundle {
     ret
   }
 
-  /**
-    * Update BPU prediction history
+  /** Update BPU prediction history
     *
     * @param taken
     * @param tag

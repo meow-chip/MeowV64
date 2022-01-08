@@ -10,8 +10,7 @@ import meowv64.util._
 
 import Decoder._
 
-/**
-  * Fetch exception
+/** Fetch exception
   */
 object FetchEx extends ChiselEnum {
   val none, invalAddr, pageFault = Value
@@ -20,25 +19,25 @@ object FetchEx extends ChiselEnum {
 class InstrExt(implicit val coredef: CoreDef) extends Bundle {
   val addr = UInt(coredef.XLEN.W)
   val instr = new Instr
-  /**
-    * Valid instruction, possibly legal or illegal
+
+  /** Valid instruction, possibly legal or illegal
     */
   val valid = Bool()
   val fetchEx = FetchEx()
-  /**
-    * Exception happens on the second half of this instruction
+
+  /** Exception happens on the second half of this instruction
     */
   val acrossPageEx =
     Bool()
   val pred = new BPUResult
-  /**
-    * RAS and missed branch
+
+  /** RAS and missed branch
     */
   val forcePred = Bool()
-  /**
-    * For JALR handling
+
+  /** For JALR handling
     */
-  val predTarget = UInt(coredef.XLEN.W) 
+  val predTarget = UInt(coredef.XLEN.W)
 
   override def toPrintable: Printable = {
     p"Address: 0x${Hexadecimal(addr)}\n" +
@@ -46,8 +45,7 @@ class InstrExt(implicit val coredef: CoreDef) extends Bundle {
       p"${instr}"
   }
 
-  /**
-    * Next PC for this instruction
+  /** Next PC for this instruction
     */
   def npc: UInt = Mux(instr.base === InstrType.C, addr + 2.U, addr + 4.U)
   def taken: Bool = forcePred || pred.prediction === BHTPrediction.taken
@@ -115,11 +113,11 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
   val requiresTranslate =
     toCore.satp.mode =/= SatpMode.bare && toCtrl.priv <= PrivLevel.S
   // TODO: this will cause the flush to be sent one more tick
-  val readStalled = toIC.stall || (requiresTranslate && !tlb.query.ready)
+  val readStalled = toIC.stall || (requiresTranslate && !tlb.query.req.ready)
 
   when(!readStalled) {
     pipePc := fpc
-    pipeFault := tlb.query.fault
+    pipeFault := tlb.query.resp.fault
 
     when(toIC.read) {
       pc := fpc + (coredef.L1I.TRANSFER_SIZE / 8).U
@@ -128,10 +126,10 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
 
   tlb.ptw <> toCore.ptw
   tlb.satp := toCore.satp
-  tlb.query.vpn := fpc(47, 12)
-  tlb.query.query := requiresTranslate && !toCtrl.ctrl.flush
-  tlb.query.isModify := false.B
-  tlb.query.mode := Mux(
+  tlb.query.req.bits.vpn := fpc(47, 12)
+  tlb.query.req.valid := requiresTranslate && !toCtrl.ctrl.flush
+  tlb.query.req.bits.isModify := false.B
+  tlb.query.req.bits.mode := Mux(
     toCtrl.priv === PrivLevel.U,
     TLBLookupMode.U,
     TLBLookupMode.S
@@ -167,8 +165,8 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
   val icAddr = WireDefault(fpc)
   val icRead = WireDefault(!haltIC)
   when(requiresTranslate) {
-    icAddr := tlb.query.ppn ## fpc(11, 0)
-    icRead := (!haltIC && tlb.query.ready) && !tlb.query.fault
+    icAddr := tlb.query.resp.ppn ## fpc(11, 0)
+    icRead := (!haltIC && tlb.query.req.ready) && !tlb.query.resp.fault
   }
   toIC.read := icRead && !toCtrl.ctrl.flush
   toIC.addr := icAddr

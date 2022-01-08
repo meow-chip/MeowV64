@@ -13,21 +13,28 @@ object TLBLookupMode extends ChiselEnum {
   val U, S, both = Value
 }
 
+class TLBReq(implicit val coredef: CoreDef) extends Bundle {
+  val mode = TLBLookupMode()
+
+  /** This access is write i.e. check dirty bit
+    */
+  val isModify = Bool()
+  val vpn = UInt(coredef.vpnWidth.W)
+}
+
+class TLBResp(implicit val coredef: CoreDef) extends Bundle {
+  val ppn = UInt(coredef.ppnWidth.W)
+  val fault = Bool()
+}
+
 class TLB(implicit val coredef: CoreDef) extends Module {
   val ptw = IO(new TLBExt)
 
   val satp = IO(Input(new Satp))
 
   val query = IO(new Bundle {
-    val vpn = Input(UInt(coredef.vpnWidth.W))
-    val ppn = Output(UInt(coredef.ppnWidth.W))
-
-    val query = Input(Bool())
-    val ready = Output(Bool())
-    val fault = Output(Bool())
-
-    val mode = Input(TLBLookupMode())
-    val isModify = Input(Bool())
+    val req = Flipped(Decoupled(new TLBReq))
+    val resp = Output(new TLBResp)
   })
 
   // TODO: check RWX permission, and MXR
@@ -41,11 +48,11 @@ class TLB(implicit val coredef: CoreDef) extends Module {
   val state = RegInit(TLBState.idle)
 
   val storage = RegInit(VecInit(Seq.fill(coredef.TLB_SIZE)(TLBEntry.empty)))
-  val hitMap = storage.map(_.hit(query.vpn))
+  val hitMap = storage.map(_.hit(query.req.bits.vpn))
   val hit = Mux1H(hitMap, storage)
 
   // at most one hit
-  when(query.query) {
+  when(query.req.valid) {
     assert(PopCount(hitMap) <= 1.U)
   }
 
@@ -54,21 +61,23 @@ class TLB(implicit val coredef: CoreDef) extends Module {
   val inStore = VecInit(hitMap).asUInt().orR()
   val ptwFaulted = RegInit(false.B)
   val modeMismatch = MuxLookup(
-    query.mode.asUInt(),
+    query.req.bits.mode.asUInt(),
     false.B,
     Seq(
       TLBLookupMode.S.asUInt -> hit.u,
       TLBLookupMode.U.asUInt -> !hit.u
     )
   )
-  val accessFault = modeMismatch || query.isModify && !hit.d || !hit.a
-  val fault = (ptwFaulted && refilling === query.vpn) || inStore && accessFault
-  query.ppn := hit.fromVPN(query.vpn)
-  query.fault := fault
-  query.ready := (inStore || fault) && !flush
+  val accessFault =
+    modeMismatch || (query.req.bits.isModify && !hit.d) || !hit.a
+  val fault =
+    (ptwFaulted && refilling === query.req.bits.vpn) || (inStore && accessFault)
+  query.resp.ppn := hit.fromVPN(query.req.bits.vpn)
+  query.resp.fault := fault
+  query.req.ready := (inStore || fault) && !flush
 
   when(inStore && accessFault) {
-    query.fault := true.B
+    query.resp.fault := true.B
   }
 
   ptw.req.noenq()
@@ -77,12 +86,12 @@ class TLB(implicit val coredef: CoreDef) extends Module {
   // This is done by using a state machine
   switch(state) {
     is(TLBState.idle) {
-      query.ready := false.B
-      when(!flush && query.query) {
-        query.ready := inStore || fault
+      query.req.ready := false.B
+      when(!flush && query.req.valid) {
+        query.req.ready := inStore || fault
 
-        when(!query.ready) {
-          refilling := query.vpn
+        when(!query.req.ready) {
+          refilling := query.req.bits.vpn
           state := TLBState.req
           ptwFaulted := false.B
         }
@@ -90,7 +99,7 @@ class TLB(implicit val coredef: CoreDef) extends Module {
     }
 
     is(TLBState.req) {
-      query.ready := false.B
+      query.req.ready := false.B
 
       ptw.req.enq(refilling)
 
@@ -100,7 +109,7 @@ class TLB(implicit val coredef: CoreDef) extends Module {
     }
 
     is(TLBState.resp) {
-      query.ready := false.B
+      query.req.ready := false.B
 
       val random = LFSR(log2Ceil(coredef.TLB_SIZE))
       val invalids = storage.map(!_.v)

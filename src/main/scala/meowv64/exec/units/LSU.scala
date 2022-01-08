@@ -40,7 +40,7 @@ object DelayedMemOp extends ChiselEnum {
   * results
   *
   * @param coredef:
-  *   Core defination
+  *   Core definition
   */
 class DelayedMem(implicit val coredef: CoreDef) extends Bundle {
   self =>
@@ -149,9 +149,9 @@ class LSU(implicit val coredef: CoreDef) extends Module with UnitSelIO {
   val tlbRequestModify = WireDefault(false.B)
   tlb.satp := satp
   tlb.ptw <> ptw
-  tlb.query.query := requiresTranslate && next.instr.valid && !fenceLike
-  tlb.query.isModify := tlbRequestModify
-  tlb.query.mode := tlbMode
+  tlb.query.req.valid := requiresTranslate && next.instr.valid && !fenceLike
+  tlb.query.req.bits.isModify := tlbRequestModify
+  tlb.query.req.bits.mode := tlbMode
   tlb.flush := tlbrst
 
   val flushed = RegInit(false.B)
@@ -219,10 +219,10 @@ class LSU(implicit val coredef: CoreDef) extends Module with UnitSelIO {
   assert(coredef.PADDR_WIDTH > coredef.VADDR_WIDTH)
   val rawAddr =
     (next.rs1val.asSInt + next.instr.instr.imm).asUInt // We have imm = 0 for R-type instructions
-  tlb.query.vpn := rawAddr(47, 12)
+  tlb.query.req.bits.vpn := rawAddr(47, 12)
   val addr = WireDefault(rawAddr)
   when(requiresTranslate) {
-    addr := tlb.query.ppn ## rawAddr(11, 0)
+    addr := tlb.query.resp.ppn ## rawAddr(11, 0)
   }
 
   val aligned = addr(coredef.PADDR_WIDTH - 1, 3) ## 0.U(3.W)
@@ -256,11 +256,11 @@ class LSU(implicit val coredef: CoreDef) extends Module with UnitSelIO {
     read && !uncached && !invalAddr && !misaligned && !flush
   )
   when(requiresTranslate) {
-    when(!tlb.query.ready) {
+    when(!tlb.query.req.ready) {
       canRead := false.B
     }
 
-    when(tlb.query.fault) {
+    when(tlb.query.resp.fault) {
       canRead := false.B
     }
   }
@@ -275,7 +275,7 @@ class LSU(implicit val coredef: CoreDef) extends Module with UnitSelIO {
     l1pass := false.B
   }.elsewhen(fenceLike) {
     l1pass := !l2stall
-  }.elsewhen(requiresTranslate && !tlb.query.ready) {
+  }.elsewhen(requiresTranslate && !tlb.query.req.ready) {
     l1pass := false.B
   }.elsewhen(toMem.reader.req.valid) {
     l1pass := toMem.reader.req.ready
@@ -303,7 +303,7 @@ class LSU(implicit val coredef: CoreDef) extends Module with UnitSelIO {
 
   l2stall := !toMem.reader.resp.valid && pipeInstr.instr.valid && pipeDCRead
   when(l1pass) {
-    pipeFault := tlb.query.query && tlb.query.fault
+    pipeFault := tlb.query.req.valid && tlb.query.resp.fault
     pipeInstr := next
     pipeAddr := addr
     pipeRawAddr := rawAddr
