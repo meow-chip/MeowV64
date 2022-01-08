@@ -28,15 +28,16 @@ class RiscvTestsSpec
     with ChiselScalatestTester {
   behavior of "RiscvTestsSpec"
 
+  val annotations =
+    Simulator.getAnnotations() ++
+      Seq(
+        RunFirrtlTransformAnnotation(Dependency(ZeroInit)) // for RRArbiter
+      )
+
   it should s"run physical testcases successfully" in {
     test(
       new Multicore()(ExecDef)
-    ).withAnnotations(
-      Simulator.getAnnotations() ++
-        Seq(
-          RunFirrtlTransformAnnotation(Dependency(ZeroInit)) // for RRArbiter
-        )
-    ) { dut =>
+    ).withAnnotations(annotations) { dut =>
       for (file <- RiscvTestsSpec.cases) {
         if (file.contains("-p-")) {
           println("------------")
@@ -47,17 +48,14 @@ class RiscvTestsSpec
     }
   }
 
-  it should s"run virtual testcases successfully" in {
-    test(
-      new Multicore()(ExecDef)
-    ).withAnnotations(
-      Simulator.getAnnotations() ++
-        Seq(
-          RunFirrtlTransformAnnotation(Dependency(ZeroInit)) // for RRArbiter
-        )
-    ) { dut =>
-      for (file <- RiscvTestsSpec.cases) {
-        if (file.contains("-v-")) {
+  // these testcases are slow and memory consuming
+  // avoid java heap space oom
+  for (file <- RiscvTestsSpec.cases) {
+    if (file.contains("-v-")) {
+      it should s"run testcases ${file} successfully" in {
+        test(
+          new Multicore()(ExecDef)
+        ).withAnnotations(annotations) { dut =>
           println("------------")
           println(s"Running file $file")
           new ExecTest(dut, file)
