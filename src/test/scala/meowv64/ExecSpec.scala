@@ -183,7 +183,7 @@ class ExecTest(dut: Multicore, file: String) {
             case Some((addr, _, _)) if addr == 0x20000000L => {
               // tohost in ISA testsuite
               val data = (wdata.litValue & 0xffffffff).toLong
-              if (wdata == ((data & 0xff) | BigInt("0101000000000000", 16))) {
+              if (wdata.litValue == ((data & 0xff) | BigInt("0101000000000000", 16))) {
                 // Is simple print
                 print((data & 0xff).toChar)
               } else if (data == 1) {
@@ -194,6 +194,7 @@ class ExecTest(dut: Multicore, file: String) {
                 if (!failed.contains(c)) {
                   println(s"ISA testsuite failed case ${c}")
                   failed.add(c)
+                  finished = true
                 }
               } else {
                 println(s"ISA testsuite tohost: ${data}")
