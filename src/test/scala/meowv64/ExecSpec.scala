@@ -337,6 +337,8 @@ object Simulator {
       throw new RuntimeException("No usable simulator")
       Seq()
     }
-    annotations ++ Seq(WriteVcdAnnotation)
+    // do not write vcd in ci by default
+    // annotations ++ Seq(WriteVcdAnnotation)
+    annotations
   }
 }
