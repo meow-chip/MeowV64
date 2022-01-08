@@ -547,7 +547,7 @@ class L2Cache(val opts: L2Opts) extends Module {
         nstate := L2MainState.idle
         step()
       }.elsewhen(!hasDirty) {
-        // If modyfing, we need to inval them first
+        // If modifying, we need to invalidate them first
         when(targetOps === L1DCPort.L1Req.read) {
           assert(!misses(target))
 
