@@ -205,7 +205,7 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
     // this instruction spans ICHead and ICQueue
     val overflowed = decodePtr(
       i
-    ) > (coredef.L1I.TRANSFER_SIZE / 16 - Const.INSTR_MIN_WIDTH / 8).U
+    ) >= (coredef.L1I.TRANSFER_SIZE / 16 - 1).U
 
     when(!overflowed) {
       decodable(i) := ICHead.io.deq.valid
