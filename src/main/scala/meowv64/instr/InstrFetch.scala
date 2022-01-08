@@ -10,6 +10,9 @@ import meowv64.util._
 
 import Decoder._
 
+/**
+  * Fetch exception
+  */
 object FetchEx extends ChiselEnum {
   val none, invalAddr, pageFault = Value
 }
@@ -180,14 +183,16 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
     )
   )
   val decoded = Wire(Vec(coredef.FETCH_NUM, new InstrExt))
+  dontTouch(decoded)
   val decodedRASPush = Wire(Vec(coredef.FETCH_NUM, Bool()))
   val decodedRASPop = Wire(Vec(coredef.FETCH_NUM, Bool()))
   decodePtr(0) := headPtr
 
   for (i <- 0 until coredef.FETCH_NUM) {
+    // this instruction spans ICHead and ICQueue
     val overflowed = decodePtr(
       i
-    ) >= (coredef.L1I.TRANSFER_SIZE / 16 - Const.INSTR_MIN_WIDTH / 8).U
+    ) > (coredef.L1I.TRANSFER_SIZE / 16 - Const.INSTR_MIN_WIDTH / 8).U
 
     when(!overflowed) {
       decodable(i) := ICHead.io.deq.valid
@@ -248,6 +253,11 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
     }.elsewhen(acrossPage && ICQueue.io.deq.bits.fault) {
       decoded(i).fetchEx := FetchEx.pageFault
       decoded(i).acrossPageEx := true.B
+    }.elsewhen(overflowed && ICQueue.io.deq.bits.fault) {
+      // handle case for example:
+      // ICHead is at 0x1ff8, ICQueue is at 0x2000
+      // decoded(0) is at 0x1ffc, decoded(1) is at 0x2000
+      decoded(i).fetchEx := FetchEx.pageFault
     }.elsewhen(isInvalAddr) {
       decoded(i).fetchEx := FetchEx.invalAddr
     }
