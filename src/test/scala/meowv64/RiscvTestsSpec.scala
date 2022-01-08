@@ -38,11 +38,9 @@ class RiscvTestsSpec
         )
     ) { dut =>
       for (file <- RiscvTestsSpec.cases) {
-        if (file.contains("rv64ui-v-and")) {
-          println("------------")
-          println(s"Running file $file")
-          new ExecTest(dut, file)
-        }
+        println("------------")
+        println(s"Running file $file")
+        new ExecTest(dut, file)
       }
     }
   }
