@@ -192,7 +192,7 @@ class ExecTest(dut: Multicore, file: String) {
               } else if ((data & 1) == 1) {
                 val c = data >> 1
                 if (!failed.contains(c)) {
-                  println(s"ISA testsuit failed case ${c}")
+                  println(s"ISA testsuite failed case ${c}")
                   failed.add(c)
                 }
               } else {

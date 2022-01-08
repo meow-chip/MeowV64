@@ -556,7 +556,7 @@ class L1DC(val opts: L1DOpts)(implicit coredef: CoreDef) extends Module {
           )
           written.data(getSublineIdx(waddr)) := amoalu.io.muxed
           // pendingWret := amoalu.io.rsliced
-          // penidngWret is set in the branch below
+          // pendingWret is set in the branch below
         }
       }
 
@@ -600,7 +600,7 @@ class L1DC(val opts: L1DOpts)(implicit coredef: CoreDef) extends Module {
   }
 
   // Handle write interface
-  // This operates synchronizely
+  // This operates synchronously
   val wmHits = wbuf.map(ev => ev.valid && ev.aligned === w.aligned)
   val wmHit = VecInit(wmHits).asUInt().orR
   val wmHitHead = wbuf(wbufHead).valid && wbuf(wbufHead).aligned === w.aligned
