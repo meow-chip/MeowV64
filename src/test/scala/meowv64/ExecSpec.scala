@@ -23,6 +23,8 @@ object ExecDef extends MulticoreDef {
 
 class ExecTest(dut: Multicore, file: String) {
   def doTest(bound: Int): Unit = {
+    val beginTime = System.nanoTime
+
     // for timer interrupt test
     dut.clock.setTimeout(0)
 
@@ -85,6 +87,9 @@ class ExecTest(dut: Multicore, file: String) {
 
         println(s"> mcycle: ${mcycle}")
         println(s"> minstret: ${minstret}")
+        val elapsed = System.nanoTime - beginTime
+        val speed = BigDecimal(mcycle) * BigDecimal(1e9) / BigDecimal(elapsed)
+        println(f"> Simulation speed: ${speed}%.2f mcycle/s")
 
         return
       }
