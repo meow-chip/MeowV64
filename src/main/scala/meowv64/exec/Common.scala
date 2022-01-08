@@ -30,7 +30,7 @@ import meowv64.instr.InstrExt
   *     - FENCE.I
   *
   * @param coredef:
-  *   Core defination
+  *   Core definition
   */
 class BranchResult(implicit val coredef: CoreDef) extends Bundle {
   val branch = Bool()

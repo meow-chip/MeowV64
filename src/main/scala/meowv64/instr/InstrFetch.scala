@@ -140,7 +140,7 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
   }
 
   val ICQueue = Module(new FlushableQueue(new ICData, 2, false, false))
-  ICQueue.io.enq.bits.data := toIC.data
+  ICQueue.io.enq.bits.data := toIC.data.bits
   ICQueue.io.enq.bits.addr := pipePc
   ICQueue.io.enq.bits.pred := toBPU.results
   ICQueue.io.enq.bits.fault := pipeFault
