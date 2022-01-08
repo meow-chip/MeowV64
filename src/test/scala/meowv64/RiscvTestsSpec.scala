@@ -28,7 +28,7 @@ class RiscvTestsSpec
     with ChiselScalatestTester {
   behavior of "RiscvTestsSpec"
 
-  it should s"run successfully" in {
+  it should s"run physical testcases successfully" in {
     test(
       new Multicore()(ExecDef)
     ).withAnnotations(
@@ -38,9 +38,30 @@ class RiscvTestsSpec
         )
     ) { dut =>
       for (file <- RiscvTestsSpec.cases) {
-        println("------------")
-        println(s"Running file $file")
-        new ExecTest(dut, file)
+        if (file.contains("-p-")) {
+          println("------------")
+          println(s"Running file $file")
+          new ExecTest(dut, file)
+        }
+      }
+    }
+  }
+
+  it should s"run virtual testcases successfully" in {
+    test(
+      new Multicore()(ExecDef)
+    ).withAnnotations(
+      Simulator.getAnnotations() ++
+        Seq(
+          RunFirrtlTransformAnnotation(Dependency(ZeroInit)) // for RRArbiter
+        )
+    ) { dut =>
+      for (file <- RiscvTestsSpec.cases) {
+        if (file.contains("-v-")) {
+          println("------------")
+          println(s"Running file $file")
+          new ExecTest(dut, file)
+        }
       }
     }
   }
