@@ -20,20 +20,35 @@ object FetchEx extends ChiselEnum {
 class InstrExt(implicit val coredef: CoreDef) extends Bundle {
   val addr = UInt(coredef.XLEN.W)
   val instr = new Instr
-  val vacant = Bool()
+  /**
+    * Valid instruction, possibly legal or illegal
+    */
+  val valid = Bool()
   val fetchEx = FetchEx()
+  /**
+    * Exception happens on the second half of this instruction
+    */
   val acrossPageEx =
-    Bool() // Exception happens on the second half of this instruction
+    Bool()
   val pred = new BPUResult
-  val forcePred = Bool() // RAS and missed branch
-  val predTarget = UInt(coredef.XLEN.W) // For JALR handling
+  /**
+    * RAS and missed branch
+    */
+  val forcePred = Bool()
+  /**
+    * For JALR handling
+    */
+  val predTarget = UInt(coredef.XLEN.W) 
 
   override def toPrintable: Printable = {
     p"Address: 0x${Hexadecimal(addr)}\n" +
-      p"Vacant: ${vacant}\n" +
+      p"Valid: ${valid}\n" +
       p"${instr}"
   }
 
+  /**
+    * Next PC for this instruction
+    */
   def npc: UInt = Mux(instr.base === InstrType.C, addr + 2.U, addr + 4.U)
   def taken: Bool = forcePred || pred.prediction === BHTPrediction.taken
 }
@@ -44,7 +59,7 @@ object InstrExt {
 
     ret.addr := DontCare
     ret.instr := DontCare
-    ret.vacant := true.B
+    ret.valid := false.B
     ret.pred := DontCare
     ret.fetchEx := DontCare
     ret.acrossPageEx := DontCare
@@ -262,7 +277,7 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
       decoded(i).fetchEx := FetchEx.invalAddr
     }
 
-    decoded(i).vacant := false.B
+    decoded(i).valid := true.B
     val pred = joinedPred(decodePtr(i + 1) - 1.U)
     decoded(i).pred := pred
     decoded(i).forcePred := false.B

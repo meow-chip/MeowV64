@@ -114,7 +114,7 @@ class LSU(implicit val coredef: CoreDef) extends Module with UnitSelIO {
   val hasNext = rs.valid // TODO: merge into rs.instr
   val next = WireDefault(rs.instr)
   when(!rs.valid) {
-    next.instr.vacant := true.B
+    next.instr.valid := false.B
   }
 
   // FIXME: ValidIO resp
@@ -149,7 +149,7 @@ class LSU(implicit val coredef: CoreDef) extends Module with UnitSelIO {
   val tlbRequestModify = WireDefault(false.B)
   tlb.satp := satp
   tlb.ptw <> ptw
-  tlb.query.query := requiresTranslate && !next.instr.vacant && !fenceLike
+  tlb.query.query := requiresTranslate && next.instr.valid && !fenceLike
   tlb.query.isModify := tlbRequestModify
   tlb.query.mode := tlbMode
   tlb.flush := tlbrst
@@ -234,16 +234,16 @@ class LSU(implicit val coredef: CoreDef) extends Module with UnitSelIO {
     next.instr.instr.op === Decoder.Op("LOAD").ident
       || next.instr.instr.op === Decoder.Op("AMO").ident && next.instr.instr
         .funct7(6, 2) === Decoder.AMO_FUNC("LR")
-  ) && !next.instr.vacant
+  ) && next.instr.valid
   val write = (
     next.instr.instr.op === Decoder.Op("STORE").ident
       || next.instr.instr.op === Decoder.Op("AMO").ident && next.instr.instr
         .funct7(6, 2) =/= Decoder.AMO_FUNC("LR")
-  ) && !next.instr.vacant
+  ) && next.instr.valid
 
   fenceLike := (
     next.instr.instr.op === Decoder.Op("MEM-MISC").ident
-      && !next.instr.vacant
+      && next.instr.valid
   )
 
   val invalAddr = isInvalAddr(rawAddr)
@@ -271,7 +271,7 @@ class LSU(implicit val coredef: CoreDef) extends Module with UnitSelIO {
   toMem.reader.req.bits.addr := Mux(canRead, aligned, 0.U)
   toMem.reader.req.valid := canRead
 
-  when(next.instr.vacant) {
+  when(!next.instr.valid) {
     l1pass := false.B
   }.elsewhen(fenceLike) {
     l1pass := !l2stall
@@ -301,7 +301,7 @@ class LSU(implicit val coredef: CoreDef) extends Module with UnitSelIO {
   val pipeRead = Reg(Bool())
   val pipeWrite = Reg(Bool())
 
-  l2stall := !toMem.reader.resp.valid && !pipeInstr.instr.vacant && pipeDCRead
+  l2stall := !toMem.reader.resp.valid && pipeInstr.instr.valid && pipeDCRead
   when(l1pass) {
     pipeFault := tlb.query.query && tlb.query.fault
     pipeInstr := next
@@ -317,11 +317,11 @@ class LSU(implicit val coredef: CoreDef) extends Module with UnitSelIO {
       assert(!l2stall)
     }
   }.elsewhen(!l2stall) {
-    pipeInstr.instr.vacant := true.B
+    pipeInstr.instr.valid := false.B
   }
 
   when(flush) {
-    pipeInstr.instr.vacant := true.B
+    pipeInstr.instr.valid := false.B
   }
 
   val pipeAligned = pipeAddr(coredef.PADDR_WIDTH - 1, 3) ## 0.U(3.W)
@@ -330,7 +330,7 @@ class LSU(implicit val coredef: CoreDef) extends Module with UnitSelIO {
   val pipeUncached = isUncached(pipeAddr) && !pipeAMO
   val pipeFenceLike = (
     pipeInstr.instr.instr.op === Decoder.Op("MEM-MISC").ident
-      && !pipeInstr.instr.vacant
+      && pipeInstr.instr.valid
   )
 
   retire.instr := pipeInstr
@@ -342,7 +342,7 @@ class LSU(implicit val coredef: CoreDef) extends Module with UnitSelIO {
    * If we add MSHR, then we need to keep track of flushed requests
    */
   when(l2stall) {
-    retire.instr.instr.vacant := true.B
+    retire.instr.instr.valid := false.B
   }
 
   val shifted =
@@ -498,7 +498,7 @@ class LSU(implicit val coredef: CoreDef) extends Module with UnitSelIO {
     retire.info.wb := DontCare
   }
 
-  val push = mem.op =/= DelayedMemOp.no && !pipeInstr.instr.vacant && !l2stall
+  val push = mem.op =/= DelayedMemOp.no && pipeInstr.instr.valid && !l2stall
   retire.info.hasMem := push
   pendings.io.enq.bits := mem
   pendings.io.enq.valid := push

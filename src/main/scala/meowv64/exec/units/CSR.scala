@@ -34,9 +34,10 @@ class CSR(implicit val coredef: CoreDef)
   val nstate = WireDefault(state)
   state := nstate
 
+  // CSR operations cannot happen when the pipeline is not empty
   assert(
-    !io.flush || io.next.instr.vacant
-  ) // CSR operations cannot happen when the pipeline is not empty
+    !(io.flush && io.next.instr.valid)
+  )
   val instr = io.next.instr
   val addr = instr.instr.funct7 ## instr.instr.rs2
   writer.addr := addr
@@ -99,7 +100,7 @@ class CSR(implicit val coredef: CoreDef)
     rdata := writer.rdata
   }
 
-  when(!fault && !io.next.instr.vacant) {
+  when(!fault && io.next.instr.valid) {
     nstate := CSRState.pipe
   }
 

@@ -22,7 +22,7 @@ class Div(val ROUND_PER_STAGE: Int)(override implicit val coredef: CoreDef)
   var idle = true.B
 
   for (r <- this.current) {
-    idle = idle && r.pipe.instr.vacant
+    idle = idle && !r.pipe.instr.valid
   }
 
   when(!idle) {

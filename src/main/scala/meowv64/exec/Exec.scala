@@ -403,13 +403,13 @@ class Exec(implicit val coredef: CoreDef) extends Module {
       u.retire.instr.instr.taken,
       u.retire.instr.instr.npc
     )
-    val canBr = !u.retire.instr.instr.vacant && normalized.branched()
+    val canBr = u.retire.instr.instr.valid && normalized.branched()
     brMask(idx) := Mux(canBr, oh, 0.U)
     brSeled(idx) := brSel === oh && canBr
     brNormalized(idx) := normalized
     brTvals(idx) := u.retire.info.wb
 
-    when(!u.retire.instr.instr.vacant) {
+    when(u.retire.instr.instr.valid) {
       when(!u.retire.info.hasMem) {
         ent.name := u.retire.instr.rdname
         ent.valid := true.B

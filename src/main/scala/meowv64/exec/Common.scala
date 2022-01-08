@@ -332,8 +332,8 @@ abstract class ExecUnit[T <: Data](
 
     for (i <- (0 until DEPTH)) {
       storeInit(i) := DontCare
-      storeInit(i).pipe.instr.instr.imm := 0.S // Treadle bug?
-      storeInit(i).pipe.instr.vacant := true.B
+      // storeInit(i).pipe.instr.instr.imm := 0.S // Treadle bug?
+      storeInit(i).pipe.instr.valid := false.B
       storeInit(i).ext := DontCare
     }
 
@@ -385,7 +385,7 @@ abstract class ExecUnit[T <: Data](
       }
 
       io.retired := current(DEPTH - 1).pipe
-      when(io.retired.instr.vacant) {
+      when(!io.retired.instr.valid) {
         io.retirement := RetireInfo.vacant
       }.otherwise {
         io.retirement := finalize(current(DEPTH - 1).pipe, nExt)
@@ -395,7 +395,7 @@ abstract class ExecUnit[T <: Data](
       val (nExt, sStall) = connectStage(0, io.next, None)
       // Use chisel's unconnected wire check to enforce that no ext is exported from this exec unit
       io.retired := io.next
-      when(io.retired.instr.vacant) {
+      when(!io.retired.instr.valid) {
         io.retirement := RetireInfo.vacant
       }.otherwise {
         io.retirement := finalize(io.next, nExt)
@@ -412,7 +412,7 @@ abstract class ExecUnit[T <: Data](
     val nExt = Wire(ExtData.cloneType)
     val sStall = Wire(Bool())
 
-    when(pipe.instr.vacant) {
+    when(!pipe.instr.valid) {
       nExt := DontCare
       sStall := false.B
     }.otherwise {

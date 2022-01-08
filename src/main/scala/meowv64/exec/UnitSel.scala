@@ -174,7 +174,7 @@ class UnitSel(
     println("UnitSel: All units have 0 delay")
     val pipeRetire = RegInit(Retirement.empty)
     retire := pipeRetire
-    val validMap = units.map(u => !u.io.stall && !u.io.retired.instr.vacant)
+    val validMap = units.map(u => !u.io.stall && u.io.retired.instr.valid)
     pipeRetire := Mux1H(validMap.zip(units.map(u => Retirement.from(u.io))))
     when(!VecInit(validMap).asUInt.orR || flush) {
       pipeRetire := Retirement.empty
@@ -190,7 +190,7 @@ class UnitSel(
     for (u <- units) {
       val newTail = Wire(UInt(log2Ceil(fifoDepth).W))
       newTail := prevTail
-      when(!u.io.stall && !u.io.retired.instr.vacant) {
+      when(!u.io.stall && u.io.retired.instr.valid) {
         retireFifo(prevTail) := Retirement.from(u.io)
         newTail := Mux(prevTail === (fifoDepth - 1).U, 0.U, prevTail +% 1.U)
       }
