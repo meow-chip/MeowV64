@@ -144,7 +144,7 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
   ICQueue.io.enq.bits.addr := pipePc
   ICQueue.io.enq.bits.pred := toBPU.results
   ICQueue.io.enq.bits.fault := pipeFault
-  ICQueue.io.enq.valid := (!toIC.stall && !toIC.vacant) || pipeFault
+  ICQueue.io.enq.valid := (!toIC.stall && toIC.data.valid) || pipeFault
 
   val pipeSpecBr = Wire(Bool())
 

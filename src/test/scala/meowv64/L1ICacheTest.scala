@@ -60,14 +60,14 @@ class L1ICacheTest(dut: L1IC, seed: Long, len: Int) {
       if (dut.toCPU.stall.peek.litToBoolean == false) {
         // Check last
         if (cnt == 0 || addrs(cnt - 1).isEmpty) {
-          if (dut.toCPU.vacant.peek.litToBoolean != true) {
+          if (dut.toCPU.data.valid.peek.litToBoolean == true) {
             if (failed < 10) {
               println(s"[${i}] Expected vacant output on req ${cnt}")
               failed += 1;
             }
           }
         } else {
-          if (dut.toCPU.vacant.peek.litToBoolean != false) {
+          if (dut.toCPU.data.valid.peek.litToBoolean == false) {
             if (failed < 10) {
               println(s"[${i}] Expected non-vacant output on req ${cnt}")
               failed += 1;

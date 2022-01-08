@@ -6,14 +6,14 @@ import chisel3.util._
 import chisel3.util.log2Ceil
 
 class ICPort(val opts: L1Opts) extends Bundle {
+  // read & ~stall means a read transaction
   val addr = Input(UInt(opts.ADDR_WIDTH.W))
   val read = Input(Bool())
 
   val stall = Output(Bool())
   val rst = Input(Bool())
 
-  val data = Output(UInt(opts.TRANSFER_SIZE.W)) // Data delay is 1 cycle
-  val vacant = Output(Bool())
+  val data = Valid(UInt(opts.TRANSFER_SIZE.W)) // Data delay is 1 cycle
 }
 
 object S2State extends ChiselEnum {
@@ -139,7 +139,8 @@ class L1IC(opts: L1Opts) extends Module {
 
   val stalled = nstate =/= S2State.idle
   toCPU.stall := stalled
-  toCPU.vacant := true.B
+  toCPU.data.valid := false.B
+  toCPU.data.bits := DontCare
 
   when(!toCPU.stall) {
     pipeRead := toCPU.read
@@ -149,7 +150,7 @@ class L1IC(opts: L1Opts) extends Module {
 
   val waitBufAddr = RegInit(0.U(opts.ADDR_WIDTH.W))
   val waitBufFull = RegInit(false.B)
-  val pipeOutput = Reg(toCPU.data.cloneType)
+  val pipeOutput = Reg(toCPU.data.bits.cloneType)
 
   switch(state) {
     is(S2State.rst) {
@@ -161,7 +162,7 @@ class L1IC(opts: L1Opts) extends Module {
 
       when(rstCnt.andR()) {
         // Omit current request
-        toCPU.vacant := true.B
+        toCPU.data.valid := false.B
 
         when(pipeRead) {
           nstate := S2State.refill
@@ -183,13 +184,13 @@ class L1IC(opts: L1Opts) extends Module {
         rstCnt := 0.U
       }.elsewhen(pipeRead) {
         when(pipeHitMap.asUInt().orR) {
-          toCPU.vacant := false.B
-          toCPU.data := rdata(getTransferOffset(pipeAddr))
+          toCPU.data.valid := true.B
+          toCPU.data.bits := rdata(getTransferOffset(pipeAddr))
         }.otherwise {
           nstate := S2State.refill
         }
       }.otherwise {
-        toCPU.vacant := true.B
+        toCPU.data.valid := false.B
         nstate := S2State.idle
       }
     }
@@ -222,8 +223,8 @@ class L1IC(opts: L1Opts) extends Module {
     is(S2State.refilled) {
       nstate := S2State.idle
 
-      toCPU.data := pipeOutput
-      toCPU.vacant := false.B
+      toCPU.data.bits := pipeOutput
+      toCPU.data.valid := true.B
     }
   }
 }
