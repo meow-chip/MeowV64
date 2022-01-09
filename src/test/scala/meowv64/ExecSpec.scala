@@ -18,6 +18,7 @@ import chiseltest.simulator.VcsBackendAnnotation
 import firrtl.stage.RunFirrtlTransformAnnotation
 import firrtl.options.Dependency
 import chiseltest.internal.CachingAnnotation
+import chiseltest.simulator.WriteVcdAnnotation
 
 object ExecDef extends MulticoreDef(coreCount = 1) {
   override val INIT_VEC = BigInt(0x80000000L)
@@ -361,7 +362,14 @@ object Simulator {
         RunFirrtlTransformAnnotation(Dependency(ZeroInit)) // for RRArbiter
       )
     // do not write vcd in ci by default
-    // annotations ++ Seq(WriteVcdAnnotation)
-    annotations
+    if (
+      System
+        .getenv("GITHUB_ACTIONS") != null || System.getenv("GITLAB_CI") != null
+    ) {
+      println("CI detected")
+      annotations
+    } else {
+      annotations ++ Seq(WriteVcdAnnotation)
+    }
   }
 }
