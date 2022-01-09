@@ -4,6 +4,9 @@ import chisel3._
 import chisel3.util._
 import chisel3.util.log2Ceil
 
+/**
+  * Computes atomic operations
+  */
 class AMOALU(val opts: L1DOpts) extends Module {
   val io = IO(new Bundle {
     val op = Input(DCWriteOp()) // write is treated as idle
@@ -22,11 +25,12 @@ class AMOALU(val opts: L1DOpts) extends Module {
   })
 
   val rextended = Wire(SInt(opts.XLEN.W))
+  rextended := io.rdata.asSInt()
+
   val rconverted = rextended.asUInt()
   val rraw = Wire(UInt(opts.XLEN.W))
   io.rsliced := rconverted
 
-  rextended := io.rdata.asSInt()
   rraw := io.rdata
   when(io.length === DCWriteLen.W) {
     when(io.offset.head(1) === 0.U) {

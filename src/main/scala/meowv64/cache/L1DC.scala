@@ -11,6 +11,8 @@ import meowv64.data._
 
 class DCRead(implicit val coredef: CoreDef) extends Bundle {
   val addr = UInt(coredef.PADDR_WIDTH.W)
+
+  /** for lr instruction */
   val reserve = Bool()
 }
 
@@ -36,8 +38,11 @@ class DCReader(implicit val coredef: CoreDef) extends Bundle {
 
 class DCInnerReader(val opts: L1DOpts) extends Bundle {
   val addr = Output(UInt(opts.ADDR_WIDTH.W))
+  /** for lr instruction */
   val reserve = Output(Bool())
+
   val read = Output(Bool())
+
   val data = Input(UInt(opts.TRANSFER_SIZE.W))
   val stall = Input(Bool())
 }
@@ -45,9 +50,13 @@ class DCInnerReader(val opts: L1DOpts) extends Bundle {
 object DCWriteOp extends ChiselEnum {
   val idle = Value
   val write = Value
-  val cond = Value // Write cond
+  // store conditional
+  // Write cond
+  val cond = Value
+  // atomic
+  // TODO: optimize LUT
   val swap, add, and, or, xor, max, maxu, min, minu =
-    Value // TODO: optimize LUT
+    Value
   val commitLR = Value // Commit pending LR
 }
 
@@ -64,10 +73,13 @@ object DCWriteLen extends ChiselEnum {
   )
 }
 
+/** DCache write port (from LSU to DCache)
+  */
 class DCWriter(val opts: L1DOpts) extends Bundle {
+  // Offset is now embedded inside addr
   val addr = Output(
     UInt(opts.ADDR_WIDTH.W)
-  ) // Offset is now embedded inside addr
+  )
   val len = Output(DCWriteLen())
   val op = Output(DCWriteOp())
 
@@ -78,7 +90,7 @@ class DCWriter(val opts: L1DOpts) extends Bundle {
   val rdata = Input(UInt(opts.TRANSFER_SIZE.W)) // AMOSWAP and friends
   val stall = Input(Bool())
 
-  // Raw byte enable
+  /** Generate raw byte enable */
   def be = {
     val offset = addr(log2Ceil(opts.TRANSFER_SIZE / 8) - 1, 0)
     val mask = MuxLookup(
@@ -96,7 +108,7 @@ class DCWriter(val opts: L1DOpts) extends Bundle {
     sliced
   }
 
-  // Shifted wdata
+  /** Shifted wdata */
   def sdata = {
     val offset = addr(log2Ceil(opts.TRANSFER_SIZE / 8) - 1, 0)
     val sliced = Wire(UInt(opts.TRANSFER_SIZE.W))
@@ -104,6 +116,8 @@ class DCWriter(val opts: L1DOpts) extends Bundle {
     sliced
   }
 
+  /** Aligned address
+    */
   def aligned = addr(opts.ADDR_WIDTH - 1, 3) ## 0.U(3.W)
 }
 
@@ -171,7 +185,9 @@ class L1DC(val opts: L1DOpts)(implicit coredef: CoreDef) extends Module {
   // Ports, mr = Memory read, ptw = Page table walker
   val mr = IO(Flipped(new DCReader))
   val ptw = IO(Flipped(new DCReader))
+  // w = Memory write
   val w = IO(Flipped(new DCWriter(opts)))
+  // memory fence
   val fs = IO(Flipped(new DCFenceStatus(opts)))
   val toL2 = IO(new L1DCPort(opts))
 
