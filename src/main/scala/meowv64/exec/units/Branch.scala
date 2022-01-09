@@ -12,6 +12,8 @@ import meowv64.instr.Decoder
 import meowv64.instr.Decoder.InstrType
 
 class BranchExt extends Bundle {
+
+  /** whether the branch is taken */
   val branched = Bool()
 
   val ex = ExReq()
@@ -147,12 +149,19 @@ class Branch(override implicit val coredef: CoreDef)
       }
     }.elsewhen(pipe.instr.instr.op === Decoder.Op("BRANCH").ident) {
       // info.regWaddr := 0.U
-      // here, branch means taken
-      // will be normalized in normalizedBranch()
-      when(ext.branched) {
-        val target = Wire(SInt(coredef.XLEN.W))
-        target := pipe.instr.instr.imm + pipe.instr.addr.asSInt
-        info.branch.fire(target.asUInt)
+      info.branchTaken := ext.branched
+      when(ext.branched =/= pipe.instr.taken) {
+        // mis-predict
+        // branch to actual address
+        val target = Wire(UInt(coredef.XLEN.W))
+        when(ext.branched) {
+          // addr + imm
+          target := (pipe.instr.instr.imm + pipe.instr.addr.asSInt).asUInt
+        } otherwise {
+          // next pc
+          target := pipe.instr.npc
+        }
+        info.branch.fire(target)
       }.otherwise {
         info.branch.nofire
       }

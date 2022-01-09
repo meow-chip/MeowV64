@@ -26,7 +26,7 @@ abstract class MulticoreDef(val coreCount: Int) {
         val CORE_COUNT: Int = outer.CORE_COUNT
         val LINE_BYTES: Int = outer.L2_LINE_BYTES
         val TRANSFER_WIDTH: Int = 0 // Actually ignored
-        val SIZE_BYTES: Int = 16384 // 16K L2
+        val SIZE_BYTES: Int = 16384 // 16KB L2
         val WB_DEPTH: Int = 4
         val XLEN: Int = outer.XLEN
 

@@ -120,36 +120,15 @@ object BranchResult {
   */
 class RetireInfo(implicit val coredef: CoreDef) extends Bundle {
   val wb = UInt(coredef.XLEN.W)
+
+  /** Generic branch result
+    */
   val branch = new BranchResult
   val hasMem = Bool()
 
-  // TODO: put into PipeInstr
-  def normalizedBranch(op: UInt, taken: Bool, npc: UInt): BranchResult = {
-    val b = branch
-    val result = Wire(new BranchResult)
-
-    when(b.ex =/= ExReq.none) {
-      result := b
-    }.elsewhen(op === Decoder.Op("JAL").ident) {
-      // assert(instr.forcePred)
-      result.nofire
-    }.elsewhen(op === Decoder.Op("JALR").ident) {
-      result := b
-    }.otherwise {
-      // for branch instructions,
-      // the branch indicator means taken
-      // turn it into mis-prediction
-      when(b.branch === taken) {
-        result.nofire
-      }.elsewhen(b.branch) {
-        result := b
-      }.otherwise {
-        result.fire(npc)
-      }
-    }
-
-    result
-  }
+  /** Whether this branch has taken. Used in updating BPU.
+    */
+  val branchTaken = Bool()
 }
 
 object RetireInfo {
@@ -159,6 +138,7 @@ object RetireInfo {
     info.branch.nofire
     info.wb := DontCare
     info.hasMem := false.B
+    info.branchTaken := false.B
 
     info
   }

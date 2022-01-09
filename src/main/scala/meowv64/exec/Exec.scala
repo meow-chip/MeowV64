@@ -409,11 +409,7 @@ class Exec(implicit val coredef: CoreDef) extends Module {
     // TODO: maybe pipeline here?
     val dist = u.retire.instr.tag -% retirePtr
     val oh = UIntToOH(dist)
-    val normalized = u.retire.info.normalizedBranch(
-      u.retire.instr.instr.instr.op,
-      u.retire.instr.instr.taken,
-      u.retire.instr.instr.npc
-    )
+    val normalized = u.retire.info.branch
     val canBr = u.retire.instr.instr.valid && normalized.branched()
     brMask(idx) := Mux(canBr, oh, 0.U)
     brSeled(idx) := brSel === oh && canBr
@@ -429,7 +425,7 @@ class Exec(implicit val coredef: CoreDef) extends Module {
       rob(u.retire.instr.tag).hasMem := u.retire.info.hasMem
       rob(u.retire.instr.tag).valid := true.B
       // for BRANCH instructions, this means taken before normalization
-      rob(u.retire.instr.tag).taken := u.retire.info.branch.branch
+      rob(u.retire.instr.tag).taken := u.retire.info.branchTaken
     }
   }
 

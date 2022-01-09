@@ -40,12 +40,11 @@ trait L1Opts {
     */
   val TRANSFER_WIDTH: Int
 
-  /**
-    * Line width in bytes
+  /** Line width in bytes
     */
   val LINE_BYTES: Int
-  /**
-    * Cache size in bytes
+
+  /** Cache size in bytes
     */
   val SIZE_BYTES: Int
   val ASSOC: Int
