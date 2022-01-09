@@ -24,6 +24,9 @@ class MMIOReq(val mmiodef: MMIODef) extends Bundle {
   val op = MMIOReqOp()
 }
 
+/**
+  * MMIO access port from L2 to CLINT/PLIC
+  */
 class MMIOAccess(val mmiodef: MMIODef) extends Bundle {
   val req = Flipped(Decoupled(new MMIOReq(mmiodef)))
   val resp = Valid(UInt(mmiodef.XLEN.W))

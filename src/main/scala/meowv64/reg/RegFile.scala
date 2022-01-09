@@ -19,7 +19,8 @@ class RegFile(
     XLEN: Int = 64,
     COUNT: Int = 32,
     READ_COUNT: Int = 2,
-    WRITE_COUNT: Int = 1
+    WRITE_COUNT: Int = 1,
+    FIXED_ZERO: Boolean = true,
 ) extends Module {
   val io = IO(new Bundle {
     val reads = Vec(READ_COUNT, Flipped(new RegReader(XLEN, COUNT)))
@@ -29,7 +30,8 @@ class RegFile(
   val regs = RegInit(VecInit(List.fill(COUNT)(0).map(_.U(XLEN.W))))
 
   for (read <- io.reads) {
-    when(read.addr === 0.U) {
+    when(read.addr === 0.U && FIXED_ZERO.B) {
+      // x0 is hard wired to zero
       read.data := 0.U
     }.otherwise {
       read.data := regs(read.addr)
@@ -37,9 +39,7 @@ class RegFile(
   }
 
   for (write <- io.writes) {
-    when(write.addr =/= 0.U) {
-      regs(write.addr) := write.data
-    }
+    regs(write.addr) := write.data
   }
 
   /*

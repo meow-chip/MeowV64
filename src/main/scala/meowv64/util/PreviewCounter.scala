@@ -3,6 +3,8 @@ package meowv64.util
 import chisel3._
 import chisel3.util._
 
+/** A counter that can preview the next counter value
+  */
 class PreviewCounter(val n: Int) {
   require(n >= 0)
   val value = if (n > 1) RegInit(0.U(log2Ceil(n).W)) else 0.U

@@ -26,10 +26,20 @@ object CLINTMapping
     with MMIOMapping
 
 class LocalInt extends Bundle {
+
+  /** Software interrupt
+    */
   val msip = Bool()
+
+  /** Timer interrupt
+    */
   val mtip = Bool()
 }
 
+/** CLINT, core local interrupt controller.
+  *
+  * Implements msip, mtimecmp and mtime
+  */
 class CLINT(implicit mcdef: MulticoreDef) extends Module {
   val toL2 = IO(new MMIOAccess(CLINTMMIODef))
   val ints = IO(Output(Vec(mcdef.CORE_COUNT, new LocalInt)))

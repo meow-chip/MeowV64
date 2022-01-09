@@ -5,8 +5,14 @@ import chisel3.experimental._
 import chisel3.util._
 
 abstract class PLICDef {
+
+  /** Number of contexts, should be 2*CORE_COUNT(M and S state)
+    */
   val CONTEXT_COUNT: Int
   val MAX_PRIORITY: Int
+
+  /** Maximum number of interrupt sources
+    */
   val MAX_SOURCE: Int
 }
 
@@ -49,6 +55,8 @@ object PLICAddrSpace extends ChiselEnum {
   }
 }
 
+/** PLIC, platform level interrupt controller
+  */
 class PLIC(val pdef: PLICDef) extends Module {
   val source = IO(
     Input(UInt((pdef.MAX_SOURCE + 1).W))
