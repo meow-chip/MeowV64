@@ -3,7 +3,6 @@ package meowv64
 import chisel3._
 import chisel3.tester._
 import chiseltest.simulator.IcarusBackendAnnotation
-import chiseltest.simulator.WriteVcdAnnotation
 import meowv64.multicore.Multicore
 import meowv64.multicore.MulticoreDef
 import org.scalatest.flatspec.AnyFlatSpec
@@ -29,6 +28,13 @@ class ExecTest(dut: Multicore, file: String) {
 
     // for timer interrupt test
     dut.clock.setTimeout(0)
+
+    // avoid false assertions upon reset
+    dut.io.axi.AWREADY.poke(false.B)
+    dut.io.axi.WREADY.poke(false.B)
+    dut.io.axi.BVALID.poke(false.B)
+    dut.io.axi.ARREADY.poke(false.B)
+    dut.io.axi.RVALID.poke(false.B)
 
     // reset for some time
     dut.reset.poke(true.B)
