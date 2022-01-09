@@ -4,9 +4,9 @@ import meowv64.interrupt.CLINTMapping
 import meowv64.interrupt.PLICDef
 import meowv64.interrupt.PLICMapping
 
-abstract class SinglecoreDef {
+abstract class MulticoreDef(val coreCount: Int) {
   outer =>
-  val CORE_COUNT = 1
+  val CORE_COUNT = coreCount
 
   val INIT_VEC = BigInt(0x80000000L)
 
@@ -46,9 +46,4 @@ abstract class SinglecoreDef {
       with PLICDef
 }
 
-abstract class MulticoreDef extends SinglecoreDef {
-  outer =>
-  override val CORE_COUNT = 2
-}
-
-object DefaultDef extends MulticoreDef
+object DefaultDef extends MulticoreDef(coreCount = 2)
