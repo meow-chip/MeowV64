@@ -2,7 +2,6 @@ package meowv64
 
 import chisel3._
 import chisel3.tester._
-import chiseltest.simulator.WriteVcdAnnotation
 import meowv64.cache._
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
@@ -133,24 +132,21 @@ object L1ICacheTest {
 
 object L1ICacheSpec {
   val DEFAULT_SEED = 0L
-  val DEFAULT_LENGTH = 1000
+  val DEFAULT_LENGTH = 10000
 }
 
 class L1ICacheSpec
     extends AnyFlatSpec
     with Matchers
     with ChiselScalatestTester {
-  behavior of "CacheSpec"
+  behavior of "L1ICacheSpec"
 
   it should s"run successfully" in {
     val seed = L1ICacheSpec.DEFAULT_SEED
     val len = L1ICacheSpec.DEFAULT_LENGTH
-    test(new L1IC(L1CacheTestDef)).withAnnotations(
-      Seq(
-        WriteVcdAnnotation
-      )
-    ) { dut =>
-      new L1ICacheTest(dut, seed, len)
+    test(new L1IC(L1CacheTestDef)).withAnnotations(Simulator.getAnnotations()) {
+      dut =>
+        new L1ICacheTest(dut, seed, len)
     }
   }
 }
