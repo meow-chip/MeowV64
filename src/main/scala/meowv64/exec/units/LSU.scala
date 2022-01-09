@@ -111,9 +111,9 @@ class LSU(implicit val coredef: CoreDef) extends Module with UnitSelIO {
 
   def isUncached(addr: UInt) = addr < BigInt("80000000", 16).U
 
-  val hasNext = rs.valid // TODO: merge into rs.instr
-  val next = WireDefault(rs.instr)
-  when(!rs.valid) {
+  val hasNext = rs.instr.valid // TODO: merge into rs.instr
+  val next = WireDefault(rs.instr.bits)
+  when(!rs.instr.valid) {
     next.instr.valid := false.B
   }
 
@@ -287,7 +287,7 @@ class LSU(implicit val coredef: CoreDef) extends Module with UnitSelIO {
     assert(!toMem.reader.req.ready) // req.ready must be false
   }
 
-  rs.pop := l1pass
+  rs.instr.ready := l1pass
 
   /** Stage 2 state
     */

@@ -191,6 +191,7 @@ object Decoder {
       result.base := InstrType.C
 
       val ui = self.asUInt
+      result.raw := ui
 
       val rs1t = ui(9, 7) + 8.U
       val rs2t = ui(4, 2) + 8.U
@@ -504,6 +505,7 @@ object Decoder {
     def asInstr32(): Instr = {
       val ui = self.asUInt
       val result = Wire(new Instr)
+      result.raw := ui
       result.op := ui >> 2
 
       var ctx: Option[WhenContext] = None
@@ -556,6 +558,10 @@ object Decoder {
 /** Raw RISC-V Instruction
   */
 class Instr extends Bundle {
+  // Raw Instruction
+  // for Simulation
+  val raw = UInt(32.W)
+
   // Opcode
   val op = UInt(5.W)
   val base = InstrType()

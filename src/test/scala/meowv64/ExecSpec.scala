@@ -293,8 +293,9 @@ object ExecSpec {
     ("Page Table - Basic", "./testcases/meow/bin/paging-basic.bin"),
     // ("Fibonacci", "./testcases/meow/bin/fib.bin"),
     ("Timer interrupt", "./testcases/meow/bin/timer.bin"),
-    ("External interrupt", "./testcases/meow/bin/eint.bin")
+    ("External interrupt", "./testcases/meow/bin/eint.bin"),
     // ("RAS", "./testcases/meow/bin/ras.bin")
+    ("Benchmark PTB", "./testcases/meow/bin/bench-ptb.bin")
   )
 }
 

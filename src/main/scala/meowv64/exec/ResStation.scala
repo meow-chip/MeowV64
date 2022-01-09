@@ -6,11 +6,10 @@ import meowv64.cache.DCFenceStatus
 import meowv64.core.CoreDef
 import meowv64.instr.Decoder
 import meowv64.util.FlushableSlot
+import chisel3.util.Decoupled
 
 class ResStationEgress(implicit val coredef: CoreDef) extends Bundle {
-  val instr = Output(new ReservedInstr)
-  val valid = Output(Bool())
-  val pop = Input(Bool())
+  val instr = Decoupled(new ReservedInstr)
 }
 
 trait ResStation {
@@ -76,9 +75,15 @@ class OoOResStation(val idx: Int)(implicit val coredef: CoreDef)
 
   val egSlot = Module(new FlushableSlot(new ReservedInstr(), true, false))
 
-  egress.instr := egSlot.io.deq.bits
-  egress.valid := egSlot.io.deq.valid
-  egSlot.io.deq.ready := egress.pop
+  egress.instr.valid := egSlot.io.deq.valid
+  // zero when invalid
+  when(egSlot.io.deq.valid) {
+    egress.instr.bits := egSlot.io.deq.bits
+  } otherwise {
+    egress.instr.bits := 0.U.asTypeOf(egress.instr.bits)
+  }
+
+  egSlot.io.deq.ready := egress.instr.ready
 
   egSlot.io.enq.bits := maskedStore(egIdx)
   egSlot.io.enq.valid := egMask.asUInt().orR
@@ -143,7 +148,7 @@ class OoOResStation(val idx: Int)(implicit val coredef: CoreDef)
 
   assert(
     !(
-      egress.pop && !egSlot.io.deq.valid
+      egress.instr.ready && !egSlot.io.deq.valid
     )
   )
 
@@ -220,15 +225,15 @@ class LSBuf(val idx: Int)(implicit val coredef: CoreDef)
   val fenceBlocked = hasPending || !fs.wbufClear
   val instrReady = head =/= tail && store(head).ready
   when(headIsFence) {
-    egress.valid := instrReady && !fenceBlocked
+    egress.instr.valid := instrReady && !fenceBlocked
   }.elsewhen(headIsLoad) {
-    egress.valid := instrReady && !loadBlocked
+    egress.instr.valid := instrReady && !loadBlocked
   }.otherwise {
-    egress.valid := instrReady
+    egress.instr.valid := instrReady
   }
 
-  egress.instr := store(head)
-  when(egress.pop && egress.valid) { // FIXME: check egress.valid on regular ResStation
+  egress.instr.bits := store(head)
+  when(egress.instr.fire) { // FIXME: check egress.valid on regular ResStation
     head := head +% 1.U
   }
 

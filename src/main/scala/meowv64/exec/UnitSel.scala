@@ -93,12 +93,12 @@ class UnitSel(
   }
 
   val execMap = Wire(Vec(units.length, Bool()))
-  execMap := arbitration(rs.instr.instr.instr)
+  execMap := arbitration(rs.instr.bits.instr.instr)
   // Asserts exactly one can exec this instr
 
   // Contains a bypass unit, bypassing all inval instructions to there
   if (bypassIdx.isDefined) {
-    when(rs.instr.inval) {
+    when(rs.instr.bits.inval) {
       execMap := VecInit(Seq.fill(units.length)(false.B))
       execMap(bypassIdx.get) := true.B
     }
@@ -106,7 +106,7 @@ class UnitSel(
 
   val execMapUInt = execMap.asUInt
   val execMapNoDup = !((execMapUInt -% 1.U) & execMapUInt).orR
-  assert(!rs.valid || execMapNoDup && execMapUInt.orR())
+  assert(!rs.instr.valid || execMapNoDup && execMapUInt.orR())
 
   val pipeExecMap = RegInit(VecInit(Seq.fill(units.length)(false.B)))
   val pipeInstr = RegInit(ReservedInstr.empty)
@@ -114,7 +114,7 @@ class UnitSel(
 
   val pipeInput = Wire(Bool())
 
-  rs.pop := false.B
+  rs.instr.ready := false.B
 
   if (hasPipe) {
     when(pipeInstrValid) {
@@ -132,16 +132,16 @@ class UnitSel(
     when(pipeInput) {
       pipeInstr := rs.instr
       pipeExecMap := execMap
-      pipeInstrValid := rs.valid
-      rs.pop := rs.valid
+      pipeInstrValid := rs.instr.valid
+      rs.instr.ready := rs.instr.valid
     }
   } else {
     pipeInput := DontCare
-    when(rs.valid) {
-      rs.pop := !Mux1H(execMap.zip(units.map(_.io.stall)))
+    when(rs.instr.valid) {
+      rs.instr.ready := !Mux1H(execMap.zip(units.map(_.io.stall)))
       for ((u, e) <- units.zip(execMap)) {
         when(e) {
-          u.io.next := rs.instr
+          u.io.next := rs.instr.bits
         }
       }
     }
