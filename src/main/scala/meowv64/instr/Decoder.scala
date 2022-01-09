@@ -11,7 +11,22 @@ import meowv64.instr.Decoder.InstrType
 
 object Decoder {
   object InstrType extends ChiselEnum {
-    val RESERVED, R, I, S, B, U, J, C = Value
+    val RESERVED = Value
+    /** funct7, rs2, rs1, funct3, rd, opcode */
+    val R = Value
+    /** imm[11:0], rs1, funct3, rd, opcode */
+    val I = Value
+    /** imm[11:5], rs2, rs1, funct3, imm[4:0], opcode */
+    val S = Value
+    /** imm[12|10:5], rs2, rs1, funct3, imm[4:1|11], opcode */
+    val B = Value
+    /** imm[31:12], rd, opcode */
+    val U = Value
+    /** imm[20|10:1|11|19:12], rd, opcode */
+    val J = Value
+    val C = Value
+    /** rs3, funct2, rs2, rs1, funct3, rd, opcode */
+    val R4 = Value
   }
 
   case class OpSpec(ident: UInt, t: InstrType.Type)
@@ -25,15 +40,15 @@ object Decoder {
     */
   val Op: Map[String, OpSpec] = Map(
     "LOAD" -> spec("00000", InstrType.I),
-    // We don't have LOAD-FP @ 00001, as we don't have F extension
+    "LOAD-FP" -> spec("00001", InstrType.I),
     // We don't have custom-0 @ 00010
-    "MEM-MISC" -> spec("00011", InstrType.I), // Sort of
+    "MISC-MEM" -> spec("00011", InstrType.I), // Sort of
     "OP-IMM" -> spec("00100", InstrType.I),
     "AUIPC" -> spec("00101", InstrType.U),
     "OP-IMM-32" -> spec("00110", InstrType.I), // Sort of
 
     "STORE" -> spec("01000", InstrType.S),
-    // We don't have STORE-FP @ 01001, as we don't have F extension
+    "STORE-FP" -> spec("01001", InstrType.S),
     // We don't have custom-1 @ 01010
     "AMO" -> spec("01011", InstrType.R),
     "OP" -> spec("01100", InstrType.R),
@@ -41,6 +56,11 @@ object Decoder {
     "OP-32" -> spec("01110", InstrType.R),
 
     // 10xxx is for F extension
+    "MADD" -> spec("10000", InstrType.R4),
+    "MSUB" -> spec("10001", InstrType.R4),
+    "NMSUB" -> spec("10010", InstrType.R4),
+    "NMADD" -> spec("10011", InstrType.R4),
+    "OP-FP" -> spec("10100", InstrType.R),
 
     "BRANCH" -> spec("11000", InstrType.B),
     "JALR" -> spec("11001", InstrType.I),
@@ -637,7 +657,7 @@ class Instr extends Bundle {
       // I-type
       is(
         Decoder.Op("LOAD").ident,
-        Decoder.Op("MEM-MISC").ident,
+        Decoder.Op("MISC-MEM").ident,
         Decoder.Op("OP-IMM").ident,
         Decoder.Op("OP-IMM-32").ident,
         Decoder.Op("JALR").ident,

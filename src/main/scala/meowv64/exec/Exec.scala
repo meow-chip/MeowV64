@@ -671,7 +671,7 @@ object Exec {
       is(
         Decoder.Op("LOAD").ident,
         Decoder.Op("STORE").ident,
-        Decoder.Op("MEM-MISC").ident,
+        Decoder.Op("MISC-MEM").ident,
         Decoder.Op("AMO").ident
       ) {
         ret := "b100".U(coredef.UNIT_COUNT.W)

@@ -242,7 +242,7 @@ class LSU(implicit val coredef: CoreDef) extends Module with UnitSelIO {
   ) && next.instr.valid
 
   fenceLike := (
-    next.instr.instr.op === Decoder.Op("MEM-MISC").ident
+    next.instr.instr.op === Decoder.Op("MISC-MEM").ident
       && next.instr.valid
   )
 
@@ -329,7 +329,7 @@ class LSU(implicit val coredef: CoreDef) extends Module with UnitSelIO {
   val pipeAMO = pipeInstr.instr.instr.op === Decoder.Op("AMO").ident
   val pipeUncached = isUncached(pipeAddr) && !pipeAMO
   val pipeFenceLike = (
-    pipeInstr.instr.instr.op === Decoder.Op("MEM-MISC").ident
+    pipeInstr.instr.instr.op === Decoder.Op("MISC-MEM").ident
       && pipeInstr.instr.valid
   )
 

@@ -211,7 +211,7 @@ class LSBuf(val idx: Int)(implicit val coredef: CoreDef)
       ).instr.instr.funct7(6, 2) === Decoder.AMO_FUNC("LR")
   )
   val headIsFence = (
-    store(head).instr.instr.op === Decoder.Op("MEM-MISC").ident
+    store(head).instr.instr.op === Decoder.Op("MISC-MEM").ident
     // Release ops cannot be reordered before any previous ops
       || store(head).instr.instr.op === Decoder.Op("AMO").ident && store(
         head
