@@ -171,7 +171,7 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
 
   val pipeSpecBr = Wire(Bool())
 
-  val haltIC = (ICQueue.io.count >= ICQueueLen - 1).U && !toCtrl.ctrl.flush && !pipeSpecBr
+  val haltIC = (ICQueue.io.count >= (ICQueueLen - 1).U) && !toCtrl.ctrl.flush && !pipeSpecBr
   val icAddr = WireDefault(fpc)
   val icRead = WireDefault(!haltIC)
   when(requiresTranslate) {
