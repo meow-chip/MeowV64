@@ -74,7 +74,7 @@ class L1ICacheTest(dut: L1IC, seed: Long, len: Int) {
             }
           }
 
-          if (dut.toCPU.data.peek.litValue != ref(addrs(cnt - 1).get)) {
+          if (dut.toCPU.data.bits.peek.litValue != ref(addrs(cnt - 1).get)) {
             if (failed < 10) {
               println(
                 s"[${i}] ${cnt - 1}: 0x${addrs(cnt - 1).get.toHexString}, Expected 0x${ref(addrs(cnt - 1).get)
@@ -123,6 +123,7 @@ class L1ICacheTest(dut: L1IC, seed: Long, len: Int) {
 
   run()
   println(s"Cycle count: ${len}, total ops: ${cnt}")
+  assert(failed == 0)
 }
 
 object L1ICacheTest {
