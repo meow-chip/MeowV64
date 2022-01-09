@@ -97,6 +97,8 @@ class ExecTest(dut: Multicore, file: String) {
 
         println(s"> mcycle: ${mcycle}")
         println(s"> minstret: ${minstret}")
+        println(f"> IPC: ${BigDecimal(minstret) / BigDecimal(mcycle)}%.2f")
+
         val elapsed = System.nanoTime - beginTime
         val speed = BigDecimal(mcycle) * BigDecimal(1e9) / BigDecimal(elapsed)
         println(f"> Simulation speed: ${speed}%.2f mcycle/s")
@@ -295,7 +297,9 @@ object ExecSpec {
     ("Timer interrupt", "./testcases/meow/bin/timer.bin"),
     ("External interrupt", "./testcases/meow/bin/eint.bin"),
     // ("RAS", "./testcases/meow/bin/ras.bin")
-    ("Benchmark PTB", "./testcases/meow/bin/bench-ptb.bin")
+    ("Benchmark Loop 5", "./testcases/meow/bin/bench-loop-5.bin"),
+    ("Benchmark Loop 6", "./testcases/meow/bin/bench-loop-6.bin"),
+    ("Benchmark Loop 8", "./testcases/meow/bin/bench-loop-8.bin")
   )
 }
 

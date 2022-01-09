@@ -1,11 +1,13 @@
-  li sp, 0x10000
-	li ra, 0x100000
-UTEST_1PTB:
+    li sp, 0x10000
+    li ra, 0x100000
     li t0, 0x00001000
 .LC0:
     addi t0, t0, -1
     ori t1, zero, 0
     ori t2, zero, 1
     ori t3, zero, 2
+    ori t4, zero, 3
+    ori t5, zero, 4
+    ori t6, zero, 5
     bne t0, zero, .LC0
     jr ra
