@@ -18,8 +18,9 @@ import firrtl.AnnotationSeq
 import chiseltest.simulator.VcsBackendAnnotation
 import firrtl.stage.RunFirrtlTransformAnnotation
 import firrtl.options.Dependency
+import meowv64.multicore.SinglecoreDef
 
-object ExecDef extends MulticoreDef {
+object ExecDef extends SinglecoreDef {
   override val INIT_VEC = BigInt(0x80000000L)
 }
 

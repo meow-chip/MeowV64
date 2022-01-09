@@ -4,7 +4,7 @@ import meowv64.interrupt.CLINTMapping
 import meowv64.interrupt.PLICDef
 import meowv64.interrupt.PLICMapping
 
-abstract class MulticoreDef {
+abstract class SinglecoreDef {
   outer =>
   val CORE_COUNT = 1
 
@@ -44,6 +44,11 @@ abstract class MulticoreDef {
         override val MAX_SOURCE: Int = outer.INTERRUPT_CNT
       }
       with PLICDef
+}
+
+abstract class MulticoreDef extends SinglecoreDef {
+  outer =>
+  override val CORE_COUNT = 2
 }
 
 object DefaultDef extends MulticoreDef
