@@ -31,7 +31,7 @@ object L2DirState extends ChiselEnum {
 }
 
 class L2DirEntry(val opts: L2Opts) extends Bundle {
-  val INDEX_OFFSET_LENGTH = log2Ceil(opts.SIZE / opts.ASSOC)
+  val INDEX_OFFSET_LENGTH = log2Ceil(opts.SIZE_BYTES / opts.ASSOC)
   val TAG_LENGTH = opts.ADDR_WIDTH - INDEX_OFFSET_LENGTH
 
   val valid = Bool()
@@ -78,7 +78,7 @@ object L2DirEntry {
   }
 
   def withAddr(opts: L2Opts, addr: UInt): L2DirEntry = {
-    val INDEX_OFFSET_LENGTH = log2Ceil(opts.SIZE / opts.ASSOC)
+    val INDEX_OFFSET_LENGTH = log2Ceil(opts.SIZE_BYTES / opts.ASSOC)
 
     val w = Wire(new L2DirEntry(opts))
     w.valid := true.B
@@ -117,11 +117,11 @@ object WBEntry {
 
 class L2Cache(val opts: L2Opts) extends Module {
   val OFFSET_LENGTH = log2Ceil(opts.LINE_BYTES)
-  val INDEX_OFFSET_LENGTH = log2Ceil(opts.SIZE / opts.ASSOC)
+  val INDEX_OFFSET_LENGTH = log2Ceil(opts.SIZE_BYTES / opts.ASSOC)
   val INDEX_LENGTH = INDEX_OFFSET_LENGTH - OFFSET_LENGTH
   val TAG_LENGTH = opts.ADDR_WIDTH - INDEX_OFFSET_LENGTH
   val ASSOC_IDX_WIDTH = log2Ceil(opts.ASSOC)
-  val LINE_COUNT = opts.SIZE / opts.LINE_BYTES / opts.ASSOC
+  val LINE_COUNT = opts.SIZE_BYTES / opts.LINE_BYTES / opts.ASSOC
 
   object GeneralMMIODef
       extends {

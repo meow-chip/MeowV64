@@ -13,7 +13,7 @@ class ICPort(val opts: L1Opts) extends Bundle {
   val stall = Output(Bool())
   val rst = Input(Bool())
 
-  val data = Valid(UInt(opts.TRANSFER_BITS.W)) // Data delay is 1 cycle
+  val data = Valid(UInt(opts.TRANSFER_WIDTH.W)) // Data delay is 1 cycle
 }
 
 object S2State extends ChiselEnum {
@@ -21,9 +21,9 @@ object S2State extends ChiselEnum {
 }
 
 class ILine(val opts: L1Opts) extends Bundle {
-  val INDEX_OFFSET_WIDTH = log2Ceil(opts.SIZE / opts.ASSOC)
+  val INDEX_OFFSET_WIDTH = log2Ceil(opts.SIZE_BYTES / opts.ASSOC)
   val TAG_WIDTH = opts.ADDR_WIDTH - INDEX_OFFSET_WIDTH
-  val TRANSFER_COUNT = opts.LINE_BYTES * 8 / opts.TRANSFER_BITS
+  val TRANSFER_COUNT = opts.LINE_BYTES * 8 / opts.TRANSFER_WIDTH
 
   val tag = UInt(TAG_WIDTH.W)
   val valid = Bool()
@@ -48,29 +48,29 @@ class L1IC(opts: L1Opts) extends Module {
   toL2.addr := DontCare
   toL2.read := false.B
 
-  val LINE_COUNT = opts.SIZE / opts.LINE_BYTES
+  val LINE_COUNT = opts.SIZE_BYTES / opts.LINE_BYTES
   val LINE_PER_ASSOC = LINE_COUNT / opts.ASSOC
 
   val ASSOC_IDX_WIDTH = log2Ceil(opts.ASSOC)
 
   val OFFSET_WIDTH = log2Ceil(opts.LINE_BYTES)
-  val INDEX_OFFSET_WIDTH = log2Ceil(opts.SIZE / opts.ASSOC)
+  val INDEX_OFFSET_WIDTH = log2Ceil(opts.SIZE_BYTES / opts.ASSOC)
   val INDEX_WIDTH = INDEX_OFFSET_WIDTH - OFFSET_WIDTH
-  val IGNORED_WIDTH = log2Ceil(opts.TRANSFER_BITS / 8)
+  val IGNORED_WIDTH = log2Ceil(opts.TRANSFER_WIDTH / 8)
 
   assume(INDEX_WIDTH == log2Ceil(LINE_PER_ASSOC))
 
-  val TRANSFER_COUNT = opts.LINE_BYTES * 8 / opts.TRANSFER_BITS
+  val TRANSFER_COUNT = opts.LINE_BYTES * 8 / opts.TRANSFER_WIDTH
 
   val directories = Mem(LINE_PER_ASSOC, Vec(opts.ASSOC, new ILine(opts)))
   val stores = SyncReadMem(
     LINE_PER_ASSOC,
-    Vec(opts.ASSOC, Vec(TRANSFER_COUNT, UInt(opts.TRANSFER_BITS.W)))
+    Vec(opts.ASSOC, Vec(TRANSFER_COUNT, UInt(opts.TRANSFER_WIDTH.W)))
   )
 
   val writerAddr = Wire(UInt(INDEX_WIDTH.W))
   val writerDir = Wire(new ILine(opts))
-  val writerData = Wire(Vec(TRANSFER_COUNT, UInt(opts.TRANSFER_BITS.W)))
+  val writerData = Wire(Vec(TRANSFER_COUNT, UInt(opts.TRANSFER_WIDTH.W)))
   val writerMask = Wire(Vec(opts.ASSOC, Bool()))
 
   directories.write(

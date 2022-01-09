@@ -35,10 +35,10 @@ trait L1Opts {
 
   /** L1 <-> L2 transfer size in bits.
     *
-    * Currently, it's only possible that TRANSFER_BITS = L1 LINE_BYTES = L2
+    * Currently, it's only possible that TRANSFER_WIDTH = L1 LINE_BYTES = L2
     * LINE_BYTES
     */
-  val TRANSFER_BITS: Int
+  val TRANSFER_WIDTH: Int
 
   /**
     * Line width in bytes
@@ -47,11 +47,11 @@ trait L1Opts {
   /**
     * Cache size in bytes
     */
-  val SIZE: Int
+  val SIZE_BYTES: Int
   val ASSOC: Int
 
   // TODO: check is log2
-  assume(SIZE % LINE_BYTES == 0)
+  assume(SIZE_BYTES % LINE_BYTES == 0)
 }
 
 trait L1DOpts extends L1Opts {

@@ -15,7 +15,7 @@ abstract class MulticoreDef(val coreCount: Int) {
 
   val CYCLE_PER_TIMEUNIT: Int = 50 // We're running on 50M
 
-  val L2_LINE_WIDTH: Int = 16 // In bytes
+  val L2_LINE_BYTES: Int = 16 // In bytes
 
   val INTERRUPT_CNT: Int = 15
 
@@ -24,9 +24,9 @@ abstract class MulticoreDef(val coreCount: Int) {
         val ADDR_WIDTH: Int = outer.PADDR_WIDTH
         val ASSOC: Int = 4
         val CORE_COUNT: Int = outer.CORE_COUNT
-        val LINE_BYTES: Int = outer.L2_LINE_WIDTH
-        val TRANSFER_BITS: Int = 0 // Actually ignored
-        val SIZE: Int = 16384 // 16K L2
+        val LINE_BYTES: Int = outer.L2_LINE_BYTES
+        val TRANSFER_WIDTH: Int = 0 // Actually ignored
+        val SIZE_BYTES: Int = 16384 // 16K L2
         val WB_DEPTH: Int = 4
         val XLEN: Int = outer.XLEN
 

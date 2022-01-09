@@ -94,7 +94,7 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
   val toBPU = IO(new Bundle {
     val pc = Output(UInt(coredef.XLEN.W))
     val results = Input(
-      Vec(coredef.L1I.TRANSFER_BITS / Const.INSTR_MIN_WIDTH, new BPUResult)
+      Vec(coredef.L1I.TRANSFER_WIDTH / Const.INSTR_MIN_WIDTH, new BPUResult)
     )
   })
 
@@ -129,7 +129,7 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
     pipeFault := tlb.query.resp.fault
 
     when(toIC.read) {
-      pc := fpc + (coredef.L1I.TRANSFER_BITS / 8).U
+      pc := fpc + (coredef.L1I.TRANSFER_WIDTH / 8).U
     }
   }
 
@@ -154,10 +154,10 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
 
   // First, push all IC readouts into a queue
   class ICData extends Bundle {
-    val data = UInt(coredef.L1I.TRANSFER_BITS.W)
+    val data = UInt(coredef.L1I.TRANSFER_WIDTH.W)
     val addr = UInt(coredef.XLEN.W)
     val pred =
-      Vec(coredef.L1I.TRANSFER_BITS / Const.INSTR_MIN_WIDTH, new BPUResult)
+      Vec(coredef.L1I.TRANSFER_WIDTH / Const.INSTR_MIN_WIDTH, new BPUResult)
     val fault = Bool()
   }
 
@@ -185,12 +185,12 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
   ICHead.io.enq <> ICQueue.io.deq
   ICHead.io.deq.nodeq() // Default
 
-  val headPtr = RegInit(0.U(log2Ceil(coredef.L1I.TRANSFER_BITS / 16).W))
+  val headPtr = RegInit(0.U(log2Ceil(coredef.L1I.TRANSFER_WIDTH / 16).W))
 
-  val decodeVec = Wire(Vec(coredef.L1I.TRANSFER_BITS * 2 / 16, UInt(16.W)))
+  val decodeVec = Wire(Vec(coredef.L1I.TRANSFER_WIDTH * 2 / 16, UInt(16.W)))
   decodeVec := (ICQueue.io.deq.bits.data ## ICHead.io.deq.bits.data)
     .asTypeOf(decodeVec)
-  val joinedVec = Wire(Vec(coredef.L1I.TRANSFER_BITS * 2 / 16 - 1, UInt(32.W)))
+  val joinedVec = Wire(Vec(coredef.L1I.TRANSFER_WIDTH * 2 / 16 - 1, UInt(32.W)))
   for ((v, i) <- joinedVec.zipWithIndex) {
     v := decodeVec(i + 1) ## decodeVec(i)
   }
@@ -201,7 +201,7 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
   val decodePtr = Wire(
     Vec(
       coredef.FETCH_NUM + 1,
-      UInt(log2Ceil(coredef.L1I.TRANSFER_BITS * 2 / 16).W)
+      UInt(log2Ceil(coredef.L1I.TRANSFER_WIDTH * 2 / 16).W)
     )
   )
   val decoded = Wire(Vec(coredef.FETCH_NUM, new InstrExt))
@@ -214,7 +214,7 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
     // this instruction spans ICHead and ICQueue
     val overflowed = decodePtr(
       i
-    ) >= (coredef.L1I.TRANSFER_BITS / 16 - 1).U
+    ) >= (coredef.L1I.TRANSFER_WIDTH / 16 - 1).U
 
     when(!overflowed) {
       decodable(i) := ICHead.io.deq.valid
@@ -406,7 +406,7 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
     toRAS.push.valid := false.B
     toRAS.pop.ready := false.B
 
-    val ICAlign = log2Ceil(coredef.L1I.TRANSFER_BITS / 8)
+    val ICAlign = log2Ceil(coredef.L1I.TRANSFER_WIDTH / 8)
     fpc := pipeSpecBrTarget(coredef.XLEN - 1, ICAlign) ## 0.U(ICAlign.W)
     pipeFault := false.B
     headPtr := pipeSpecBrTarget(
@@ -432,7 +432,7 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
     ICHead.io.flush.get := true.B
     toCtrl.ctrl.stall := false.B
 
-    val ICAlign = log2Ceil(coredef.L1I.TRANSFER_BITS / 8)
+    val ICAlign = log2Ceil(coredef.L1I.TRANSFER_WIDTH / 8)
     // Set pc directly, because we are waiting for one tick
     pc := toCtrl.pc(coredef.XLEN - 1, ICAlign) ## 0.U(ICAlign.W)
     pipeFault := false.B
