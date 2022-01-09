@@ -17,6 +17,7 @@ import firrtl.AnnotationSeq
 import chiseltest.simulator.VcsBackendAnnotation
 import firrtl.stage.RunFirrtlTransformAnnotation
 import firrtl.options.Dependency
+import chiseltest.internal.CachingAnnotation
 
 object ExecDef extends MulticoreDef(coreCount = 1) {
   override val INIT_VEC = BigInt(0x80000000L)
@@ -331,8 +332,8 @@ object Simulator {
 
   /** get annotations for chiseltest */
   def getAnnotations(
-      useVCS: Boolean = true,
-      useIcarus: Boolean = true,
+      useVCS: Boolean = false,
+      useIcarus: Boolean = false,
       useVerilator: Boolean = true
   ): AnnotationSeq = {
     var annotations: AnnotationSeq = if (vcsFound && useVCS) {
@@ -348,7 +349,8 @@ object Simulator {
     } else if (verilatorFound && useVerilator) {
       println("Using Verilator")
       Seq(
-        VerilatorBackendAnnotation
+        VerilatorBackendAnnotation,
+        CachingAnnotation
       )
     } else {
       throw new RuntimeException("No usable simulator")
