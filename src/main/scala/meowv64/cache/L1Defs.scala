@@ -33,21 +33,25 @@ trait L1Opts {
   // Address width
   val ADDR_WIDTH: Int
 
-  /** L1 <-> L2 transfer size.
+  /** L1 <-> L2 transfer size in bits.
     *
-    * Currently, it's only possible that TRANSFER_SIZE = L1 LINE_WIDTH = L2
-    * LINE_WIDTH
+    * Currently, it's only possible that TRANSFER_BITS = L1 LINE_BYTES = L2
+    * LINE_BYTES
     */
-  val TRANSFER_SIZE: Int
+  val TRANSFER_BITS: Int
 
-  // Line width
-  val LINE_WIDTH: Int
-  // Cache size (in bytes)
+  /**
+    * Line width in bytes
+    */
+  val LINE_BYTES: Int
+  /**
+    * Cache size in bytes
+    */
   val SIZE: Int
   val ASSOC: Int
 
   // TODO: check is log2
-  assume(SIZE % LINE_WIDTH == 0)
+  assume(SIZE % LINE_BYTES == 0)
 }
 
 trait L1DOpts extends L1Opts {
@@ -66,7 +70,7 @@ class L1ICPort(val opts: L1Opts) extends Bundle with L1Port {
   val addr = Output(UInt(opts.ADDR_WIDTH.W))
 
   val stall = Input(Bool())
-  val data = Input(UInt((opts.LINE_WIDTH * 8).W))
+  val data = Input(UInt((opts.LINE_BYTES * 8).W))
 
   override def getAddr: UInt = addr
   override def getReq = {
@@ -156,8 +160,8 @@ class L1DCPort(val opts: L1Opts) extends Bundle with L1Port {
   // TODO: add a debug signal to show if L1 really has the entry
 
   // Data bus
-  val wdata = Output(UInt((opts.LINE_WIDTH * 8).W))
-  val rdata = Input(UInt((opts.LINE_WIDTH * 8).W))
+  val wdata = Output(UInt((opts.LINE_BYTES * 8).W))
+  val rdata = Input(UInt((opts.LINE_BYTES * 8).W))
 
   override def getAddr: UInt = l1addr
   override def getReq = l1req

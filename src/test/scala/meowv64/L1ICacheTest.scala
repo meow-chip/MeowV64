@@ -14,9 +14,9 @@ object L1CacheTestDef
     extends {
       val ADDR_WIDTH: Int = 48
       val ASSOC: Int = 2
-      val LINE_WIDTH: Int = 16
+      val LINE_BYTES: Int = 16
       val SIZE: Int = 128 // 4K L1 I
-      val TRANSFER_SIZE: Int = 2 * 16
+      val TRANSFER_BITS: Int = 2 * 16
       val XLEN: Int = 64
     }
     with L1Opts;

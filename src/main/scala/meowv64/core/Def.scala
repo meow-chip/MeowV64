@@ -32,7 +32,10 @@ abstract class CoreDef {
     4
   )
 
-  val L1_LINE_WIDTH: Int = 16 // In bytes
+  /**
+    * L1 line with in bytes
+    */
+  val L1_LINE_BYTES: Int = 16
 
   val RAS_SIZE: Int = 8;
 
@@ -40,9 +43,9 @@ abstract class CoreDef {
       extends {
         val ADDR_WIDTH: Int = outer.PADDR_WIDTH
         val ASSOC: Int = 2
-        val LINE_WIDTH: Int = outer.L1_LINE_WIDTH
+        val LINE_BYTES: Int = outer.L1_LINE_BYTES
         val SIZE: Int = 2048 // 4K L1 I
-        val TRANSFER_SIZE: Int = 64
+        val TRANSFER_BITS: Int = 64 // 64 bits
         val XLEN: Int = outer.XLEN
       }
       with L1Opts
@@ -51,9 +54,9 @@ abstract class CoreDef {
       extends {
         val ADDR_WIDTH: Int = outer.PADDR_WIDTH
         val ASSOC: Int = 2
-        val LINE_WIDTH: Int = outer.L1_LINE_WIDTH
+        val LINE_BYTES: Int = outer.L1_LINE_BYTES
         val SIZE: Int = 2048 // 4K L1 D
-        val TRANSFER_SIZE: Int = outer.XLEN // Currently, this is required
+        val TRANSFER_BITS: Int = outer.XLEN // Currently, this is required
         val XLEN: Int = outer.XLEN
 
         val WRITE_BUF_DEPTH: Int = 4

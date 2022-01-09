@@ -14,9 +14,9 @@ object CacheTestDef extends CoreDef {}
 object L1DCacheTestDef extends {
   val ADDR_WIDTH: Int = 48
   val ASSOC: Int = 2
-  val LINE_WIDTH: Int = 16
+  val LINE_BYTES: Int = 16
   val SIZE: Int = 128
-  val TRANSFER_SIZE: Int = 64
+  val TRANSFER_BITS: Int = 64
   val XLEN: Int = 64
 
   val WRITE_BUF_DEPTH = 2
@@ -26,8 +26,8 @@ object L2CacheTestDef extends {
   val ADDR_WIDTH: Int = 48
   val ASSOC: Int = 4
   val CORE_COUNT: Int = 1
-  val LINE_WIDTH: Int = 16
-  val TRANSFER_SIZE: Int = 0 // Actually ignored
+  val LINE_BYTES: Int = 16
+  val TRANSFER_BITS: Int = 0 // Actually ignored
   val SIZE: Int = 256
   val WB_DEPTH: Int = 4
   val XLEN: Int = 64

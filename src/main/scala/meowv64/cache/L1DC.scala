@@ -44,7 +44,7 @@ class DCInnerReader(val opts: L1DOpts) extends Bundle {
 
   val read = Output(Bool())
 
-  val data = Input(UInt(opts.TRANSFER_SIZE.W))
+  val data = Input(UInt(opts.TRANSFER_BITS.W))
   val stall = Input(Bool())
 }
 
@@ -85,15 +85,15 @@ class DCWriter(val opts: L1DOpts) extends Bundle {
   val op = Output(DCWriteOp())
 
   val wdata = Output(
-    UInt(opts.TRANSFER_SIZE.W)
+    UInt(opts.TRANSFER_BITS.W)
   ) // WData should be sign extended
 
-  val rdata = Input(UInt(opts.TRANSFER_SIZE.W)) // AMOSWAP and friends
+  val rdata = Input(UInt(opts.TRANSFER_BITS.W)) // AMOSWAP and friends
   val stall = Input(Bool())
 
   /** Generate raw byte enable */
   def be = {
-    val offset = addr(log2Ceil(opts.TRANSFER_SIZE / 8) - 1, 0)
+    val offset = addr(log2Ceil(opts.TRANSFER_BITS / 8) - 1, 0)
     val mask = MuxLookup(
       len.asUInt(),
       0.U,
@@ -104,15 +104,15 @@ class DCWriter(val opts: L1DOpts) extends Bundle {
         DCWriteLen.D.asUInt -> 0xff.U
       )
     )
-    val sliced = Wire(UInt((opts.TRANSFER_SIZE / 8).W))
+    val sliced = Wire(UInt((opts.TRANSFER_BITS / 8).W))
     sliced := mask << offset
     sliced
   }
 
   /** Shifted wdata */
   def sdata = {
-    val offset = addr(log2Ceil(opts.TRANSFER_SIZE / 8) - 1, 0)
-    val sliced = Wire(UInt(opts.TRANSFER_SIZE.W))
+    val offset = addr(log2Ceil(opts.TRANSFER_BITS / 8) - 1, 0)
+    val sliced = Wire(UInt(opts.TRANSFER_BITS.W))
     sliced := wdata << (offset << 3)
     sliced
   }
@@ -129,12 +129,12 @@ class DCFenceStatus(val opts: L1DOpts) extends Bundle {
 class DLine(val opts: L1Opts) extends Bundle {
   val INDEX_OFFSET_WIDTH = log2Ceil(opts.SIZE / opts.ASSOC)
   val TAG_WIDTH = opts.ADDR_WIDTH - INDEX_OFFSET_WIDTH
-  val TRANSFER_COUNT = opts.LINE_WIDTH * 8 / opts.TRANSFER_SIZE
+  val TRANSFER_COUNT = opts.LINE_BYTES * 8 / opts.TRANSFER_BITS
 
   val tag = UInt(TAG_WIDTH.W)
   val valid = Bool()
   val dirty = Bool()
-  val data = Vec(TRANSFER_COUNT, UInt(opts.TRANSFER_SIZE.W))
+  val data = Vec(TRANSFER_COUNT, UInt(opts.TRANSFER_BITS.W))
 }
 
 object DLine {
@@ -150,9 +150,9 @@ object DLine {
 
 class L1DC(val opts: L1DOpts)(implicit coredef: CoreDef) extends Module {
   // Constants and helpers
-  val IGNORED_WIDTH = log2Ceil(opts.TRANSFER_SIZE / 8)
-  val OFFSET_WIDTH = log2Ceil(opts.LINE_WIDTH)
-  val LINE_PER_ASSOC = opts.SIZE / opts.ASSOC / opts.LINE_WIDTH
+  val IGNORED_WIDTH = log2Ceil(opts.TRANSFER_BITS / 8)
+  val OFFSET_WIDTH = log2Ceil(opts.LINE_BYTES)
+  val LINE_PER_ASSOC = opts.SIZE / opts.ASSOC / opts.LINE_BYTES
   val INDEX_WIDTH = log2Ceil(LINE_PER_ASSOC)
   val ASSOC_IDX_WIDTH = log2Ceil(opts.ASSOC)
 
@@ -260,8 +260,8 @@ class L1DC(val opts: L1DOpts)(implicit coredef: CoreDef) extends Module {
   // Write FIFO
   class WriteEv(val opts: L1DOpts) extends Bundle {
     val aligned = UInt(opts.ADDR_WIDTH.W)
-    val be = UInt((opts.TRANSFER_SIZE / 8).W)
-    val sdata = UInt(opts.TRANSFER_SIZE.W)
+    val be = UInt((opts.TRANSFER_BITS / 8).W)
+    val sdata = UInt(opts.TRANSFER_BITS.W)
     val isAMO = Bool()
     val isCond = Bool()
     val valid = Bool()
@@ -308,7 +308,7 @@ class L1DC(val opts: L1DOpts)(implicit coredef: CoreDef) extends Module {
   nstate := state
   state := nstate
 
-  val l2data = RegInit(0.U(opts.LINE_WIDTH))
+  val l2data = RegInit(0.U(opts.LINE_BYTES))
 
   val waddr = wbuf(wbufHead).aligned
   val nwaddr = wbuf(wbufHead +% 1.U).aligned

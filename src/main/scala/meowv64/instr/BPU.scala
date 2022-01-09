@@ -12,7 +12,7 @@ object BHTPrediction extends ChiselEnum {
 }
 
 class BHTSlot(implicit val coredef: CoreDef) extends Bundle {
-  val OFFSET_WIDTH = log2Ceil(coredef.L1I.TRANSFER_SIZE)
+  val OFFSET_WIDTH = log2Ceil(coredef.L1I.TRANSFER_BITS)
   val INDEX_WIDTH = log2Ceil(coredef.BHT_SIZE)
 
   val TAG_WIDTH = coredef.VADDR_WIDTH - OFFSET_WIDTH - INDEX_WIDTH
@@ -31,7 +31,7 @@ class BHTSlot(implicit val coredef: CoreDef) extends Bundle {
 }
 
 class BPUResult(implicit val coredef: CoreDef) extends Bundle {
-  val OFFSET_WIDTH = log2Ceil(coredef.L1I.TRANSFER_SIZE / 8)
+  val OFFSET_WIDTH = log2Ceil(coredef.L1I.TRANSFER_BITS / 8)
   val INDEX_WIDTH = log2Ceil(coredef.BHT_SIZE)
   val TAG_WIDTH = coredef.VADDR_WIDTH - OFFSET_WIDTH - INDEX_WIDTH
 
@@ -101,7 +101,7 @@ class BPU(implicit val coredef: CoreDef) extends Module {
     // for each possible branch instruction
     // return a BPUResult
     val results = Output(
-      Vec(coredef.L1I.TRANSFER_SIZE / Const.INSTR_MIN_WIDTH, new BPUResult)
+      Vec(coredef.L1I.TRANSFER_BITS / Const.INSTR_MIN_WIDTH, new BPUResult)
     )
   })
 
@@ -112,8 +112,8 @@ class BPU(implicit val coredef: CoreDef) extends Module {
     val taken = Input(Bool())
   })
 
-  val INLINE_COUNT = coredef.L1I.TRANSFER_SIZE / Const.INSTR_MIN_WIDTH
-  val OFFSET_WIDTH = log2Ceil(coredef.L1I.TRANSFER_SIZE / 8)
+  val INLINE_COUNT = coredef.L1I.TRANSFER_BITS / Const.INSTR_MIN_WIDTH
+  val OFFSET_WIDTH = log2Ceil(coredef.L1I.TRANSFER_BITS / 8)
   val INDEX_WIDTH = log2Ceil(coredef.BHT_SIZE)
   val INDEX_OFFSET_WIDTH = OFFSET_WIDTH + INDEX_WIDTH
   val TAG_WIDTH = coredef.VADDR_WIDTH - OFFSET_WIDTH - INDEX_WIDTH
@@ -150,7 +150,7 @@ class BPU(implicit val coredef: CoreDef) extends Module {
   val updateOffset = getOffset(toExec.lpc)
   assert(
     updateOffset.getWidth == log2Ceil(
-      coredef.L1I.TRANSFER_SIZE / Const.INSTR_MIN_WIDTH
+      coredef.L1I.TRANSFER_BITS / Const.INSTR_MIN_WIDTH
     )
   )
   val updated = toExec.hist.update(toExec.taken, updateTag)
@@ -175,7 +175,7 @@ class BPU(implicit val coredef: CoreDef) extends Module {
 
   val waddr = Mux(reseting, resetCnt, getIndex(toExec.lpc))
   val data = VecInit(
-    Seq.fill(coredef.L1I.TRANSFER_SIZE / Const.INSTR_MIN_WIDTH)(
+    Seq.fill(coredef.L1I.TRANSFER_BITS / Const.INSTR_MIN_WIDTH)(
       Mux(reseting, init, updated)
     )
   )
