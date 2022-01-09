@@ -17,7 +17,7 @@ class BranchExt extends Bundle {
   val branchTaken = Bool()
 
   val ex = ExReq()
-  val extype = ExType()
+  val exType = ExType()
 }
 
 class Branch(override implicit val coredef: CoreDef)
@@ -35,7 +35,7 @@ class Branch(override implicit val coredef: CoreDef)
     val ext = Wire(new BranchExt)
     ext.branchTaken := false.B
     ext.ex := ExReq.none
-    ext.extype := DontCare
+    ext.exType := DontCare
 
     val op1 = pipe.rs1val
     val op2 = pipe.rs2val
@@ -70,7 +70,7 @@ class Branch(override implicit val coredef: CoreDef)
       when(pipe.instr.instr.funct7 === Decoder.PRIV_FUNCT7("SFENCE.VMA")) {
         when(priv =/= PrivLevel.M && status.tvm) {
           ext.ex := ExReq.ex
-          ext.extype := ExType.ILLEGAL_INSTR
+          ext.exType := ExType.ILLEGAL_INSTR
         }
 
         // Currently does nothing
@@ -79,7 +79,7 @@ class Branch(override implicit val coredef: CoreDef)
           is(Decoder.PRIV_RS2("WFI")) {
             when(priv =/= PrivLevel.M && status.tw) {
               ext.ex := ExReq.ex
-              ext.extype := ExType.ILLEGAL_INSTR
+              ext.exType := ExType.ILLEGAL_INSTR
             }
 
             // No-op
@@ -87,7 +87,7 @@ class Branch(override implicit val coredef: CoreDef)
 
           is(Decoder.PRIV_RS2("ECALL")) {
             ext.ex := ExReq.ex
-            ext.extype := Mux1H(
+            ext.exType := Mux1H(
               Seq(
                 (priv === PrivLevel.M) -> ExType.M_CALL,
                 (priv === PrivLevel.S) -> ExType.S_CALL,
@@ -98,7 +98,7 @@ class Branch(override implicit val coredef: CoreDef)
 
           is(Decoder.PRIV_RS2("EBREAK")) {
             ext.ex := ExReq.ex
-            ext.extype := ExType.BREAKPOINT
+            ext.exType := ExType.BREAKPOINT
           }
 
           is(Decoder.PRIV_RS2("RET")) {
@@ -113,13 +113,13 @@ class Branch(override implicit val coredef: CoreDef)
 
             when(priv === PrivLevel.U) {
               ext.ex := ExReq.ex
-              ext.extype := ExType.ILLEGAL_INSTR
+              ext.exType := ExType.ILLEGAL_INSTR
             }.elsewhen(priv === PrivLevel.S && t === ExReq.mret) {
               ext.ex := ExReq.ex
-              ext.extype := ExType.ILLEGAL_INSTR
+              ext.exType := ExType.ILLEGAL_INSTR
             }.elsewhen(priv === PrivLevel.S && status.tsr) {
               ext.ex := ExReq.ex
-              ext.extype := ExType.ILLEGAL_INSTR
+              ext.exType := ExType.ILLEGAL_INSTR
             }.otherwise {
               ext.ex := t
             }
@@ -137,7 +137,7 @@ class Branch(override implicit val coredef: CoreDef)
     when(ext.ex === ExReq.ex) {
       // info.regWaddr := 0.U
       // info.wb := 0.U // tval
-      info.branch.ex(ext.extype)
+      info.branch.ex(ext.exType)
     }.elsewhen(ext.ex =/= ExReq.none) {
       // info.regWaddr := 0.U
       info.branch.ret(ext.ex)

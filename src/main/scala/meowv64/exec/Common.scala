@@ -12,7 +12,6 @@ import meowv64.core.PrivLevel
 import meowv64.core.Status
 import meowv64.instr.BHTPrediction
 import meowv64.instr.BPUResult
-import meowv64.instr.Decoder
 import meowv64.instr.Decoder.InstrType
 import meowv64.instr.FetchEx
 import meowv64.instr.InstrExt
@@ -51,7 +50,7 @@ class BranchResult(implicit val coredef: CoreDef) extends Bundle {
   val target = UInt(coredef.XLEN.W)
 
   val ex = ExReq()
-  val extype = ExType()
+  val exType = ExType()
 
   def nofire = {
     branch := false.B
@@ -60,7 +59,7 @@ class BranchResult(implicit val coredef: CoreDef) extends Bundle {
     tlbRst := false.B
 
     ex := ExReq.none
-    extype := DontCare
+    exType := DontCare
   }
 
   def fire(addr: UInt) = {
@@ -70,7 +69,7 @@ class BranchResult(implicit val coredef: CoreDef) extends Bundle {
     tlbRst := false.B
 
     ex := ExReq.none
-    extype := DontCare
+    exType := DontCare
   }
 
   def ifence(addr: UInt) = {
@@ -80,7 +79,7 @@ class BranchResult(implicit val coredef: CoreDef) extends Bundle {
     tlbRst := false.B
 
     ex := ExReq.none
-    extype := DontCare
+    exType := DontCare
   }
 
   def sfence(addr: UInt) = {
@@ -90,7 +89,7 @@ class BranchResult(implicit val coredef: CoreDef) extends Bundle {
     tlbRst := true.B
 
     ex := ExReq.none
-    extype := DontCare
+    exType := DontCare
   }
 
   def ex(et: ExType.Type) {
@@ -100,7 +99,7 @@ class BranchResult(implicit val coredef: CoreDef) extends Bundle {
     tlbRst := false.B
 
     ex := ExReq.ex
-    extype := et
+    exType := et
   }
 
   def ret(req: ExReq.Type) {
@@ -110,7 +109,7 @@ class BranchResult(implicit val coredef: CoreDef) extends Bundle {
     tlbRst := false.B
 
     ex := req
-    extype := DontCare
+    exType := DontCare
   }
 
   def branched(): Bool = branch || ex =/= ExReq.none

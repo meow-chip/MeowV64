@@ -336,7 +336,7 @@ class Ctrl(implicit coredef: CoreDef) extends Module {
   when(intFired) {
     cause := (true.B << (coredef.XLEN - 1)) | intCause
   }.otherwise {
-    cause := (false.B << (coredef.XLEN - 1)) | br.req.extype.asUInt()
+    cause := (false.B << (coredef.XLEN - 1)) | br.req.exType.asUInt()
   }
 
   // Exception delegated to S-mode
