@@ -14,18 +14,22 @@ PREFIX ?= riscv64-linux-gnu-
 
 all: $(BINS) $(HEXS) $(DUMPS)
 
-bin/%.bin: src/%.S Makefile
+bin/%.assembled: src/%.S Makefile
 	mkdir -p bin
-	$(PREFIX)cpp $< | $(PREFIX)as -march=rv64imac -o $@.assembled -
-	$(PREFIX)ld $@.assembled -T linker.lds -o $@.linked
-	cp $@.linked $@
+	$(PREFIX)cpp $< | $(PREFIX)as -march=rv64imac -o $@ -
+
+bin/%.linked: bin/%.assembled
+	$(PREFIX)ld $< -T linker.lds -o $@
+
+bin/%.bin: bin/%.linked
+	cp $< $@
 	$(PREFIX)objcopy -O binary $@
 
 hex/%.hex: bin/%.bin Makefile
 	mkdir -p hex
 	hexdump -ve '1/1 "%02x" "\n"' $< > $@
 
-dump/%.S: bin/%.bin.linked
+dump/%.S: bin/%.linked
 	$(PREFIX)objdump -S $^ > $@
 
 ref: $(REFS)
@@ -49,7 +53,7 @@ list-ref:
 	@echo $(REFS)
 
 clean:
-	rm -f $(BINS) $(HEXS) $(TMPS)
+	rm -f $(BINS) $(HEXS) $(TMPS) $(DUMPS)
 
 disasm:
 	@echo "Disassembly for $(FILE)"
