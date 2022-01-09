@@ -389,14 +389,14 @@ class Exec(implicit val coredef: CoreDef) extends Module {
   val brSel = VecInit(PriorityEncoderOH(brMux.asBools())).asUInt()
   val brSeled = Wire(Vec(units.size, Bool()))
   // branch result and branch trap target
-  val brNormalized = Wire(Vec(units.size, new BranchResult))
+  val brResults = Wire(Vec(units.size, new BranchResult))
   val brTvals = Wire(Vec(units.size, UInt(coredef.XLEN.W)))
 
   when(brSeled.asUInt.orR()) {
     // a branch instruction is found
     pendingBr := true.B
     pendingBrTag := OHToUInt(brSel) +% retirePtr // Actually this is always true
-    pendingBrResult := Mux1H(brSeled, brNormalized)
+    pendingBrResult := Mux1H(brSeled, brResults)
     pendingBrTval := Mux1H(brSeled, brTvals)
   }
 
@@ -409,11 +409,11 @@ class Exec(implicit val coredef: CoreDef) extends Module {
     // TODO: maybe pipeline here?
     val dist = u.retire.instr.tag -% retirePtr
     val oh = UIntToOH(dist)
-    val normalized = u.retire.info.branch
-    val canBr = u.retire.instr.instr.valid && normalized.branched()
+    val branchResult = u.retire.info.branch
+    val canBr = u.retire.instr.instr.valid && branchResult.branched()
     brMask(idx) := Mux(canBr, oh, 0.U)
     brSeled(idx) := brSel === oh && canBr
-    brNormalized(idx) := normalized
+    brResults(idx) := branchResult
     brTvals(idx) := u.retire.info.wb
 
     when(u.retire.instr.instr.valid) {
