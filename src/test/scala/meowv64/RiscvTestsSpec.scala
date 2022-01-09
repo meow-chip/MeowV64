@@ -45,9 +45,9 @@ class RiscvTestsSpec
 
   // these testcases are slow and memory consuming
   // avoid java heap space oom
-  for (file <- RiscvTestsSpec.cases) {
-    if (file.contains("-v-")) {
-      it should s"run testcases ${file} successfully" in {
+  it should s"run virtual testcases successfully" in {
+    for (file <- RiscvTestsSpec.cases) {
+      if (file.contains("-v-")) {
         test(
           new Multicore()(ExecDef)
         ).withAnnotations(annotations) { dut =>
