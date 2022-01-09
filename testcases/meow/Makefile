@@ -3,6 +3,7 @@ BINS:=$(patsubst src/%.S,bin/%.bin,$(SRCS))
 LINKEDS:=$(patsubst src/%.S,bin/%.bin.linked,$(SRCS))
 ASSEMBLED:=$(patsubst src/%.S,bin/%.bin.assembled,$(SRCS))
 HEXS:=$(patsubst src/%.S,hex/%.hex,$(SRCS))
+DUMPS:=$(patsubst src/%.S,dump/%.S,$(SRCS))
 
 CSRCS:=$(wildcard c/*.c)
 REFS:=$(patsubst c/%.c,ref/%.S,$(CSRCS))
@@ -11,7 +12,7 @@ PREFIX ?= riscv64-linux-gnu-
 
 .PHONY: list all clean ref
 
-all: $(BINS) $(HEXS)
+all: $(BINS) $(HEXS) $(DUMPS)
 
 bin/%.bin: src/%.S Makefile
 	mkdir -p bin
@@ -23,6 +24,9 @@ bin/%.bin: src/%.S Makefile
 hex/%.hex: bin/%.bin Makefile
 	mkdir -p hex
 	hexdump -ve '1/1 "%02x" "\n"' $< > $@
+
+dump/%.S: bin/%.bin.linked
+	$(PREFIX)objdump -S $^ > $@
 
 ref: $(REFS)
 
