@@ -17,7 +17,7 @@ all: $(BINS) $(HEXS) $(DUMPS)
 bin/%.bin: src/%.S Makefile
 	mkdir -p bin
 	$(PREFIX)cpp $< | $(PREFIX)as -march=rv64imac -o $@.assembled -
-	$(PREFIX)ld $@.assembled -o $@.linked
+	$(PREFIX)ld $@.assembled -T linker.lds -o $@.linked
 	cp $@.linked $@
 	$(PREFIX)objcopy -O binary $@
 
