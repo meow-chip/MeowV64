@@ -14,7 +14,7 @@ import meowv64.instr.Decoder.InstrType
 class BranchExt extends Bundle {
 
   /** whether the branch is taken */
-  val branched = Bool()
+  val branchTaken = Bool()
 
   val ex = ExReq()
   val extype = ExType()
@@ -33,7 +33,7 @@ class Branch(override implicit val coredef: CoreDef)
       ext: Option[BranchExt]
   ): (BranchExt, Bool) = {
     val ext = Wire(new BranchExt)
-    ext.branched := false.B
+    ext.branchTaken := false.B
     ext.ex := ExReq.none
     ext.extype := DontCare
 
@@ -43,27 +43,27 @@ class Branch(override implicit val coredef: CoreDef)
     when(pipe.instr.instr.op === Decoder.Op("BRANCH").ident) {
       switch(pipe.instr.instr.funct3) {
         is(Decoder.BRANCH_FUNC("BEQ")) {
-          ext.branched := op1 === op2
+          ext.branchTaken := op1 === op2
         }
 
         is(Decoder.BRANCH_FUNC("BNE")) {
-          ext.branched := op1 =/= op2
+          ext.branchTaken := op1 =/= op2
         }
 
         is(Decoder.BRANCH_FUNC("BLT")) {
-          ext.branched := op1.asSInt < op2.asSInt
+          ext.branchTaken := op1.asSInt < op2.asSInt
         }
 
         is(Decoder.BRANCH_FUNC("BGE")) {
-          ext.branched := op1.asSInt >= op2.asSInt
+          ext.branchTaken := op1.asSInt >= op2.asSInt
         }
 
         is(Decoder.BRANCH_FUNC("BLTU")) {
-          ext.branched := op1 < op2
+          ext.branchTaken := op1 < op2
         }
 
         is(Decoder.BRANCH_FUNC("BGEU")) {
-          ext.branched := op1 >= op2
+          ext.branchTaken := op1 >= op2
         }
       }
     }.elsewhen(pipe.instr.instr.op === Decoder.Op("SYSTEM").ident) { // ECALL...
@@ -149,12 +149,12 @@ class Branch(override implicit val coredef: CoreDef)
       }
     }.elsewhen(pipe.instr.instr.op === Decoder.Op("BRANCH").ident) {
       // info.regWaddr := 0.U
-      info.branchTaken := ext.branched
-      when(ext.branched =/= pipe.instr.taken) {
+      info.branchTaken := ext.branchTaken
+      when(ext.branchTaken =/= pipe.instr.taken) {
         // mis-predict
         // branch to actual address
         val target = Wire(UInt(coredef.XLEN.W))
-        when(ext.branched) {
+        when(ext.branchTaken) {
           // addr + imm
           target := (pipe.instr.instr.imm + pipe.instr.addr.asSInt).asUInt
         } otherwise {
