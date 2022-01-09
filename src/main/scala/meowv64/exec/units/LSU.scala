@@ -127,7 +127,7 @@ class LSU(implicit val coredef: CoreDef) extends Module with UnitSelIO {
   val satp = IO(Input(new Satp))
   val status = IO(Input(new Status))
   val ptw = IO(new TLBExt)
-  val tlbrst = IO(Input(Bool()))
+  val tlbRst = IO(Input(Bool()))
   val priv = IO(Input(PrivLevel()))
 
   val tlb = Module(new TLB)
@@ -152,7 +152,7 @@ class LSU(implicit val coredef: CoreDef) extends Module with UnitSelIO {
   tlb.query.req.valid := requiresTranslate && next.instr.valid && !fenceLike
   tlb.query.req.bits.isModify := tlbRequestModify
   tlb.query.req.bits.mode := tlbMode
-  tlb.flush := tlbrst
+  tlb.flush := tlbRst
 
   val flushed = RegInit(false.B)
 

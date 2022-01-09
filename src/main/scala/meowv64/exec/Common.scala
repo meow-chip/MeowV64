@@ -33,9 +33,21 @@ import meowv64.instr.InstrExt
   *   Core definition
   */
 class BranchResult(implicit val coredef: CoreDef) extends Bundle {
+
+  /** Whether a pipeline branch occurs
+    */
   val branch = Bool()
-  val irst = Bool()
-  val tlbrst = Bool()
+
+  /** ICache Flush for fence.i
+    */
+  val iRst = Bool()
+
+  /** TLB Flush for sfence.vma
+    */
+  val tlbRst = Bool()
+
+  /** Target PC
+    */
   val target = UInt(coredef.XLEN.W)
 
   val ex = ExReq()
@@ -44,8 +56,8 @@ class BranchResult(implicit val coredef: CoreDef) extends Bundle {
   def nofire = {
     branch := false.B
     target := 0.U
-    irst := false.B
-    tlbrst := false.B
+    iRst := false.B
+    tlbRst := false.B
 
     ex := ExReq.none
     extype := DontCare
@@ -54,8 +66,8 @@ class BranchResult(implicit val coredef: CoreDef) extends Bundle {
   def fire(addr: UInt) = {
     branch := true.B
     target := addr
-    irst := false.B
-    tlbrst := false.B
+    iRst := false.B
+    tlbRst := false.B
 
     ex := ExReq.none
     extype := DontCare
@@ -64,8 +76,8 @@ class BranchResult(implicit val coredef: CoreDef) extends Bundle {
   def ifence(addr: UInt) = {
     branch := true.B
     target := addr
-    irst := true.B
-    tlbrst := false.B
+    iRst := true.B
+    tlbRst := false.B
 
     ex := ExReq.none
     extype := DontCare
@@ -74,8 +86,8 @@ class BranchResult(implicit val coredef: CoreDef) extends Bundle {
   def sfence(addr: UInt) = {
     branch := true.B
     target := addr
-    irst := false.B
-    tlbrst := true.B
+    iRst := false.B
+    tlbRst := true.B
 
     ex := ExReq.none
     extype := DontCare
@@ -84,8 +96,8 @@ class BranchResult(implicit val coredef: CoreDef) extends Bundle {
   def ex(et: ExType.Type) {
     branch := false.B
     target := DontCare
-    irst := false.B
-    tlbrst := false.B
+    iRst := false.B
+    tlbRst := false.B
 
     ex := ExReq.ex
     extype := et
@@ -94,8 +106,8 @@ class BranchResult(implicit val coredef: CoreDef) extends Bundle {
   def ret(req: ExReq.Type) {
     branch := false.B
     target := DontCare
-    irst := false.B
-    tlbrst := false.B
+    iRst := false.B
+    tlbRst := false.B
 
     ex := req
     extype := DontCare

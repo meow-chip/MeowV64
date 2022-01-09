@@ -44,7 +44,7 @@ class Exec(implicit val coredef: CoreDef) extends Module {
     val priv = Input(PrivLevel())
     val status = Input(new Status)
 
-    val tlbrst = Input(Bool())
+    val tlbRst = Input(Bool())
   })
 
   val toBPU = IO(new Bundle {
@@ -184,7 +184,7 @@ class Exec(implicit val coredef: CoreDef) extends Module {
   lsu.ptw <> toCore.ptw
   lsu.satp := toCore.satp
   lsu.priv := toCtrl.priv
-  lsu.tlbrst := toCtrl.tlbrst
+  lsu.tlbRst := toCtrl.tlbRst
   lsu.status := toCtrl.status
   val hasPendingMem = lsu.hasPending
 
@@ -447,7 +447,7 @@ class Exec(implicit val coredef: CoreDef) extends Module {
   cdb.entries(coredef.UNIT_COUNT) := DontCare
   cdb.entries(coredef.UNIT_COUNT).valid := false.B
 
-  // TODO: send memory reqeust one tick before its turn
+  // TODO: send memory request one tick before its turn
 
   val retireNext = rob(retirePtr)
 

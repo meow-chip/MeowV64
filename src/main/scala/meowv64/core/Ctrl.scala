@@ -15,6 +15,8 @@ object StageCtrl {
   def stage() = Flipped(new StageCtrl)
 }
 
+/** Exception types of RISC-V
+  */
 object ExType extends ChiselEnum {
   val INSTR_ADDR_MISALIGN = Value(0.U)
   val INSTR_ACCESS_FAULT = Value(1.U)
@@ -32,6 +34,8 @@ object ExType extends ChiselEnum {
   val STORE_PAGE_FAULT = Value(15.U)
 }
 
+/** Exception request: None, Exception, MRET/SRET
+  */
 object ExReq extends ChiselEnum {
   val none, ex, mret, sret = Value
 }
@@ -48,8 +52,8 @@ class Ctrl(implicit coredef: CoreDef) extends Module {
     val ctrl = StageCtrl.ctrl()
 
     val pc = Output(UInt(coredef.XLEN.W))
-    val irst = Output(Bool())
-    val tlbrst = Output(Bool())
+    val iRst = Output(Bool())
+    val tlbRst = Output(Bool())
 
     val priv = Output(PrivLevel())
   })
@@ -71,7 +75,7 @@ class Ctrl(implicit coredef: CoreDef) extends Module {
     val priv = Output(PrivLevel())
     val status = Output(new Status)
 
-    val tlbrst = Output(Bool())
+    val tlbRst = Output(Bool())
   })
 
   val int = IO(Input(new CoreInt))
@@ -108,9 +112,9 @@ class Ctrl(implicit coredef: CoreDef) extends Module {
 
   toIF.ctrl.flush := false.B
   toExec.ctrl.flush := false.B
-  toExec.tlbrst := false.B
-  toIF.irst := DontCare
-  toIF.tlbrst := false.B
+  toExec.tlbRst := false.B
+  toIF.iRst := DontCare
+  toIF.tlbRst := false.B
   toIF.pc := DontCare
   toIF.priv := priv
 
@@ -144,10 +148,10 @@ class Ctrl(implicit coredef: CoreDef) extends Module {
 
     // pc := alignedPC + (Const.INSTR_MIN_WIDTH / 8 * coredef.FETCH_NUM).U
     toIF.pc := baddr
-    toIF.irst := br.req.irst
-    toIF.tlbrst := br.req.tlbrst
+    toIF.iRst := br.req.iRst
+    toIF.tlbRst := br.req.tlbRst
 
-    toExec.tlbrst := br.req.tlbrst
+    toExec.tlbRst := br.req.tlbRst
   }
   /*
     // printf(p"PC: ${Hexadecimal(io.pc)}\n")

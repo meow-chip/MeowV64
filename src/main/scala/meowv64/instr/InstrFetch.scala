@@ -82,8 +82,8 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
     val pc = Input(UInt(coredef.XLEN.W))
 
     val ctrl = StageCtrl.stage()
-    val irst = Input(Bool())
-    val tlbrst = Input(Bool())
+    val iRst = Input(Bool())
+    val tlbRst = Input(Bool())
 
     val priv = Input(PrivLevel())
   })
@@ -143,13 +143,13 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
     TLBLookupMode.U,
     TLBLookupMode.S
   )
-  tlb.flush := toCtrl.tlbrst
+  tlb.flush := toCtrl.tlbRst
 
   toBPU.pc := Mux(
     toIC.stall,
     RegNext(toBPU.pc),
     fpc
-  ) // Perdict by virtual memory
+  ) // Predict by virtual memory
   // TODO: flush BPU on context switch
 
   // First, push all IC readouts into a queue
@@ -179,7 +179,7 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
   }
   toIC.read := icRead && !toCtrl.ctrl.flush
   toIC.addr := icAddr
-  toIC.rst := toCtrl.ctrl.flush && toCtrl.irst
+  toIC.rst := toCtrl.ctrl.flush && toCtrl.iRst
 
   val ICHead = Module(new FlushableSlot(new ICData, true, true))
   ICHead.io.enq <> ICQueue.io.deq
@@ -415,7 +415,7 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
     )
 
     pendingIRst := false.B
-    pendingTLBRst := toCtrl.tlbrst
+    pendingTLBRst := toCtrl.tlbRst
 
     when(readStalled) {
       pendingFlush := true.B
@@ -438,8 +438,8 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
     pipeFault := false.B
     headPtr := toCtrl.pc(ICAlign - 1, log2Ceil(Const.INSTR_MIN_WIDTH / 8))
 
-    pendingIRst := toCtrl.irst
-    pendingTLBRst := toCtrl.tlbrst
+    pendingIRst := toCtrl.iRst
+    pendingTLBRst := toCtrl.tlbRst
 
     when(readStalled) {
       pendingFlush := true.B

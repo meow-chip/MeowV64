@@ -86,7 +86,7 @@ class Core(implicit val coredef: CoreDef) extends Module {
   exec.toDC.u <> io.frontend.uc
 
   exec.toCtrl.ctrl <> ctrl.toExec.ctrl
-  exec.toCtrl.tlbrst := ctrl.toExec.tlbrst
+  exec.toCtrl.tlbRst := ctrl.toExec.tlbRst
 
   exec.toCore.ptw <> ptw.dtlb
 
