@@ -161,7 +161,8 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
     val fault = Bool()
   }
 
-  val ICQueue = Module(new FlushableQueue(new ICData, 2, false, false))
+  val ICQueueLen = 4;
+  val ICQueue = Module(new FlushableQueue(new ICData, ICQueueLen, false, false))
   ICQueue.io.enq.bits.data := toIC.data.bits
   ICQueue.io.enq.bits.addr := pipePc
   ICQueue.io.enq.bits.pred := toBPU.results
@@ -170,7 +171,7 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
 
   val pipeSpecBr = Wire(Bool())
 
-  val haltIC = ICQueue.io.count >= 1.U && !toCtrl.ctrl.flush && !pipeSpecBr
+  val haltIC = (ICQueue.io.count >= ICQueueLen - 1).U && !toCtrl.ctrl.flush && !pipeSpecBr
   val icAddr = WireDefault(fpc)
   val icRead = WireDefault(!haltIC)
   when(requiresTranslate) {
