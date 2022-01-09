@@ -136,6 +136,9 @@ class RetireInfo(implicit val coredef: CoreDef) extends Bundle {
     }.elsewhen(op === Decoder.Op("JALR").ident) {
       result := b
     }.otherwise {
+      // for branch instructions,
+      // the branch indicator means taken
+      // turn it into mis-prediction
       when(b.branch === taken) {
         result.nofire
       }.elsewhen(b.branch) {
@@ -216,7 +219,12 @@ class InflightInstr(implicit val coredef: CoreDef) extends Bundle {
   val isC = Bool()
   val addr = UInt(coredef.XLEN.W)
   val erd = UInt(log2Ceil(32).W) // Effective rd
+  /** Prediction result from BPU
+    */
   val pred = new BPUResult
+
+  /** Override prediction result to be taken e.g. JAL
+    */
   val forcePred = Bool() // FIXME: change to default pred
 
   def taken = pred.prediction === BHTPrediction.taken || forcePred

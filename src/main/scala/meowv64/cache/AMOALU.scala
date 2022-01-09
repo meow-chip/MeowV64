@@ -4,8 +4,7 @@ import chisel3._
 import chisel3.util._
 import chisel3.util.log2Ceil
 
-/**
-  * Computes atomic operations
+/** Computes atomic operations
   */
 class AMOALU(val opts: L1DOpts) extends Module {
   val io = IO(new Bundle {

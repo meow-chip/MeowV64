@@ -29,13 +29,19 @@ class InstrExt(implicit val coredef: CoreDef) extends Bundle {
     */
   val acrossPageEx =
     Bool()
+
+  /** Prediction result from BPU
+    */
   val pred = new BPUResult
 
-  /** RAS and missed branch
+  /** Override prediction result to be taken e.g. JAL
     */
   val forcePred = Bool()
 
-  /** For JALR handling
+  /** Predicted target address.
+    *
+    * For BRANCH instructions, this is pc + imm. For JALR(RET) instruction, this
+    * comes from RAS.
     */
   val predTarget = UInt(coredef.XLEN.W)
 
@@ -48,6 +54,9 @@ class InstrExt(implicit val coredef: CoreDef) extends Bundle {
   /** Next PC for this instruction
     */
   def npc: UInt = Mux(instr.base === InstrType.C, addr + 2.U, addr + 4.U)
+
+  /** Whether this instruction is predicted to be taken
+    */
   def taken: Bool = forcePred || pred.prediction === BHTPrediction.taken
 }
 
@@ -284,6 +293,7 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
     decodedRASPush(i) := false.B
 
     when(instr.op === Decoder.Op("JAL").ident) {
+      // force predict branch to be taken
       decoded(i).forcePred := true.B
       decodedRASPush(i) := instr.rd === 1.U || instr.rd === 5.U
     }.elsewhen(instr.op === Decoder.Op("JALR").ident) {
@@ -293,10 +303,14 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
       decodedRASPop(i) := doPop
 
       when(doPop) {
+        // force predict branch to be taken
         decoded(i).forcePred := toRAS.pop.valid
       }
     }.elsewhen(instr.op === Decoder.Op("BRANCH").ident) {
       when(instr.imm < 0.S && pred.prediction === BHTPrediction.missed) {
+        // for backward branches
+        // when BHT missed,
+        // force predict branch to be taken
         decoded(i).forcePred := true.B
       }
     }

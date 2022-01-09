@@ -20,7 +20,7 @@ class RegFile(
     COUNT: Int = 32,
     READ_COUNT: Int = 2,
     WRITE_COUNT: Int = 1,
-    FIXED_ZERO: Boolean = true,
+    FIXED_ZERO: Boolean = true
 ) extends Module {
   val io = IO(new Bundle {
     val reads = Vec(READ_COUNT, Flipped(new RegReader(XLEN, COUNT)))

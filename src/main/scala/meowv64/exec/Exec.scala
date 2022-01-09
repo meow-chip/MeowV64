@@ -259,11 +259,14 @@ class Exec(implicit val coredef: CoreDef) extends Module {
 
   val wasGFence = RegInit(false.B)
   val canIssue = Wire(Vec(coredef.ISSUE_NUM, Bool()))
+  // this station is taken by previous instructions
   var taken = 0.U(coredef.UNIT_COUNT.W)
   issueNum := 0.U
 
   for (idx <- (0 until coredef.ISSUE_NUM)) {
+    // whether this instruction can issue without considering previous instructions
     val selfCanIssue = Wire(Bool()).suggestName(s"selfCanIssue_$idx")
+    // sending to which station
     val sending = Wire(UInt(coredef.UNIT_COUNT.W)).suggestName(s"sending_$idx")
     val instr = Wire(new ReservedInstr)
 
@@ -287,15 +290,18 @@ class Exec(implicit val coredef: CoreDef) extends Module {
       sending := 0.U
     }.otherwise {
       // Route to applicable stations
-      val applicables = Exec.route(toIF.view(idx).instr)
+      val applicable = Exec.route(toIF.view(idx).instr)
+      applicable.suggestName(s"applicable_$idx")
+      // Find available stations
       val avails = VecInit(stations.map(_.ingress.free)).asUInt()
+      avails.suggestName(s"avails_$idx")
 
       sending := 0.U
 
       when(
         toIF.view(idx).fetchEx =/= FetchEx.none
           || toIF.view(idx).instr.base === InstrType.RESERVED
-          || !applicables.orR()
+          || !applicable.orR()
       ) {
         // Is an invalid instruction
         selfCanIssue := stations(0).ingress.free && !taken(0)
@@ -309,7 +315,7 @@ class Exec(implicit val coredef: CoreDef) extends Module {
         selfCanIssue := false.B
         // TODO: only apply to first instr to optimize timing?
       }.otherwise {
-        val mask = applicables & avails & ~taken
+        val mask = applicable & avails & ~taken
         mask.suggestName(s"mask_$idx")
 
         // Find lowest set
@@ -370,6 +376,8 @@ class Exec(implicit val coredef: CoreDef) extends Module {
   val pendingBrTval = RegInit(0.U(coredef.XLEN.W))
   assert(!pendingBr || pendingBrResult.branched())
 
+  // find the first branch instruction
+  // branch here means control flow interruption (trap, missed prediction)
   val brMask = Wire(Vec(units.size, UInt(coredef.INFLIGHT_INSTR_LIMIT.W)))
   val brMux = Wire(UInt(coredef.INFLIGHT_INSTR_LIMIT.W))
   brMux := brMask.reduceTree(_ | _) | Mux(
@@ -377,12 +385,15 @@ class Exec(implicit val coredef: CoreDef) extends Module {
     UIntToOH(pendingBrTag -% retirePtr),
     0.U
   )
+  // index of first branch instruction
   val brSel = VecInit(PriorityEncoderOH(brMux.asBools())).asUInt()
   val brSeled = Wire(Vec(units.size, Bool()))
+  // branch result and branch trap target
   val brNormalized = Wire(Vec(units.size, new BranchResult))
   val brTvals = Wire(Vec(units.size, UInt(coredef.XLEN.W)))
 
   when(brSeled.asUInt.orR()) {
+    // a branch instruction is found
     pendingBr := true.B
     pendingBrTag := OHToUInt(brSel) +% retirePtr // Actually this is always true
     pendingBrResult := Mux1H(brSeled, brNormalized)
@@ -417,6 +428,8 @@ class Exec(implicit val coredef: CoreDef) extends Module {
 
       rob(u.retire.instr.tag).hasMem := u.retire.info.hasMem
       rob(u.retire.instr.tag).valid := true.B
+      // for BRANCH instructions, this means taken before normalization
+      rob(u.retire.instr.tag).taken := u.retire.info.branch.branch
     }
   }
 
@@ -537,7 +550,8 @@ class Exec(implicit val coredef: CoreDef) extends Module {
         ) {
           toBPU.valid := true.B
           toBPU.lpc := inflight.npc - 1.U
-          toBPU.taken := pendingBr && pendingBrTag === tag
+          //toBPU.taken := pendingBr && pendingBrTag === tag
+          toBPU.taken := inflight.taken
           toBPU.hist := inflight.pred
         }
 
@@ -603,8 +617,14 @@ class Exec(implicit val coredef: CoreDef) extends Module {
 object Exec {
   class ROBEntry(implicit val coredef: CoreDef) extends Bundle {
     // val info = new RetireInfo
+    /** Has memory access
+      */
     val hasMem = Bool()
     val valid = Bool()
+
+    /** Branch has taken
+      */
+    val taken = Bool()
   }
 
   object ROBEntry {
@@ -612,6 +632,7 @@ object Exec {
       val ret = Wire(new ROBEntry)
       ret.hasMem := DontCare
       ret.valid := false.B
+      ret.taken := false.B
 
       ret
     }

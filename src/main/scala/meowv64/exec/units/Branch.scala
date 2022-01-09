@@ -147,6 +147,8 @@ class Branch(override implicit val coredef: CoreDef)
       }
     }.elsewhen(pipe.instr.instr.op === Decoder.Op("BRANCH").ident) {
       // info.regWaddr := 0.U
+      // here, branch means taken
+      // will be normalized in normalizedBranch()
       when(ext.branched) {
         val target = Wire(SInt(coredef.XLEN.W))
         target := pipe.instr.instr.imm + pipe.instr.addr.asSInt
@@ -164,12 +166,15 @@ class Branch(override implicit val coredef: CoreDef)
       // info.regWaddr := pipe.instr.instr.rd
       info.wb := linked.asUInt
 
+      // actual branch target
       val dest =
         (((pipe.rs1val.asSInt + pipe.instr.instr.imm) >> 1) << 1).asUInt
 
       when(pipe.instr.taken && dest === pipe.instr.predTarget) {
+        // predicted to be taken and destination is correctly predicted
         info.branch.nofire
       }.otherwise {
+        // mis-predict
         info.branch.fire(dest)
       }
     }

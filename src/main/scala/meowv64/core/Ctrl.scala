@@ -133,7 +133,7 @@ class Ctrl(implicit coredef: CoreDef) extends Module {
 
   // Rst comes together with an branch
 
-  // IF control && PC controllert
+  // IF control && PC controller
   when(branch) {
     // printf(p"Branched, baddr: ${Hexadecimal(io.baddr)}\n")
     toIF.ctrl.flush := true.B

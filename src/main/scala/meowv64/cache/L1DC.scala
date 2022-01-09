@@ -38,6 +38,7 @@ class DCReader(implicit val coredef: CoreDef) extends Bundle {
 
 class DCInnerReader(val opts: L1DOpts) extends Bundle {
   val addr = Output(UInt(opts.ADDR_WIDTH.W))
+
   /** for lr instruction */
   val reserve = Output(Bool())
 
