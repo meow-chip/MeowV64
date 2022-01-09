@@ -55,7 +55,13 @@ class MultiQueue[T <: Data](
   }
 
   for (i <- (0 until OUTPUT)) {
-    reader.view(i) := deqs(rptr + i.U).bits
+    when(deqs(rptr + i.U).valid) {
+      reader.view(i) := deqs(rptr + i.U).bits
+    } otherwise {
+      // set to zero when invalid
+      reader.view(i) := 0.U.asTypeOf(gen)
+    }
+
     when(reader.accept > i.U) {
       deqs(rptr + i.U).deq()
       assert(deqs(rptr + i.U).fire)
