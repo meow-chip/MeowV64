@@ -361,9 +361,16 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
       coredef.ISSUE_NUM
     )
   )
+  /**
+   * How many instructions are actually issued after decode slot `i-1`
+   * Be careful about the subscript mismatch
+   */
   val steppings = Wire(
     Vec(coredef.FETCH_NUM + 1, UInt(log2Ceil(coredef.FETCH_NUM + 1).W))
   )
+  /**
+   * Cancel the issuing of this and the following instructions (similar to `break` in C)
+   */
   val brokens = Wire(Vec(coredef.FETCH_NUM + 1, Bool()))
   steppings(0) := 0.U
   brokens(0) := false.B
@@ -383,7 +390,10 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
 
   val stepping = steppings(coredef.FETCH_NUM)
 
-  // RAS push/pop
+  /**
+   * RAS push/pop
+   * FIXME(meow): move this to early predict
+   */
   toRAS.pop.ready := stepping =/= 0.U && decodedRASPop(stepping -% 1.U)
   toRAS.push.valid := stepping =/= 0.U && decodedRASPush(stepping -% 1.U)
   toRAS.push.bits := decoded(stepping -% 1.U).npc
@@ -411,7 +421,10 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
   ICHead.io.flush.get := false.B
   issueFifo.flush := false.B
 
-  // Speculative branch
+  /**
+   * Speculative branch
+   * FIXME(meow): move BHT to early predict
+   */
   val pipeStepping = RegNext(stepping)
   val pipeTaken = RegNext(VecInit(decoded.map(_.taken)))
   val pipeSpecBrTargets = RegNext(VecInit(decoded.map(_.predTarget)))
@@ -453,7 +466,9 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
     }
   }
 
-  // Flushing
+  /**
+   * Flushing
+   */
 
   when(toCtrl.ctrl.flush) {
     // External flushing, wait for one tick
