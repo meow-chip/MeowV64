@@ -151,15 +151,22 @@ class Renamer(implicit coredef: CoreDef) extends Module {
         val reg2name = bank.reg2name
         val regMapped = bank.regMapped
         when(release.reg.ty === ty) {
-          regMapped(release.reg.index) := reg2name(release.reg.index) =/= release.name
+          regMapped(release.reg.index) := reg2name(
+            release.reg.index
+          ) =/= release.name
         }
       }
 
       // TODO: check register type
-      for (i <- 0 until coredef.REGISTERS_TYPES.length) {
+      for (((ty, _), i) <- coredef.REGISTERS_TYPES.zipWithIndex) {
         val rw = ports(i).rw
-        rw(idx).addr := release.reg.index
-        rw(idx).data := data
+        rw(idx).addr := 0.U
+        rw(idx).data := DontCare
+
+        when(release.reg.ty === ty) {
+          rw(idx).addr := release.reg.index
+          rw(idx).data := data
+        }
       }
     }.otherwise {
       for (i <- 0 until coredef.REGISTERS_TYPES.length) {
@@ -194,7 +201,7 @@ class Renamer(implicit coredef: CoreDef) extends Module {
 
       when(instr.instr.getRs2Type === ty) {
         val (rs2name, rs2ready, rs2val) =
-          readRegs(rr(idx)(1), instr.instr.getRs1Index, bankIdx)
+          readRegs(rr(idx)(1), instr.instr.getRs2Index, bankIdx)
         toExec.output(idx).rs2name := rs2name
         toExec.output(idx).rs2ready := rs2ready
         toExec.output(idx).rs2val := rs2val

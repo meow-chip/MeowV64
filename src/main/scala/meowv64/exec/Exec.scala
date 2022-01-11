@@ -69,10 +69,10 @@ class Exec(implicit val coredef: CoreDef) extends Module {
   val toRF = IO(new Bundle {
     val ports =
       MixedVec(for ((ty, width) <- coredef.REGISTERS_TYPES) yield new Bundle {
+        // two read ports per issued instruction
         val rr = Vec(coredef.ISSUE_NUM * 2, new RegReader(width))
+        // one write port per retired instruction
         val rw = Vec(coredef.RETIRE_NUM, new RegWriter(width))
-        rr.suggestName(s"rr_${ty}")
-        rw.suggestName(s"rw_${ty}")
       })
   })
 
