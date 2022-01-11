@@ -1,3 +1,6 @@
 [submodule "testcases/riscv-tests"]
 	path = testcases/riscv-tests
 	url = ../riscv-tests.git
+[submodule "berkeley-hardfloat"]
+	path = berkeley-hardfloat
+	url = ../berkeley-hardfloat.git
