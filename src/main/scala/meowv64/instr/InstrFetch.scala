@@ -166,20 +166,23 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
   }
 
   // ICache fetched queue.
-  /**
-   * FIXME(BPU, meow):
-   *   Currently, BPU responses are pipelined alongside I$ responses into the decode pipeline, and processed
-   *     at the same cycle of late-predict (which is one-cycle after the instruction's decode)
-   *   Also, for timing optimization, ICQueue + ICHead induces one cycle delay. This causes *OPTIMAL CORRECT* BHT predictions
-   *     also introducing two cycles of wasted I$ fetch cycle.
-   *   By design, the *BPU* stated here (BHT + BTB) should function as a next-line predictor. Current implementation is due to:
-   *     - Lack of BTB (so we need to wait for decode to know the branch target)
-   *     - Lack of RAS operation history table (so we need to wait for decode to know which instruction is a `call` / `ret`)
-   *     - Complications introduced by variable-length instructions, e.g. if we have a context switch, and a valid BHT entry now
-   *       cause us to branch at *NON*-instruction boundary, how do we recover from that?
-   *   In the next version of IF impl, we should at least implement BTB and RAS scratchpad. As of the issues with instruction boundary,
-   *     worst-case we can flush the entire BHT at context switch.
-   */
+  /** FIXME(BPU, meow): Currently, BPU responses are pipelined alongside I$
+    * responses into the decode pipeline, and processed at the same cycle of
+    * late-predict (which is one-cycle after the instruction's decode) Also, for
+    * timing optimization, ICQueue + ICHead induces one cycle delay. This causes
+    * *OPTIMAL CORRECT* BHT predictions also introducing two cycles of wasted I$
+    * fetch cycle. By design, the *BPU* stated here (BHT + BTB) should function
+    * as a next-line predictor. Current implementation is due to:
+    *   - Lack of BTB (so we need to wait for decode to know the branch target)
+    *   - Lack of RAS operation history table (so we need to wait for decode to
+    *     know which instruction is a `call` / `ret`)
+    *   - Complications introduced by variable-length instructions, e.g. if we
+    *     have a context switch, and a valid BHT entry now cause us to branch at
+    *     *NON*-instruction boundary, how do we recover from that? In the next
+    *     version of IF impl, we should at least implement BTB and RAS
+    *     scratchpad. As of the issues with instruction boundary, worst-case we
+    *     can flush the entire BHT at context switch.
+    */
   val ICQueueLen = 4;
   val ICQueue = Module(new FlushableQueue(new ICData, ICQueueLen, false, false))
   ICQueue.io.enq.bits.data := toIC.data.bits
@@ -188,19 +191,18 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
   ICQueue.io.enq.bits.fault := pipeFault
   ICQueue.io.enq.valid := (!toIC.stall && toIC.data.valid) || pipeFault
 
-  /**
-   * In the previous cycle, if there is any instruction causing a late-predict jump.
-   * Currently, this is also responsible for handling next-line predictions, which is
-   * not optimal. See the comment above.
-   */
+  /** In the previous cycle, if there is any instruction causing a late-predict
+    * jump. Currently, this is also responsible for handling next-line
+    * predictions, which is not optimal. See the comment above.
+    */
   val pipeSpecBr = Wire(Bool())
 
-  /**
-   * Halt ICache fetch for current cycle due to IF control signals.
-   * We cannot stall I$ from throwing fetched instruction out, so we need to keep enough space
-   * to store all of them.
-   */
-  val haltIC = (ICQueue.io.count >= (ICQueueLen - 1).U) && !toCtrl.ctrl.flush && !pipeSpecBr
+  /** Halt ICache fetch for current cycle due to IF control signals. We cannot
+    * stall I$ from throwing fetched instruction out, so we need to keep enough
+    * space to store all of them.
+    */
+  val haltIC =
+    (ICQueue.io.count >= (ICQueueLen - 1).U) && !toCtrl.ctrl.flush && !pipeSpecBr
   // I$ Fetch address
   val icAddr = WireDefault(fpc)
   val icRead = WireDefault(!haltIC)
@@ -361,16 +363,17 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
       coredef.ISSUE_NUM
     )
   )
-  /**
-   * How many instructions are actually issued after decode slot `i-1`
-   * Be careful about the subscript mismatch
-   */
+
+  /** How many instructions are actually issued after decode slot `i-1` Be
+    * careful about the subscript mismatch
+    */
   val steppings = Wire(
     Vec(coredef.FETCH_NUM + 1, UInt(log2Ceil(coredef.FETCH_NUM + 1).W))
   )
-  /**
-   * Cancel the issuing of this and the following instructions (similar to `break` in C)
-   */
+
+  /** Cancel the issuing of this and the following instructions (similar to
+    * `break` in C)
+    */
   val brokens = Wire(Vec(coredef.FETCH_NUM + 1, Bool()))
   steppings(0) := 0.U
   brokens(0) := false.B
@@ -390,10 +393,8 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
 
   val stepping = steppings(coredef.FETCH_NUM)
 
-  /**
-   * RAS push/pop
-   * FIXME(meow): move this to early predict
-   */
+  /** RAS push/pop FIXME(meow): move this to early predict
+    */
   toRAS.pop.ready := stepping =/= 0.U && decodedRASPop(stepping -% 1.U)
   toRAS.push.valid := stepping =/= 0.U && decodedRASPush(stepping -% 1.U)
   toRAS.push.bits := decoded(stepping -% 1.U).npc
@@ -421,10 +422,8 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
   ICHead.io.flush.get := false.B
   issueFifo.flush := false.B
 
-  /**
-   * Speculative branch
-   * FIXME(meow): move BHT to early predict
-   */
+  /** Speculative branch FIXME(meow): move BHT to early predict
+    */
   val pipeStepping = RegNext(stepping)
   val pipeTaken = RegNext(VecInit(decoded.map(_.taken)))
   val pipeSpecBrTargets = RegNext(VecInit(decoded.map(_.predTarget)))
@@ -466,9 +465,8 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
     }
   }
 
-  /**
-   * Flushing
-   */
+  /** Flushing
+    */
 
   when(toCtrl.ctrl.flush) {
     // External flushing, wait for one tick

@@ -64,8 +64,17 @@ class Exec(implicit val coredef: CoreDef) extends Module {
   // We don't stall now
   toCtrl.ctrl.stall := false.B
 
-  val rr = IO(Vec(coredef.ISSUE_NUM * 2, new RegReader))
-  val rw = IO(Vec(coredef.RETIRE_NUM, new RegWriter))
+  // Register file read/write port
+  // for each register type
+  val toRF = IO(new Bundle {
+    val ports =
+      MixedVec(for ((ty, width) <- coredef.REGISTERS_TYPES) yield new Bundle {
+        val rr = Vec(coredef.ISSUE_NUM * 2, new RegReader(width))
+        val rw = Vec(coredef.RETIRE_NUM, new RegWriter(width))
+        rr.suggestName(s"rr_${ty}")
+        rw.suggestName(s"rw_${ty}")
+      })
+  })
 
   val toIF = IO(new MultiQueueIO(new InstrExt, coredef.ISSUE_NUM))
 
@@ -79,11 +88,13 @@ class Exec(implicit val coredef: CoreDef) extends Module {
   val cdb = Wire(new CDB)
 
   val renamer = Module(new Renamer)
-  for (i <- (0 until coredef.ISSUE_NUM)) {
-    renamer.rr(i)(0) <> rr(i * 2)
-    renamer.rr(i)(1) <> rr(i * 2 + 1)
+  for (idx <- 0 until coredef.REGISTERS_TYPES.length) {
+    for (i <- (0 until coredef.ISSUE_NUM)) {
+      renamer.ports(idx).rr(i)(0) <> toRF.ports(idx).rr(i * 2)
+      renamer.ports(idx).rr(i)(1) <> toRF.ports(idx).rr(i * 2 + 1)
+    }
+    renamer.ports(idx).rw <> toRF.ports(idx).rw
   }
-  renamer.rw <> rw
   renamer.cdb := cdb
   renamer.toExec.flush := toCtrl.ctrl.flush
 
@@ -454,16 +465,20 @@ class Exec(implicit val coredef: CoreDef) extends Module {
   when(!retireNext.valid) {
     // First one invalid, cannot retire anything
     retireNum := 0.U
-    for (rwp <- rw) {
-      rwp.addr := 0.U
-      rwp.data := DontCare
+    for (i <- 0 until coredef.REGISTERS_TYPES.length) {
+      for (rwp <- toRF.ports(i).rw) {
+        rwp.addr := 0.U
+        rwp.data := DontCare
+      }
     }
     toCtrl.branch := BranchResult.empty
   }.elsewhen(retireNext.hasMem) {
     // Is memory operation, wait for memAccSucc
-    for (rwp <- rw) {
-      rwp.addr := 0.U
-      rwp.data := DontCare
+    for (i <- 0 until coredef.REGISTERS_TYPES.length) {
+      for (rwp <- toRF.ports(i).rw) {
+        rwp.addr := 0.U
+        rwp.data := DontCare
+      }
     }
 
     releaseMem.ready := !RegNext(releaseMem.fire)
@@ -481,8 +496,13 @@ class Exec(implicit val coredef: CoreDef) extends Module {
         cdb.entries(coredef.UNIT_COUNT).name := retirePtr // tag === rdname
         cdb.entries(coredef.UNIT_COUNT).data := memResult.data
         cdb.entries(coredef.UNIT_COUNT).valid := true.B
-        rw(0).addr := inflights.reader.view(0).erd
-        rw(0).data := memResult.data
+
+        // TODO: check register type
+        for (i <- 0 until coredef.REGISTERS_TYPES.length) {
+          val rw = toRF.ports(i).rw
+          rw(0).addr := inflights.reader.view(0).erd
+          rw(0).data := memResult.data
+        }
       }
 
       when(pendingBr && pendingBrTag === retirePtr) {
@@ -494,10 +514,13 @@ class Exec(implicit val coredef: CoreDef) extends Module {
   }.elsewhen(toCtrl.int && toCtrl.intAck) {
     // Interrupts inbound, retires nothing
     retireNum := 0.U
-    for (rwp <- rw) {
-      rwp.addr := 0.U
-      rwp.data := DontCare
+    for (i <- 0 until coredef.REGISTERS_TYPES.length) {
+      for (rwp <- toRF.ports(i).rw) {
+        rwp.addr := 0.U
+        rwp.data := DontCare
+      }
     }
+
     toCtrl.branch := BranchResult.empty
   }.otherwise {
     val blocked = Wire(Vec(coredef.RETIRE_NUM, Bool()))
@@ -535,8 +558,12 @@ class Exec(implicit val coredef: CoreDef) extends Module {
       }
 
       when(idx.U < retireNum) {
-        rw(idx).addr := inflight.erd
-        rw(idx).data := renamer.toExec.releases(idx).value
+        // TODO: check register type
+        for (i <- 0 until coredef.REGISTERS_TYPES.length) {
+          val rw = toRF.ports(i).rw
+          rw(idx).addr := inflight.erd
+          rw(idx).data := renamer.toExec.releases(idx).value
+        }
 
         // Update BPU accordingly
         when(
@@ -555,7 +582,11 @@ class Exec(implicit val coredef: CoreDef) extends Module {
           pendingBr && pendingBrTag === tag && pendingBrResult.ex =/= ExReq.none
         ) {
           // Don't write-back exceptioned instr
-          rw(idx).addr := 0.U
+          // TODO: check register type
+          for (i <- 0 until coredef.REGISTERS_TYPES.length) {
+            val rw = toRF.ports(i).rw
+            rw(idx).addr := 0.U
+          }
         }
 
         when(
@@ -567,8 +598,12 @@ class Exec(implicit val coredef: CoreDef) extends Module {
 
         info.valid := false.B
       }.otherwise {
-        rw(idx).addr := 0.U
-        rw(idx).data := DontCare
+        // TODO: check register type
+        for (i <- 0 until coredef.REGISTERS_TYPES.length) {
+          val rw = toRF.ports(i).rw
+          rw(idx).addr := 0.U
+          rw(idx).data := DontCare
+        }
       }
     }
 
@@ -594,7 +629,7 @@ class Exec(implicit val coredef: CoreDef) extends Module {
     toCtrl.intAck := false.B
   }.otherwise {
     // We need to ensure that the address we are giving ctrl is valid
-    // which is equvilent to the inflight queue being not empty
+    // which is equivalent to the inflight queue being not empty
     toCtrl.intAck := retirePtr =/= issuePtr
   }
 

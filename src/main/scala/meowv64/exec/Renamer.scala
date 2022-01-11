@@ -1,7 +1,7 @@
 package meowv64.exec
 
 import chisel3._
-import chisel3.util.log2Ceil
+import chisel3.util._
 import meowv64.core.CoreDef
 import meowv64.instr.InstrExt
 import meowv64.reg.RegReader
@@ -17,8 +17,14 @@ class Renamer(implicit coredef: CoreDef) extends Module {
   val REG_NUM = 32 // TODO: do we need to make this configurable?
 
   val cdb = IO(Input(new CDB))
-  val rr = IO(Vec(coredef.ISSUE_NUM, Vec(2, new RegReader(coredef.XLEN))))
-  val rw = IO(Vec(coredef.ISSUE_NUM, new RegWriter(coredef.XLEN)))
+
+  val ports =
+    IO(MixedVec(for ((ty, width) <- coredef.REGISTERS_TYPES) yield new Bundle {
+      val rr = Vec(coredef.ISSUE_NUM, Vec(2, new RegReader(width)))
+      val rw = Vec(coredef.ISSUE_NUM, new RegWriter(width))
+      rr.suggestName(s"rr_${ty}")
+      rw.suggestName(s"rw_${ty}")
+    }))
 
   val toExec = IO(new Bundle {
     val input = Input(Vec(coredef.ISSUE_NUM, new InstrExt))
@@ -127,27 +133,51 @@ class Renamer(implicit coredef: CoreDef) extends Module {
     val data = store(release.name)
     when(idx.U < toExec.retire) {
       regMapped(release.reg) := reg2name(release.reg) =/= release.name
-      rw(idx).addr := release.reg
-      rw(idx).data := data
+      // TODO: check register type
+      for (i <- 0 until coredef.REGISTERS_TYPES.length) {
+        val rw = ports(i).rw
+        rw(idx).addr := release.reg
+        rw(idx).data := data
+      }
     }.otherwise {
-      rw(idx).addr := 0.U
-      rw(idx).data := DontCare
+      for (i <- 0 until coredef.REGISTERS_TYPES.length) {
+        val rw = ports(i).rw
+        rw(idx).addr := 0.U
+        rw(idx).data := DontCare
+      }
     }
     release.value := data
   }
 
   for ((instr, idx) <- toExec.input.zipWithIndex) {
-    val (rs1name, rs1ready, rs1val) = readRegs(rr(idx)(0), instr.instr.getRs1)
-    val (rs2name, rs2ready, rs2val) = readRegs(rr(idx)(1), instr.instr.getRs2)
+    toExec.output(idx).rs1name := 0.U
+    toExec.output(idx).rs1ready := false.B
+    toExec.output(idx).rs1val := 0.U
+    toExec.output(idx).rs2name := 0.U
+    toExec.output(idx).rs2ready := false.B
+    toExec.output(idx).rs2val := 0.U
 
-    toExec.output(idx).rs1name := rs1name
-    toExec.output(idx).rs2name := rs2name
+    for (((ty, _), typeIdx) <- coredef.REGISTERS_TYPES.zipWithIndex) {
+      val rr = ports(typeIdx).rr
+      rr(idx)(0).addr := 0.U
+      rr(idx)(1).addr := 0.U
 
-    toExec.output(idx).rs1ready := rs1ready
-    toExec.output(idx).rs2ready := rs2ready
+      when(instr.instr.getRs1Type === ty) {
+        val (rs1name, rs1ready, rs1val) =
+          readRegs(rr(idx)(0), instr.instr.getRs1)
+        toExec.output(idx).rs1name := rs1name
+        toExec.output(idx).rs1ready := rs1ready
+        toExec.output(idx).rs1val := rs1val
+      }
 
-    toExec.output(idx).rs1val := rs1val
-    toExec.output(idx).rs2val := rs2val
+      when(instr.instr.getRs2Type === ty) {
+        val (rs2name, rs2ready, rs2val) =
+          readRegs(rr(idx)(1), instr.instr.getRs2)
+        toExec.output(idx).rs2name := rs2name
+        toExec.output(idx).rs2ready := rs2ready
+        toExec.output(idx).rs2val := rs2val
+      }
+    }
 
     toExec.output(idx).instr := instr
     toExec.output(idx).rdname := tags(idx)

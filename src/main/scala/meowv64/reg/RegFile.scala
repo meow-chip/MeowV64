@@ -2,32 +2,37 @@ package meowv64.reg
 
 import chisel3._
 import chisel3.util.log2Ceil
+import chisel3.experimental.ChiselEnum
 
-class RegReader(val XLEN: Int = 64, val COUNT: Int = 32) extends Bundle {
-  val addr = Output(UInt(log2Ceil(COUNT).W))
-  val data = Input(UInt(XLEN.W))
+object RegType extends ChiselEnum {
+  val integer, float = Value
 }
 
-class RegWriter(val XLEN: Int = 64, val COUNT: Int = 32) extends Bundle {
+class RegReader(val WIDTH: Int = 64, val COUNT: Int = 32) extends Bundle {
   val addr = Output(UInt(log2Ceil(COUNT).W))
-  val data = Output(UInt(XLEN.W))
+  val data = Input(UInt(WIDTH.W))
+}
+
+class RegWriter(val WIDTH: Int = 64, val COUNT: Int = 32) extends Bundle {
+  val addr = Output(UInt(log2Ceil(COUNT).W))
+  val data = Output(UInt(WIDTH.W))
 }
 
 // Standard Registers
 // TODO: support multi port
 class RegFile(
-    XLEN: Int = 64,
+    WIDTH: Int = 64,
     COUNT: Int = 32,
     READ_COUNT: Int = 2,
     WRITE_COUNT: Int = 1,
     FIXED_ZERO: Boolean = true
 ) extends Module {
   val io = IO(new Bundle {
-    val reads = Vec(READ_COUNT, Flipped(new RegReader(XLEN, COUNT)))
-    val writes = Flipped(Vec(WRITE_COUNT, new RegWriter(XLEN, COUNT)))
+    val reads = Vec(READ_COUNT, Flipped(new RegReader(WIDTH, COUNT)))
+    val writes = Flipped(Vec(WRITE_COUNT, new RegWriter(WIDTH, COUNT)))
   })
 
-  val regs = RegInit(VecInit(List.fill(COUNT)(0).map(_.U(XLEN.W))))
+  val regs = RegInit(VecInit(List.fill(COUNT)(0).map(_.U(WIDTH.W))))
 
   for (read <- io.reads) {
     when(read.addr === 0.U && FIXED_ZERO.B) {

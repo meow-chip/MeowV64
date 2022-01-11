@@ -5,6 +5,7 @@ import chisel3.experimental._
 import chisel3.internal.firrtl.Width
 import chisel3.util._
 import meowv64.instr.Decoder.InstrType
+import meowv64.reg.RegType
 
 /** Instruction Decoder We only supports 32-bit length instructions
   */
@@ -12,19 +13,26 @@ import meowv64.instr.Decoder.InstrType
 object Decoder {
   object InstrType extends ChiselEnum {
     val RESERVED = Value
+
     /** funct7, rs2, rs1, funct3, rd, opcode */
     val R = Value
+
     /** imm[11:0], rs1, funct3, rd, opcode */
     val I = Value
+
     /** imm[11:5], rs2, rs1, funct3, imm[4:0], opcode */
     val S = Value
+
     /** imm[12|10:5], rs2, rs1, funct3, imm[4:1|11], opcode */
     val B = Value
+
     /** imm[31:12], rd, opcode */
     val U = Value
+
     /** imm[20|10:1|11|19:12], rd, opcode */
     val J = Value
     val C = Value
+
     /** rs3, funct2, rs2, rs1, funct3, rd, opcode */
     val R4 = Value
   }
@@ -61,7 +69,6 @@ object Decoder {
     "NMSUB" -> spec("10010", InstrType.R4),
     "NMADD" -> spec("10011", InstrType.R4),
     "OP-FP" -> spec("10100", InstrType.R),
-
     "BRANCH" -> spec("11000", InstrType.B),
     "JALR" -> spec("11001", InstrType.I),
     "JAL" -> spec("11011", InstrType.J),
@@ -623,6 +630,20 @@ class Instr extends Bundle {
     ret
   }
 
+  def getRdType() = {
+    val ret = WireDefault(RegType.integer)
+
+    switch(this.op) {
+      is(
+        Decoder.Op("OP-FP").ident,
+        Decoder.Op("LOAD-FP").ident // FLD
+      ) {
+        ret := RegType.float
+      }
+    }
+
+    ret
+  }
   def getRs1() = {
     val ret = WireDefault(rs1)
     // The only instructions that don't have RS1 is AUIPC/LUI and JAL (U and J type)
@@ -636,6 +657,20 @@ class Instr extends Bundle {
         Decoder.Op("JAL").ident
       ) {
         ret := 0.U
+      }
+    }
+
+    ret
+  }
+
+  def getRs1Type() = {
+    val ret = WireDefault(RegType.integer)
+
+    switch(this.op) {
+      is(
+        Decoder.Op("OP-FP").ident
+      ) {
+        ret := RegType.float
       }
     }
 
@@ -668,4 +703,20 @@ class Instr extends Bundle {
     }
     ret
   }
+
+  def getRs2Type() = {
+    val ret = WireDefault(RegType.integer)
+
+    switch(this.op) {
+      is(
+        Decoder.Op("OP-FP").ident,
+        Decoder.Op("STORE-FP").ident // FST
+      ) {
+        ret := RegType.float
+      }
+    }
+
+    ret
+  }
+
 }

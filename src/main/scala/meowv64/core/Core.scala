@@ -58,9 +58,12 @@ class Core(implicit val coredef: CoreDef) extends Module {
   val bpu = Module(new BPU)
   val ras = Module(new RAS)
   val exec = Module(new Exec)
-  val reg = Module(
-    new RegFile(coredef.XLEN, 32, coredef.ISSUE_NUM * 2, coredef.RETIRE_NUM)
-  )
+  val regFiles = for ((ty, width) <- coredef.REGISTERS_TYPES) yield {
+    val reg = Module(
+      new RegFile(width, 32, coredef.ISSUE_NUM * 2, coredef.RETIRE_NUM)
+    )
+    reg.suggestName(s"reg_${ty}")
+  }
 
   val (csrWriter, csr) = CSR.gen(coredef.XLEN, coredef.HART_ID)
 
@@ -76,8 +79,10 @@ class Core(implicit val coredef: CoreDef) extends Module {
   ras.toExec.realign.valid := false.B
 
   exec.toIF <> fetch.toExec
-  exec.rr <> reg.io.reads
-  exec.rw <> reg.io.writes
+  for (i <- 0 until coredef.REGISTERS_TYPES.length) {
+    exec.toRF.ports(i).rr <> regFiles(i).io.reads
+    exec.toRF.ports(i).rw <> regFiles(i).io.writes
+  }
   exec.csrWriter <> csrWriter
 
   exec.toDC.r <> l1d.mr

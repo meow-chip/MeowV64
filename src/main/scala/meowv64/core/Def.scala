@@ -1,6 +1,8 @@
 package meowv64.core
+
 import chisel3.util.log2Ceil
 import meowv64.cache._
+import meowv64.reg.RegType
 
 abstract class CoreDef {
   outer =>
@@ -37,6 +39,11 @@ abstract class CoreDef {
   val L1_LINE_BYTES: Int = 16
 
   val RAS_SIZE: Int = 8;
+
+  /** List of (register type, width)
+    */
+  def REGISTERS_TYPES: Seq[(RegType.Type, Int)] =
+    Seq((RegType.integer, XLEN), (RegType.float, XLEN));
 
   object L1I
       extends {
