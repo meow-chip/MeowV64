@@ -116,6 +116,7 @@ class Exec(implicit val coredef: CoreDef) extends Module {
   // Units
   val lsu = Module(new LSU).suggestName("LSU");
   val units = Seq(
+    // port 1: ALU + Branch + CSR + Bypass
     Module(
       new UnitSel(
         Seq(
@@ -156,6 +157,7 @@ class Exec(implicit val coredef: CoreDef) extends Module {
         hasPipe = false
       )
     ),
+    // port 2: ALU + Mul + Div
     Module(
       new UnitSel(
         Seq(
@@ -185,6 +187,22 @@ class Exec(implicit val coredef: CoreDef) extends Module {
         hasPipe = false
       )
     ),
+    // port 3: FMA
+    Module(
+      new UnitSel(
+        Seq(
+          Module(new FMA).suggestName("FMA")
+        ),
+        instr => {
+          val gotoFMA = (
+            instr.op === Decoder.Op("OP-FP").ident
+          )
+          Seq(gotoFMA)
+        },
+        hasPipe = true
+      )
+    ),
+    // port 4: LSU
     lsu
   )
 
@@ -209,9 +227,11 @@ class Exec(implicit val coredef: CoreDef) extends Module {
 
   val stations = units.zipWithIndex.map({
     case (u, idx) => {
-      val rs = if (idx != 2) {
+      // FIXME: do not hardcode 3
+      val rs = if (idx != 3) {
         Module(new OoOResStation(idx)).suggestName(s"ResStation_${idx}")
       } else {
+        assert(u.isInstanceOf[LSU])
         val lsb = Module(new LSBuf(idx)).suggestName(s"LSBuf")
         lsb.hasPending := hasPendingMem
         lsb.fs := toDC.fs
@@ -674,21 +694,28 @@ object Exec {
     val ret = Wire(UInt(coredef.UNIT_COUNT.W))
     ret := 0.U
 
+    // FIXME: do not hardcode bitset
     switch(instr.op) {
       is(
+        // lui
         Decoder.Op("LUI").ident,
+        // auipc
         Decoder.Op("AUIPC").ident,
+        // jal
         Decoder.Op("JAL").ident
       ) {
-        ret := "b001".U(coredef.UNIT_COUNT.W)
+        ret := "b0001".U(coredef.UNIT_COUNT.W)
       }
 
       is(
+        // jalr
         Decoder.Op("JALR").ident,
+        // ecall, ebreak, csrrw, csrrs, csrrc, csrrwi, csrrsi, csrrci
         Decoder.Op("SYSTEM").ident,
+        // beq, bne, blt, bge, bltu, bgeu
         Decoder.Op("BRANCH").ident
       ) {
-        ret := "b001".U(coredef.UNIT_COUNT.W)
+        ret := "b0001".U(coredef.UNIT_COUNT.W)
       }
 
       is(
@@ -698,19 +725,32 @@ object Exec {
         Decoder.Op("OP-32").ident
       ) {
         when(instr.funct7 === Decoder.MULDIV_FUNCT7) {
-          ret := "b010".U(coredef.UNIT_COUNT.W)
+          ret := "b0010".U(coredef.UNIT_COUNT.W)
         }.otherwise {
-          ret := "b011".U(coredef.UNIT_COUNT.W)
+          ret := "b0011".U(coredef.UNIT_COUNT.W)
         }
       }
 
       is(
+        // lb, lh, lw, lbu, lhu
         Decoder.Op("LOAD").ident,
+        // sb, sh, sw
         Decoder.Op("STORE").ident,
+        // flw
+        Decoder.Op("LOAD-FP").ident,
+        // fsw
+        Decoder.Op("STORE-FP").ident,
         Decoder.Op("MISC-MEM").ident,
         Decoder.Op("AMO").ident
       ) {
-        ret := "b100".U(coredef.UNIT_COUNT.W)
+        ret := "b1000".U(coredef.UNIT_COUNT.W)
+      }
+
+      is(
+        // fadd, fsub, fmul, fdiv, fsqrt, etc
+        Decoder.Op("OP-FP").ident
+      ) {
+        ret := "b1000".U(coredef.UNIT_COUNT.W)
       }
     }
 

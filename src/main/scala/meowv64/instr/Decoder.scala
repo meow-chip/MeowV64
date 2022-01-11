@@ -158,6 +158,13 @@ object Decoder {
     "AMOMAXU" -> "11100"
   ).mapValues(Integer.parseInt(_, 2).U(5.W))
 
+  val FP_FUNC: Map[String, UInt] = Map(
+    "FADD" -> "00000",
+    "FSUB" -> "00001",
+    "FMUL" -> "00010",
+    "FDIV" -> "00011"
+  ).mapValues(Integer.parseInt(_, 2).U(5.W))
+
   implicit class ConvertToBin(self: String) {
     def asBin = Integer.parseInt(self, 2)
     def asBits(len: Width) = self.asBin.U(len)
@@ -620,6 +627,9 @@ class Instr extends Bundle {
   // Funct
   val funct7 = UInt(7.W)
   val funct3 = UInt(3.W)
+
+  // for R4-type
+  def funct5() = funct7 >> 2
 
   override def toPrintable: Printable = {
     // Reverse check op

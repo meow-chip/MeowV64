@@ -130,7 +130,7 @@ class UnitSel(
     }
 
     when(pipeInput) {
-      pipeInstr := rs.instr
+      pipeInstr := rs.instr.bits
       pipeExecMap := execMap
       pipeInstrValid := rs.instr.valid
       rs.instr.ready := rs.instr.valid

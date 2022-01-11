@@ -292,7 +292,7 @@ trait ExecUnitInt {
   val io: ExecUnitPort
 }
 
-/** Base class of and execution unit
+/** Base class of an execution unit
   *
   * This class automatically generates stage registers, which contains the
   * instruction and an custom bundle specified by the implementation.

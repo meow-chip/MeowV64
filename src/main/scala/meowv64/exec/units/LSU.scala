@@ -232,11 +232,13 @@ class LSU(implicit val coredef: CoreDef) extends Module with UnitSelIO {
     .ident // Uncached if phys bit 56 = high and is not AMO
   val read = (
     next.instr.instr.op === Decoder.Op("LOAD").ident
+      || next.instr.instr.op === Decoder.Op("LOAD-FP").ident
       || next.instr.instr.op === Decoder.Op("AMO").ident && next.instr.instr
         .funct7(6, 2) === Decoder.AMO_FUNC("LR")
   ) && next.instr.valid
   val write = (
     next.instr.instr.op === Decoder.Op("STORE").ident
+      || next.instr.instr.op === Decoder.Op("STORE-FP").ident
       || next.instr.instr.op === Decoder.Op("AMO").ident && next.instr.instr
         .funct7(6, 2) =/= Decoder.AMO_FUNC("LR")
   ) && next.instr.valid

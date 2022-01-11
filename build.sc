@@ -25,6 +25,21 @@ def getVersion(dep: String) = {
     ivy"$org::$dep:$version"
 }
 
+object hardfloat extends ScalaModule {
+  override def scalaVersion = commonScalaVersion
+
+  override def millSourcePath = os.pwd / "berkeley-hardfloat"
+
+  override def ivyDeps = super.ivyDeps() ++ Agg(
+    getVersion("chisel3"),
+    getVersion("scalatest")
+  )
+
+  override def scalacPluginIvyDeps = super.scalacPluginIvyDeps() ++ Agg(
+    getVersion("chisel3-plugin")
+  )
+}
+
 object meowv64 extends SbtModule with ScalafmtModule with ScalafixModule {
   override def scalaVersion = commonScalaVersion
 
@@ -46,6 +61,8 @@ object meowv64 extends SbtModule with ScalafmtModule with ScalafixModule {
   override def scalafixIvyDeps = Agg(
     ivy"com.github.liancheng::organize-imports:0.5.0"
   )
+
+  override def moduleDeps = super.moduleDeps ++ Seq(hardfloat)
 
   object test
       extends Tests

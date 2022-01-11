@@ -27,10 +27,11 @@ abstract class CoreDef {
     * reserving name 0 for reg 0
     */
   val INFLIGHT_INSTR_LIMIT = 8
-  val UNIT_COUNT: Int = 3
+  val UNIT_COUNT: Int = 4
   val RESERVATION_STATION_DEPTHS = Seq(
     4,
     2,
+    4,
     4
   )
 
