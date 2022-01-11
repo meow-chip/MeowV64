@@ -582,6 +582,22 @@ object Decoder {
   }
 }
 
+/** Register index with its type
+  */
+class RegIndex extends Bundle {
+  val ty = RegType()
+  val index = UInt(5.W)
+}
+
+object RegIndex {
+  def create(ty: RegType.Type, index: UInt) = {
+    val res = Wire(new RegIndex())
+    res.ty := ty
+    res.index := index
+    res
+  }
+}
+
 /** Raw RISC-V Instruction
   */
 class Instr extends Bundle {
@@ -618,7 +634,7 @@ class Instr extends Bundle {
       p"  F3:   0b${Binary(funct3)}"
   }
 
-  def getRd() = {
+  def getRdIndex() = {
     val ret = WireDefault(rd)
     // B-types and S-types don't have rd
     switch(this.op) {
@@ -644,7 +660,10 @@ class Instr extends Bundle {
 
     ret
   }
-  def getRs1() = {
+
+  def getRd() = RegIndex.create(getRdType(), getRdIndex())
+
+  def getRs1Index() = {
     val ret = WireDefault(rs1)
     // The only instructions that don't have RS1 is AUIPC/LUI and JAL (U and J type)
 
@@ -677,7 +696,9 @@ class Instr extends Bundle {
     ret
   }
 
-  def getRs2() = {
+  def getRs1() = RegIndex.create(getRs1Type(), getRs1Index())
+
+  def getRs2Index() = {
     val ret = WireDefault(rs2)
     switch(this.op) {
       // U-type and J-type
@@ -718,5 +739,7 @@ class Instr extends Bundle {
 
     ret
   }
+
+  def getRs2() = RegIndex.create(getRs2Type(), getRs2Index())
 
 }

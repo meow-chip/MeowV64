@@ -15,6 +15,7 @@ import meowv64.instr.BPUResult
 import meowv64.instr.Decoder.InstrType
 import meowv64.instr.FetchEx
 import meowv64.instr.InstrExt
+import meowv64.instr.RegIndex
 
 /** Branch result
   *
@@ -209,7 +210,7 @@ class InflightInstr(implicit val coredef: CoreDef) extends Bundle {
   val op = UInt(5.W)
   val isC = Bool()
   val addr = UInt(coredef.XLEN.W)
-  val erd = UInt(log2Ceil(32).W) // Effective rd
+  val erd = new RegIndex() // Effective rd
   /** Prediction result from BPU
     */
   val pred = new BPUResult

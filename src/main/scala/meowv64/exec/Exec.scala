@@ -497,11 +497,13 @@ class Exec(implicit val coredef: CoreDef) extends Module {
         cdb.entries(coredef.UNIT_COUNT).data := memResult.data
         cdb.entries(coredef.UNIT_COUNT).valid := true.B
 
-        // TODO: check register type
-        for (i <- 0 until coredef.REGISTERS_TYPES.length) {
+        for (((ty, _), i) <- coredef.REGISTERS_TYPES.zipWithIndex) {
           val rw = toRF.ports(i).rw
-          rw(0).addr := inflights.reader.view(0).erd
-          rw(0).data := memResult.data
+
+          when(inflights.reader.view(0).erd.ty === ty) {
+            rw(0).addr := inflights.reader.view(0).erd.index
+            rw(0).data := memResult.data
+          }
         }
       }
 
@@ -558,11 +560,12 @@ class Exec(implicit val coredef: CoreDef) extends Module {
       }
 
       when(idx.U < retireNum) {
-        // TODO: check register type
-        for (i <- 0 until coredef.REGISTERS_TYPES.length) {
+        for (((ty, _), i) <- coredef.REGISTERS_TYPES.zipWithIndex) {
           val rw = toRF.ports(i).rw
-          rw(idx).addr := inflight.erd
-          rw(idx).data := renamer.toExec.releases(idx).value
+          when(inflight.erd.ty === ty) {
+            rw(idx).addr := inflight.erd.index
+            rw(idx).data := renamer.toExec.releases(idx).value
+          }
         }
 
         // Update BPU accordingly
@@ -582,7 +585,6 @@ class Exec(implicit val coredef: CoreDef) extends Module {
           pendingBr && pendingBrTag === tag && pendingBrResult.ex =/= ExReq.none
         ) {
           // Don't write-back exceptioned instr
-          // TODO: check register type
           for (i <- 0 until coredef.REGISTERS_TYPES.length) {
             val rw = toRF.ports(i).rw
             rw(idx).addr := 0.U
@@ -598,7 +600,6 @@ class Exec(implicit val coredef: CoreDef) extends Module {
 
         info.valid := false.B
       }.otherwise {
-        // TODO: check register type
         for (i <- 0 until coredef.REGISTERS_TYPES.length) {
           val rw = toRF.ports(i).rw
           rw(idx).addr := 0.U

@@ -6,10 +6,11 @@ import meowv64.core.CoreDef
 import meowv64.instr.InstrExt
 import meowv64.reg.RegReader
 import meowv64.reg.RegWriter
+import meowv64.instr.RegIndex
 
 class Release(implicit val coredef: CoreDef) extends Bundle {
   val name = Input(UInt(log2Ceil(coredef.INFLIGHT_INSTR_LIMIT).W))
-  val reg = Input(UInt(log2Ceil(32).W))
+  val reg = Input(new RegIndex())
   val value = Output(UInt(coredef.XLEN.W))
 }
 
@@ -20,7 +21,9 @@ class Renamer(implicit coredef: CoreDef) extends Module {
 
   val ports =
     IO(MixedVec(for ((ty, width) <- coredef.REGISTERS_TYPES) yield new Bundle {
+      // each instruction read two registers
       val rr = Vec(coredef.ISSUE_NUM, Vec(2, new RegReader(width)))
+      // each instruction write to one register
       val rw = Vec(coredef.ISSUE_NUM, new RegWriter(width))
       rr.suggestName(s"rr_${ty}")
       rw.suggestName(s"rw_${ty}")
@@ -44,29 +47,33 @@ class Renamer(implicit coredef: CoreDef) extends Module {
   val NAME_LENGTH = log2Ceil(coredef.INFLIGHT_INSTR_LIMIT)
   val REG_ADDR_LENGTH = log2Ceil(REG_NUM)
 
-  // Register <-> name mapping
-  // If a register is unmapped, it implies that at least INFLIGHT_INSTR_LIMIT instruction
-  // has been retired after the instruction which wrote to the register.
-  // So it's value must have been stored into the regfile
-  val reg2name = RegInit(VecInit(Seq.fill(REG_NUM)(0.U(NAME_LENGTH.W))))
-  val regMapped = RegInit(VecInit(Seq.fill(REG_NUM)(false.B)))
+  val banks = for ((ty, width) <- coredef.REGISTERS_TYPES) yield new {
+    // Register <-> name mapping
+    // If a register is unmapped, it implies that at least INFLIGHT_INSTR_LIMIT instruction
+    // has been retired after the instruction which wrote to the register.
+    // So it's value must have been stored into the regfile
+    val reg2name = RegInit(VecInit(Seq.fill(REG_NUM)(0.U(NAME_LENGTH.W))))
+    val regMapped = RegInit(VecInit(Seq.fill(REG_NUM)(false.B)))
+  }
 
   // Is the value for a specific name already broadcasted on the CDB?
   val nameReady = RegInit(
     VecInit(Seq.fill(coredef.INFLIGHT_INSTR_LIMIT)(true.B))
   )
 
-  def flush() = {
-    reg2name := VecInit(Seq.fill(REG_NUM)(0.U(NAME_LENGTH.W)))
-    nameReady := VecInit(Seq.fill(coredef.INFLIGHT_INSTR_LIMIT)(true.B))
-    regMapped := VecInit(Seq.fill(REG_NUM)(false.B))
-  }
-
   // Storage for name -> value
   // By default, all reg is unmapped
   val store = RegInit(
     VecInit(Seq.fill(coredef.INFLIGHT_INSTR_LIMIT)(0.U(coredef.XLEN.W)))
   )
+
+  def flush() = {
+    for (bank <- banks) {
+      bank.reg2name := VecInit(Seq.fill(REG_NUM)(0.U(NAME_LENGTH.W)))
+      bank.regMapped := VecInit(Seq.fill(REG_NUM)(false.B))
+    }
+    nameReady := VecInit(Seq.fill(coredef.INFLIGHT_INSTR_LIMIT)(true.B))
+  }
 
   // Update by CDB
   for (ent <- cdb.entries) {
@@ -85,12 +92,17 @@ class Renamer(implicit coredef: CoreDef) extends Module {
       true.B
     } else {
       val ret = WireDefault(true.B)
+      val rs1 = toExec.input(idx).instr.getRs1
+      val rs2 = toExec.input(idx).instr.getRs2
+
+      // check if this instruction relies on previous instructions
       for (i <- (0 until idx)) {
-        when(toExec.input(idx).instr.getRs1 === toExec.input(i).instr.getRd) {
+        val rd = toExec.input(i).instr.getRd
+        when(rs1.ty === rd.ty && rs1.index === rd.index) {
           ret := false.B
         }
 
-        when(toExec.input(idx).instr.getRs2 === toExec.input(i).instr.getRd) {
+        when(rs2.ty === rd.ty && rs2.index === rd.index) {
           ret := false.B
         }
       }
@@ -98,8 +110,11 @@ class Renamer(implicit coredef: CoreDef) extends Module {
     }
   })
 
-  def readRegs(r: RegReader, reg: UInt) = {
+  def readRegs(r: RegReader, reg: UInt, bankIdx: Int) = {
     r.addr := reg
+
+    val reg2name = banks(bankIdx).reg2name
+    val regMapped = banks(bankIdx).regMapped
 
     val name = reg2name(reg)
     val ready = WireDefault(nameReady(name))
@@ -132,11 +147,18 @@ class Renamer(implicit coredef: CoreDef) extends Module {
   for ((release, idx) <- toExec.releases.zipWithIndex) {
     val data = store(release.name)
     when(idx.U < toExec.retire) {
-      regMapped(release.reg) := reg2name(release.reg) =/= release.name
+      for ((bank, (ty, _)) <- banks.zip(coredef.REGISTERS_TYPES)) {
+        val reg2name = bank.reg2name
+        val regMapped = bank.regMapped
+        when(release.reg.ty === ty) {
+          regMapped(release.reg.index) := reg2name(release.reg.index) =/= release.name
+        }
+      }
+
       // TODO: check register type
       for (i <- 0 until coredef.REGISTERS_TYPES.length) {
         val rw = ports(i).rw
-        rw(idx).addr := release.reg
+        rw(idx).addr := release.reg.index
         rw(idx).data := data
       }
     }.otherwise {
@@ -157,14 +179,14 @@ class Renamer(implicit coredef: CoreDef) extends Module {
     toExec.output(idx).rs2ready := false.B
     toExec.output(idx).rs2val := 0.U
 
-    for (((ty, _), typeIdx) <- coredef.REGISTERS_TYPES.zipWithIndex) {
-      val rr = ports(typeIdx).rr
+    for (((ty, _), bankIdx) <- coredef.REGISTERS_TYPES.zipWithIndex) {
+      val rr = ports(bankIdx).rr
       rr(idx)(0).addr := 0.U
       rr(idx)(1).addr := 0.U
 
       when(instr.instr.getRs1Type === ty) {
         val (rs1name, rs1ready, rs1val) =
-          readRegs(rr(idx)(0), instr.instr.getRs1)
+          readRegs(rr(idx)(0), instr.instr.getRs1Index, bankIdx)
         toExec.output(idx).rs1name := rs1name
         toExec.output(idx).rs1ready := rs1ready
         toExec.output(idx).rs1val := rs1val
@@ -172,7 +194,7 @@ class Renamer(implicit coredef: CoreDef) extends Module {
 
       when(instr.instr.getRs2Type === ty) {
         val (rs2name, rs2ready, rs2val) =
-          readRegs(rr(idx)(1), instr.instr.getRs2)
+          readRegs(rr(idx)(1), instr.instr.getRs1Index, bankIdx)
         toExec.output(idx).rs2name := rs2name
         toExec.output(idx).rs2ready := rs2ready
         toExec.output(idx).rs2val := rs2val
@@ -184,8 +206,13 @@ class Renamer(implicit coredef: CoreDef) extends Module {
     toExec.output(idx).tag := tags(idx)
 
     when(idx.U < toExec.commit) {
-      reg2name(instr.instr.getRd) := tags(idx)
-      regMapped(instr.instr.getRd) := true.B
+      for (((ty, _), bank) <- coredef.REGISTERS_TYPES.zip(banks)) {
+        when(instr.instr.getRdType() === ty) {
+          bank.reg2name(instr.instr.getRdIndex) := tags(idx)
+          bank.regMapped(instr.instr.getRdIndex) := true.B
+        }
+      }
+
       nameReady(tags(idx)) := false.B
     }
   }
