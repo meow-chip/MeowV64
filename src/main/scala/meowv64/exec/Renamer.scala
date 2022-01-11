@@ -160,10 +160,12 @@ class Renamer(implicit coredef: CoreDef) extends Module {
       // TODO: check register type
       for (((ty, _), i) <- coredef.REGISTERS_TYPES.zipWithIndex) {
         val rw = ports(i).rw
+        rw(idx).valid := false.B
         rw(idx).addr := 0.U
-        rw(idx).data := DontCare
+        rw(idx).data := 0.U
 
         when(release.reg.ty === ty) {
+          rw(idx).valid := true.B
           rw(idx).addr := release.reg.index
           rw(idx).data := data
         }
@@ -171,8 +173,9 @@ class Renamer(implicit coredef: CoreDef) extends Module {
     }.otherwise {
       for (i <- 0 until coredef.REGISTERS_TYPES.length) {
         val rw = ports(i).rw
+        rw(idx).valid := false.B
         rw(idx).addr := 0.U
-        rw(idx).data := DontCare
+        rw(idx).data := 0.U
       }
     }
     release.value := data

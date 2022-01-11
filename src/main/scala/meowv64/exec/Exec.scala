@@ -487,8 +487,9 @@ class Exec(implicit val coredef: CoreDef) extends Module {
     retireNum := 0.U
     for (i <- 0 until coredef.REGISTERS_TYPES.length) {
       for (rwp <- toRF.ports(i).rw) {
+        rwp.valid := false.B
         rwp.addr := 0.U
-        rwp.data := DontCare
+        rwp.data := 0.U
       }
     }
     toCtrl.branch := BranchResult.empty
@@ -496,8 +497,9 @@ class Exec(implicit val coredef: CoreDef) extends Module {
     // Is memory operation, wait for memAccSucc
     for (i <- 0 until coredef.REGISTERS_TYPES.length) {
       for (rwp <- toRF.ports(i).rw) {
+        rwp.valid := false.B
         rwp.addr := 0.U
-        rwp.data := DontCare
+        rwp.data := 0.U
       }
     }
 
@@ -521,6 +523,7 @@ class Exec(implicit val coredef: CoreDef) extends Module {
           val rw = toRF.ports(i).rw
 
           when(inflights.reader.view(0).erd.ty === ty) {
+            rw(0).valid := true.B
             rw(0).addr := inflights.reader.view(0).erd.index
             rw(0).data := memResult.data
           }
@@ -538,8 +541,9 @@ class Exec(implicit val coredef: CoreDef) extends Module {
     retireNum := 0.U
     for (i <- 0 until coredef.REGISTERS_TYPES.length) {
       for (rwp <- toRF.ports(i).rw) {
+        rwp.valid := false.B
         rwp.addr := 0.U
-        rwp.data := DontCare
+        rwp.data := 0.U
       }
     }
 
@@ -583,6 +587,7 @@ class Exec(implicit val coredef: CoreDef) extends Module {
         for (((ty, _), i) <- coredef.REGISTERS_TYPES.zipWithIndex) {
           val rw = toRF.ports(i).rw
           when(inflight.erd.ty === ty) {
+            rw(idx).valid := true.B
             rw(idx).addr := inflight.erd.index
             rw(idx).data := renamer.toExec.releases(idx).value
           }
@@ -607,7 +612,9 @@ class Exec(implicit val coredef: CoreDef) extends Module {
           // Don't write-back exceptioned instr
           for (i <- 0 until coredef.REGISTERS_TYPES.length) {
             val rw = toRF.ports(i).rw
+            rw(idx).valid := false.B
             rw(idx).addr := 0.U
+            rw(idx).data := 0.U
           }
         }
 
@@ -622,8 +629,9 @@ class Exec(implicit val coredef: CoreDef) extends Module {
       }.otherwise {
         for (i <- 0 until coredef.REGISTERS_TYPES.length) {
           val rw = toRF.ports(i).rw
+          rw(idx).valid := false.B
           rw(idx).addr := 0.U
-          rw(idx).data := DontCare
+          rw(idx).data := 0.U
         }
       }
     }

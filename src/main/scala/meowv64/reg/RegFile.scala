@@ -14,6 +14,8 @@ class RegReader(val WIDTH: Int = 64, val COUNT: Int = 32) extends Bundle {
 }
 
 class RegWriter(val WIDTH: Int = 64, val COUNT: Int = 32) extends Bundle {
+  // this is required since float register 0 is not wired to zero
+  val valid = Output(Bool())
   val addr = Output(UInt(log2Ceil(COUNT).W))
   val data = Output(UInt(WIDTH.W))
 }
@@ -44,7 +46,9 @@ class RegFile(
   }
 
   for (write <- io.writes) {
-    regs(write.addr) := write.data
+    when(write.valid) {
+      regs(write.addr) := write.data
+    }
   }
 
   /*
