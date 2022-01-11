@@ -60,7 +60,14 @@ class Core(implicit val coredef: CoreDef) extends Module {
   val exec = Module(new Exec)
   val regFiles = for ((ty, width) <- coredef.REGISTERS_TYPES) yield {
     val reg = Module(
-      new RegFile(width, 32, coredef.ISSUE_NUM * 2, coredef.RETIRE_NUM)
+      new RegFile(
+        width,
+        32,
+        coredef.ISSUE_NUM * 2,
+        coredef.RETIRE_NUM,
+        // hardwire x0 to zero
+        FIXED_ZERO = (ty == RegType.integer)
+      )
     )
     reg.suggestName(s"reg_${ty}")
   }

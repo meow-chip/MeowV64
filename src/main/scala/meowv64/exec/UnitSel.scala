@@ -96,9 +96,9 @@ class UnitSel(
   execMap := arbitration(rs.instr.bits.instr.instr)
   // Asserts exactly one can exec this instr
 
-  // Contains a bypass unit, bypassing all inval instructions to there
+  // Contains a bypass unit, bypassing all invalid instructions to there
   if (bypassIdx.isDefined) {
-    when(rs.instr.bits.inval) {
+    when(rs.instr.bits.invalid) {
       execMap := VecInit(Seq.fill(units.length)(false.B))
       execMap(bypassIdx.get) := true.B
     }

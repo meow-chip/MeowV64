@@ -758,7 +758,7 @@ object Exec {
         // fadd, fsub, fmul, fdiv, fsqrt, etc
         Decoder.Op("OP-FP").ident
       ) {
-        ret := "b1000".U(coredef.UNIT_COUNT.W)
+        ret := "b0100".U(coredef.UNIT_COUNT.W)
       }
     }
 

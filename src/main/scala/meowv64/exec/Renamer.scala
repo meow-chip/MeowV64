@@ -133,7 +133,8 @@ class Renamer(implicit coredef: CoreDef) extends Module {
       value := r.data
     }
 
-    when(reg === 0.U) {
+    // FIXME: do not hardcode integer bank as zero
+    when(reg === 0.U && (bankIdx == 0).B) {
       ready := true.B
       value := 0.U
     }

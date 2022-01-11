@@ -196,10 +196,10 @@ class ReservedInstr(override implicit val coredef: CoreDef) extends PipeInstr {
   val rs1ready = Bool()
   val rs2ready = Bool()
 
-  def inval =
+  def invalid =
     instr.fetchEx =/= FetchEx.none || instr.instr.base === InstrType.RESERVED
 
-  def ready = (inval || rs1ready && rs2ready)
+  def ready = (invalid || rs1ready && rs2ready)
 }
 
 /** Instruction pushed by issuer, and reused by rob
