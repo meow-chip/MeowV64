@@ -191,12 +191,12 @@ class Exec(implicit val coredef: CoreDef) extends Module {
         hasPipe = false
       )
     ),
-    // port 3: FMA + IntFloat
+    // port 3: FMA + FloatMisc
     Module(
       new UnitSel(
         Seq(
           Module(new FMA).suggestName("FMA"),
-          Module(new IntFloat).suggestName("IntFloat")
+          Module(new FloatMisc).suggestName("FloatMisc")
         ),
         instr => {
           val gotoFMA = (
@@ -210,7 +210,8 @@ class Exec(implicit val coredef: CoreDef) extends Module {
             instr.op === Decoder.Op("OP-FP").ident &&
               (instr.funct5 === Decoder.FP_FUNC("FMV.X.D") ||
                 instr.funct5 === Decoder.FP_FUNC("FMV.D.X") ||
-                instr.funct5 === Decoder.FP_FUNC("FCLASS"))
+                instr.funct5 === Decoder.FP_FUNC("FCLASS") ||
+                instr.funct5 === Decoder.FP_FUNC("FCMP"))
           )
           Seq(gotoFMA, gotoIntFloat)
         },

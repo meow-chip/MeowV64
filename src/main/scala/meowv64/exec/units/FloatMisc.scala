@@ -5,15 +5,20 @@ import chisel3.util._
 import meowv64.core.CoreDef
 import meowv64.exec._
 import meowv64.instr.Decoder
+import hardfloat.{CompareRecFN, recFNFromFN}
+import meowv64.core.ExType
 
 class IntFloatExt(implicit val coredef: CoreDef) extends Bundle {
   val res = UInt(coredef.XLEN.W)
+
+  val updateFFlags = Bool()
+  val fflags = UInt(5.W)
   val illegal = Bool()
 }
 
-/** Handles integer <-> float.
+/** Handles instructions: FMV.X.D, FMV.D.X, FCLASS.D, FEQ.D, FLT.D, FLE.D
   */
-class IntFloat(override implicit val coredef: CoreDef)
+class FloatMisc(override implicit val coredef: CoreDef)
     extends ExecUnit(0, new IntFloatExt) {
   def map(
       stage: Int,
@@ -23,6 +28,8 @@ class IntFloat(override implicit val coredef: CoreDef)
     val ext = Wire(new IntFloatExt)
     ext.res := 0.U
     ext.illegal := false.B
+    ext.updateFFlags := false.B
+    ext.fflags := 0.U
 
     val expWidth = 11
     val sigWidth = 53
@@ -72,6 +79,37 @@ class IntFloat(override implicit val coredef: CoreDef)
         sign && isNormal,
         sign && isInf
       )
+    }.elsewhen(
+      pipe.instr.instr.funct5 === Decoder.FP_FUNC(
+        "FCMP"
+      )
+    ) {
+      // FEQ.U, FLT.D, FLE.D
+      val rs1valHF = WireInit(recFNFromFN(expWidth, sigWidth, pipe.rs1val))
+      val rs2valHF = WireInit(recFNFromFN(expWidth, sigWidth, pipe.rs2val))
+
+      val cmp = Module(new CompareRecFN(expWidth, sigWidth))
+      cmp.io.a := rs1valHF
+      cmp.io.b := rs2valHF
+      cmp.io.signaling := true.B
+
+      when(pipe.instr.instr.funct3 === 2.U) {
+        // FEQ
+        ext.res := cmp.io.eq
+        // do not signal qNan in feq
+        cmp.io.signaling := false.B
+      }.elsewhen(pipe.instr.instr.funct3 === 1.U) {
+        // FLT
+        ext.res := cmp.io.lt
+      }.elsewhen(pipe.instr.instr.funct3 === 0.U) {
+        // FLE
+        ext.res := cmp.io.lt || cmp.io.eq
+      }.otherwise {
+        ext.illegal := true.B
+      }
+
+      ext.updateFFlags := true.B
+      ext.fflags := cmp.io.exceptionFlags
     } otherwise {
       ext.illegal := true.B
     }
@@ -81,7 +119,18 @@ class IntFloat(override implicit val coredef: CoreDef)
 
   def finalize(pipe: PipeInstr, ext: IntFloatExt): RetireInfo = {
     val info = WireDefault(RetireInfo.vacant)
-    info.wb := ext.res.asUInt
+
+    when(ext.illegal) {
+      info.branch.ex(ExType.ILLEGAL_INSTR)
+      info.wb := DontCare
+    } otherwise {
+      // result
+      info.wb := ext.res.asUInt
+
+      // fflags
+      info.updateFFlags := ext.updateFFlags
+      info.fflags := ext.fflags
+    }
 
     info
   }

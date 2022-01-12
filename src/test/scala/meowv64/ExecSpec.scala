@@ -103,6 +103,10 @@ class ExecTest(dut: Multicore, file: String) {
         val speed = BigDecimal(mcycle) * BigDecimal(1e9) / BigDecimal(elapsed)
         println(f"> Simulation speed: ${speed}%.2f mcycle/s")
 
+        if (failed.size > 0) {
+          throw new Error("Some testcases failed!")
+        }
+
         return
       }
 
