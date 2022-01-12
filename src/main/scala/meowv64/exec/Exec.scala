@@ -201,7 +201,9 @@ class Exec(implicit val coredef: CoreDef) extends Module {
         instr => {
           val gotoFMA = (
             instr.op === Decoder.Op("OP-FP").ident &&
-              (instr.funct5 === Decoder.FP_FUNC("FADD"))
+              (instr.funct5 === Decoder.FP_FUNC(
+                "FADD"
+              ) || instr.funct5 === Decoder.FP_FUNC("FSUB"))
           )
           val gotoIntFloat = (
             instr.op === Decoder.Op("OP-FP").ident &&
@@ -315,7 +317,7 @@ class Exec(implicit val coredef: CoreDef) extends Module {
     val isGFence = (
       instr.instr.instr.op === Decoder
         .Op("SYSTEM")
-        .ident && instr.instr.instr.funct7 =/= Decoder.SYSTEM_FUNC("PRIV")
+        .ident && instr.instr.instr.funct3 =/= Decoder.SYSTEM_FUNC("PRIV")
     )
 
     // At most only one sending
