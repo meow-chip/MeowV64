@@ -45,6 +45,10 @@ class Exec(implicit val coredef: CoreDef) extends Module {
     val status = Input(new Status)
 
     val tlbRst = Input(Bool())
+
+    /** Update fflags
+      */
+    val fflags = Valid(UInt(5.W))
   })
 
   val toBPU = IO(new Bundle {
@@ -463,6 +467,8 @@ class Exec(implicit val coredef: CoreDef) extends Module {
       rob(u.retire.instr.tag).valid := true.B
       // for BRANCH instructions, this means taken before normalization
       rob(u.retire.instr.tag).taken := u.retire.info.branchTaken
+      rob(u.retire.instr.tag).updateFFlags := u.retire.info.updateFFlags
+      rob(u.retire.instr.tag).fflags := u.retire.info.fflags
     }
   }
 
@@ -483,6 +489,10 @@ class Exec(implicit val coredef: CoreDef) extends Module {
 
   cdb.entries(coredef.UNIT_COUNT) := DontCare
   cdb.entries(coredef.UNIT_COUNT).valid := false.B
+
+  // do not update fflags by default
+  toCtrl.fflags.valid := false.B
+  toCtrl.fflags.bits := 0.U
 
   // TODO: send memory request one tick before its turn
 
@@ -599,6 +609,12 @@ class Exec(implicit val coredef: CoreDef) extends Module {
           }
         }
 
+        // update fflags
+        when(info.updateFFlags) {
+          toCtrl.fflags.valid := true.B
+          toCtrl.fflags.bits := info.fflags
+        }
+
         // Update BPU accordingly
         when(
           inflight.op === Decoder.Op("BRANCH").ident
@@ -691,6 +707,11 @@ object Exec {
     /** Branch has taken
       */
     val taken = Bool()
+
+    /** Update fflags
+      */
+    val updateFFlags = Bool()
+    val fflags = UInt(5.W)
   }
 
   object ROBEntry {
@@ -699,6 +720,8 @@ object Exec {
       ret.hasMem := DontCare
       ret.valid := false.B
       ret.taken := false.B
+      ret.updateFFlags := false.B
+      ret.fflags := false.B
 
       ret
     }

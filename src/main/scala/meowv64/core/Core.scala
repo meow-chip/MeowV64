@@ -111,6 +111,7 @@ class Core(implicit val coredef: CoreDef) extends Module {
   ctrl.toExec.intAck := exec.toCtrl.intAck
   ctrl.toExec.priv <> exec.toCtrl.priv
   ctrl.toExec.status <> exec.toCtrl.status
+  ctrl.toExec.fflags <> exec.toCtrl.fflags
 
   ctrl.int := io.int
 

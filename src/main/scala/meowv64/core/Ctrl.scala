@@ -76,6 +76,10 @@ class Ctrl(implicit coredef: CoreDef) extends Module {
     val status = Output(new Status)
 
     val tlbRst = Output(Bool())
+
+    /** Update fflags
+      */
+    val fflags = Flipped(Valid(UInt(5.W)))
   })
 
   val int = IO(Input(new CoreInt))
@@ -329,11 +333,14 @@ class Ctrl(implicit coredef: CoreDef) extends Module {
   }
 
   val fcsr = RegInit(0.U.asTypeOf(new FCSR))
-  //val fflags = RegInit(0.U(5.W))
-  //val frm = RegInit(0.U(3.W))
   csr.fflags <> CSRPort.fromReg(5, fcsr.fflags)
   csr.frm <> CSRPort.fromReg(3, fcsr.frm)
   csr.fcsr <> CSRPort.fromReg(8, fcsr)
+
+  // update fflags
+  when(toExec.fflags.valid) {
+    fcsr.fflags := toExec.fflags.bits
+  }
 
   // Interrupts
   val intMask: UInt = (ie.asUInt & ip.asUInt())
