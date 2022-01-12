@@ -29,31 +29,27 @@ class RiscvTestsSpec
   val annotations =
     Simulator.getAnnotations()
 
-  it should s"run physical testcases successfully" in {
-    test(
-      new Multicore()(ExecDef)
-    ).withAnnotations(annotations) { dut =>
-      for (file <- RiscvTestsSpec.cases) {
-        if (file.contains("-p-")) {
-          println("------------")
-          println(s"Running file $file")
-          new ExecTest(dut, file)
-        }
-      }
-    }
-  }
-
-  // these testcases are slow and memory consuming
-  // avoid java heap space oom
-  it should s"run virtual testcases successfully" in {
-    for (file <- RiscvTestsSpec.cases) {
-      if (file.contains("-v-")) {
-        test(
-          new Multicore()(ExecDef)
-        ).withAnnotations(annotations) { dut =>
-          println("------------")
-          println(s"Running file $file")
-          new ExecTest(dut, file)
+  for (
+    prefix <- Seq(
+      "rv64ui",
+      "rv64uc",
+      "rv64um",
+      "rv64ua",
+      "rv64ud",
+      "rv64si",
+      "rv64mi"
+    )
+  ) {
+    it should s"run ${prefix} testcases successfully" in {
+      test(
+        new Multicore()(ExecDef)
+      ).withAnnotations(annotations) { dut =>
+        for (file <- RiscvTestsSpec.cases) {
+          if (file.contains(prefix)) {
+            println("------------")
+            println(s"Running file $file")
+            new ExecTest(dut, file)
+          }
         }
       }
     }
