@@ -74,6 +74,11 @@ class FMA(override implicit val coredef: CoreDef)
           b := rs1valHF
           c := rs2valHF
         }
+        is(Decoder.FP_FUNC("FMUL")) {
+          // rs1 * rs2 + 0
+          a := rs1valHF
+          b := rs2valHF
+        }
       }
 
       // step 2: preMul
