@@ -1,8 +1,8 @@
 package meowv64.reg
 
 import chisel3._
-import chisel3.util.log2Ceil
 import chisel3.experimental.ChiselEnum
+import chisel3.util.log2Ceil
 
 object RegType extends ChiselEnum {
   val integer, float = Value

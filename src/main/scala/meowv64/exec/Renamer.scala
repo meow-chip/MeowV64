@@ -4,9 +4,9 @@ import chisel3._
 import chisel3.util._
 import meowv64.core.CoreDef
 import meowv64.instr.InstrExt
+import meowv64.instr.RegIndex
 import meowv64.reg.RegReader
 import meowv64.reg.RegWriter
-import meowv64.instr.RegIndex
 
 class Release(implicit val coredef: CoreDef) extends Bundle {
   val name = Input(UInt(log2Ceil(coredef.INFLIGHT_INSTR_LIMIT).W))

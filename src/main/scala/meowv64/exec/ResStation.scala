@@ -1,12 +1,12 @@
 package meowv64.exec
 import chisel3._
+import chisel3.util.Decoupled
 import chisel3.util.PriorityEncoder
 import chisel3.util.log2Ceil
 import meowv64.cache.DCFenceStatus
 import meowv64.core.CoreDef
 import meowv64.instr.Decoder
 import meowv64.util.FlushableSlot
-import chisel3.util.Decoupled
 
 class ResStationEgress(implicit val coredef: CoreDef) extends Bundle {
   val instr = Decoupled(new ReservedInstr)

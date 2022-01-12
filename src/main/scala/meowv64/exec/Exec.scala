@@ -208,7 +208,9 @@ class Exec(implicit val coredef: CoreDef) extends Module {
           )
           val gotoIntFloat = (
             instr.op === Decoder.Op("OP-FP").ident &&
-              (instr.funct5 === Decoder.FP_FUNC("FMV.X.D"))
+              (instr.funct5 === Decoder.FP_FUNC("FMV.X.D") ||
+                instr.funct5 === Decoder.FP_FUNC("FMV.D.X") ||
+                instr.funct5 === Decoder.FP_FUNC("FCLASS"))
           )
           Seq(gotoFMA, gotoIntFloat)
         },

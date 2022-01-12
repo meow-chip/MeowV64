@@ -163,6 +163,7 @@ object Decoder {
     "FSUB" -> "00001",
     "FMUL" -> "00010",
     "FMV.X.D" -> "11100",
+    "FCLASS" -> "11100",
     "FMV.D.X" -> "11110"
   ).mapValues(Integer.parseInt(_, 2).U(5.W))
 
@@ -704,7 +705,11 @@ class Instr extends Bundle {
       is(
         Decoder.Op("OP-FP").ident
       ) {
-        ret := RegType.float
+        when(this.funct5() === Decoder.FP_FUNC("FMV.D.X")) {
+          ret := RegType.integer
+        }.otherwise {
+          ret := RegType.float
+        }
       }
     }
 

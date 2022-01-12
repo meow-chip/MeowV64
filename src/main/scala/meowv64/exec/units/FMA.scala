@@ -2,15 +2,15 @@ package meowv64.exec.units
 
 import chisel3._
 import chisel3.util._
+import hardfloat.MulAddRecFNToRaw_postMul
+import hardfloat.MulAddRecFNToRaw_preMul
+import hardfloat.MulAddRecFN_interIo
+import hardfloat.RoundRawFNToRecFN
+import hardfloat.fNFromRecFN
+import hardfloat.recFNFromFN
 import meowv64.core.CoreDef
 import meowv64.exec._
 import meowv64.instr.Decoder
-import hardfloat.MulAddRecFN_interIo
-import hardfloat.recFNFromFN
-import hardfloat.MulAddRecFNToRaw_preMul
-import hardfloat.MulAddRecFNToRaw_postMul
-import hardfloat.RoundRawFNToRecFN
-import hardfloat.fNFromRecFN
 
 class FMAExt(implicit val coredef: CoreDef) extends Bundle {
   val expWidth = 11
