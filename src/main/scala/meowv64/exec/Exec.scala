@@ -21,9 +21,9 @@ import meowv64.paging.TLBExt
 import meowv64.reg._
 import meowv64.util._
 
-/** Out-of-order exection (Tomasulo's algorithm)
+/** Out-of-order execution (Tomasulo's algorithm)
   *
-  * First we check if instructions are eligible to be issues. Criterias include:
+  * First we check if instructions are eligible to be issues. Criteria include:
   *   - Target reservation station has free slots
   *   - Number of in-flight instructions haven't exceeded the limit. This limit
   *     affects our rob buffer length, as well as renamed reg tags' length
@@ -187,17 +187,23 @@ class Exec(implicit val coredef: CoreDef) extends Module {
         hasPipe = false
       )
     ),
-    // port 3: FMA
+    // port 3: FMA + IntFloat
     Module(
       new UnitSel(
         Seq(
-          Module(new FMA).suggestName("FMA")
+          Module(new FMA).suggestName("FMA"),
+          Module(new IntFloat).suggestName("IntFloat")
         ),
         instr => {
           val gotoFMA = (
-            instr.op === Decoder.Op("OP-FP").ident
+            instr.op === Decoder.Op("OP-FP").ident &&
+              (instr.funct5 === Decoder.FP_FUNC("FADD"))
           )
-          Seq(gotoFMA)
+          val gotoIntFloat = (
+            instr.op === Decoder.Op("OP-FP").ident &&
+              (instr.funct5 === Decoder.FP_FUNC("FMV.X.D"))
+          )
+          Seq(gotoFMA, gotoIntFloat)
         },
         hasPipe = true
       )

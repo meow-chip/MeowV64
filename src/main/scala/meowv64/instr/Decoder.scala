@@ -162,7 +162,8 @@ object Decoder {
     "FADD" -> "00000",
     "FSUB" -> "00001",
     "FMUL" -> "00010",
-    "FDIV" -> "00011"
+    "FMV.X.D" -> "11100",
+    "FMV.D.X" -> "11110"
   ).mapValues(Integer.parseInt(_, 2).U(5.W))
 
   implicit class ConvertToBin(self: String) {
@@ -664,7 +665,11 @@ class Instr extends Bundle {
         Decoder.Op("OP-FP").ident,
         Decoder.Op("LOAD-FP").ident // FLD
       ) {
-        ret := RegType.float
+        when(this.funct5() === Decoder.FP_FUNC("FMV.X.D")) {
+          ret := RegType.integer
+        }.otherwise {
+          ret := RegType.float
+        }
       }
     }
 

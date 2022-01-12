@@ -110,7 +110,6 @@ class FMA(override implicit val coredef: CoreDef)
   }
 
   def finalize(pipe: PipeInstr, ext: FMAExt): RetireInfo = {
-    // Sign extend if needed
     val info = WireDefault(RetireInfo.vacant)
     info.wb := ext.res.asUInt
 
