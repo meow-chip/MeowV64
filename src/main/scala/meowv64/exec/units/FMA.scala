@@ -44,9 +44,9 @@ class FMA(override implicit val coredef: CoreDef)
       val widthHF = width + 1
 
       // a * b + c
-      val a = Wire(UInt(width.W))
-      val b = Wire(UInt(width.W))
-      val c = Wire(UInt(width.W))
+      val a = WireInit(0.U(width.W))
+      val b = WireInit(0.U(width.W))
+      val c = WireInit(0.U(width.W))
 
       // convert to hardfloat
       val rs1valHF = WireInit(recFNFromFN(expWidth, sigWidth, pipe.rs1val))
@@ -56,17 +56,20 @@ class FMA(override implicit val coredef: CoreDef)
       val neg = WireInit(false.B)
       val sign = WireInit(false.B)
       val op = Cat(neg, sign)
-      when(
-        pipe.instr.instr.funct5 === Decoder.FP_FUNC("FADD")
-      ) {
-        // 1 * rs1 + rs2
-        a := oneHF
-        b := rs1valHF
-        c := rs2valHF
-      }.otherwise {
-        a := 0.U
-        b := 0.U
-        c := 0.U
+      switch(pipe.instr.instr.funct5) {
+        is(Decoder.FP_FUNC("FADD")) {
+          // 1 * rs1 + rs2
+          a := oneHF
+          b := rs1valHF
+          c := rs2valHF
+        }
+        is(Decoder.FP_FUNC("FSUB")) {
+          // 1 * rs1 - rs2
+          sign := true.B
+          a := oneHF
+          b := rs1valHF
+          c := rs2valHF
+        }
       }
 
       // step 2: preMul
