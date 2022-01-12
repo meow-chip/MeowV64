@@ -25,15 +25,15 @@ class FMAExt(implicit val coredef: CoreDef) extends Bundle {
   val fflags = UInt(5.W)
 }
 
-/** 2 stage FMA.
+/** 1 stage FMA.
   *
-  * Stage 1: convert to hardfloat, preMul, mulAdd
+  * Cycle 1: convert to hardfloat, preMul, mulAdd
   *
-  * Stage 2: postMul, round, convert to ieee
+  * Cycle 2: postMul, round, convert to ieee
   */
 class FMA(override implicit val coredef: CoreDef)
     extends ExecUnit(
-      3,
+      1,
       new FMAExt
     ) {
 
@@ -48,9 +48,9 @@ class FMA(override implicit val coredef: CoreDef)
       val widthHF = width + 1
 
       // a * b + c
-      val a = WireInit(0.U(width.W))
-      val b = WireInit(0.U(width.W))
-      val c = WireInit(0.U(width.W))
+      val a = WireInit(0.U(widthHF.W))
+      val b = WireInit(0.U(widthHF.W))
+      val c = WireInit(0.U(widthHF.W))
 
       // convert to hardfloat
       val rs1valHF = WireInit(recFNFromFN(expWidth, sigWidth, pipe.rs1val))
