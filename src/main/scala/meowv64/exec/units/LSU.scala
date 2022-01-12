@@ -369,6 +369,7 @@ class LSU(implicit val coredef: CoreDef) extends Module with UnitSelIO {
   val mem = Wire(new DelayedMem)
   mem.noop() // By default
 
+  retire.info := RetireInfo.vacant
   retire.info.branchTaken := false.B // not a branch instruction
   when(pipeFenceLike) {
     retire.info.wb := DontCare

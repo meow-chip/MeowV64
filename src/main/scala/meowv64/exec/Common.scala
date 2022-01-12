@@ -131,7 +131,15 @@ object BranchResult {
   * @param coredef
   */
 class RetireInfo(implicit val coredef: CoreDef) extends Bundle {
+
+  /** Writeback data
+    */
   val wb = UInt(coredef.XLEN.W)
+
+  /** Update fflags for floating point operations
+    */
+  val updateFFlags = Bool()
+  val fflags = UInt(5.W)
 
   /** Generic branch result
     */
@@ -148,9 +156,11 @@ object RetireInfo {
     val info = Wire(new RetireInfo)
 
     info.branch.nofire
-    info.wb := DontCare
+    info.wb := 0.U
     info.hasMem := false.B
     info.branchTaken := false.B
+    info.updateFFlags := false.B
+    info.fflags := 0.U
 
     info
   }

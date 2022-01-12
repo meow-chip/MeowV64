@@ -16,9 +16,13 @@ class FMAExt(implicit val coredef: CoreDef) extends Bundle {
   val expWidth = 11
   val sigWidth = 53
 
+  // intermediate
   val toPostMul = new MulAddRecFN_interIo(expWidth, sigWidth)
   val mulAddResult = UInt((2 * sigWidth + 1).W)
+
+  // result
   val res = UInt((expWidth + sigWidth).W)
+  val fflags = UInt(5.W)
 }
 
 /** 2 stage FMA.
@@ -85,6 +89,7 @@ class FMA(override implicit val coredef: CoreDef)
       state.mulAddResult := (preMul.io.mulAddA * preMul.io.mulAddB) +& preMul.io.mulAddC
 
       state.res := 0.U
+      state.fflags := 0.U
     } else {
       // second stage
       state := ext.get
@@ -100,12 +105,13 @@ class FMA(override implicit val coredef: CoreDef)
       val round = Module(new RoundRawFNToRecFN(expWidth, sigWidth, 0))
       round.io.in := postMul.io.rawOut
       round.io.infiniteExc := false.B
-      round.io.invalidExc := false.B
+      round.io.invalidExc := postMul.io.invalidExc
       round.io.detectTininess := false.B
       round.io.roundingMode := 0.U
 
       // step 3: convert to ieee
       state.res := fNFromRecFN(expWidth, sigWidth, round.io.out)
+      state.fflags := round.io.exceptionFlags
     }
 
     // never stalls
@@ -114,7 +120,12 @@ class FMA(override implicit val coredef: CoreDef)
 
   def finalize(pipe: PipeInstr, ext: FMAExt): RetireInfo = {
     val info = WireDefault(RetireInfo.vacant)
+    // result
     info.wb := ext.res.asUInt
+
+    // fflags
+    info.updateFFlags := true.B
+    info.fflags := ext.fflags
 
     info
   }

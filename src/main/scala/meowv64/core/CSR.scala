@@ -42,12 +42,12 @@ class CSRPort(val XLEN: Int) extends Bundle {
 }
 
 object CSRPort {
-  def fromReg(XLEN: Int, reg: UInt): CSRPort = {
+  def fromReg[T <: Data](XLEN: Int, reg: T): CSRPort = {
     val port = Wire(new CSRPort(XLEN))
 
-    port.rdata := reg
+    port.rdata := reg.asUInt
     when(port.write) {
-      reg := port.wdata
+      reg := port.wdata.asTypeOf(reg)
     }
 
     port
@@ -98,6 +98,11 @@ class CSRWriter(val XLEN: Int) extends Bundle {
 object CSR {
   // Is mutable on the second parameter
   val addrMap = Map(
+    // Float
+    0x001 -> (("fflags", true)),
+    0x002 -> (("frm", true)),
+    0x003 -> (("fcsr", true)),
+
     // Machine
     0xf11 -> (("mvendorid", false)),
     0xf12 -> (("marchid", false)),
@@ -141,7 +146,7 @@ object CSR {
   )
 
   /*
-  // Some bit fields shall be perserved to be WPRI/WARL.
+  // Some bit fields shall be preserved to be WPRI/WARL.
   val maskMap = Map(
     0x300 -> 0x88.U, // Having only M mode, only MPIE and MIE writable
     0x304 -> 0x333.U, // Only [U|S][S|T|E]IP writable (does we actually have them?)

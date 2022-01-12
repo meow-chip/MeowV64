@@ -104,6 +104,10 @@ class Ctrl(implicit coredef: CoreDef) extends Module {
 
     val instret = Output(UInt(64.W))
     val cycle = Output(UInt(64.W))
+
+    val fflags = new CSRPort(coredef.XLEN)
+    val frm = new CSRPort(coredef.XLEN)
+    val fcsr = new CSRPort(coredef.XLEN)
   });
 
   // Privilege level
@@ -317,6 +321,19 @@ class Ctrl(implicit coredef: CoreDef) extends Module {
 
   branch := br.req.branch
   baddr := br.req.target
+
+  // fcsr: frm + fflags
+  class FCSR extends Bundle {
+    val fflags = UInt(5.W)
+    val frm = UInt(3.W)
+  }
+
+  val fcsr = RegInit(0.U.asTypeOf(new FCSR))
+  //val fflags = RegInit(0.U(5.W))
+  //val frm = RegInit(0.U(3.W))
+  csr.fflags <> CSRPort.fromReg(5, fcsr.fflags)
+  csr.frm <> CSRPort.fromReg(3, fcsr.frm)
+  csr.fcsr <> CSRPort.fromReg(8, fcsr)
 
   // Interrupts
   val intMask: UInt = (ie.asUInt & ip.asUInt())
