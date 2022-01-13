@@ -45,7 +45,11 @@ class RAS(implicit val coredef: CoreDef) extends Module {
         }
       }
     }.elsewhen(toIF.pop.fire) {
-      ptr := ptr -% 1.U
+      val nptr = ptr -% 1.U
+      ptr := nptr
+      when(nptr === 0.U) {
+        empty := true.B
+      }
     }
   }.otherwise {
     ptr := toExec.realign.bits.ptr

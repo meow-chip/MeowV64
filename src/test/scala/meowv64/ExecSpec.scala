@@ -1,7 +1,7 @@
 package meowv64
 
 import chisel3._
-import chisel3.tester._
+import chiseltest._
 import chiseltest.simulator.IcarusBackendAnnotation
 import meowv64.multicore.Multicore
 import meowv64.multicore.MulticoreDef

@@ -1,7 +1,7 @@
 package meowv64
 
 import chisel3._
-import chisel3.tester._
+import chiseltest._
 import meowv64.cache._
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
