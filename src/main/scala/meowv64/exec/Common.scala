@@ -132,7 +132,7 @@ object BranchResult {
   */
 class RetireInfo(implicit val coredef: CoreDef) extends Bundle {
 
-  /** Writeback data
+  /** Writeback data or trap value(mtval, stval)
     */
   val wb = UInt(coredef.XLEN.W)
 
