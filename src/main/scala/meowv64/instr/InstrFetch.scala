@@ -494,7 +494,7 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
   when(pendingFlush) {
     toIC.rst := pendingIRst
     // it might assert tlbRst when pendingFlush is true
-    tlb.flush := tlb.flush | pendingTLBRst
+    tlb.flush := toCtrl.tlbRst | pendingTLBRst
     ICQueue.io.enq.noenq()
     when(!toIC.stall) { // TLB will flush within one tick
       pendingFlush := false.B
