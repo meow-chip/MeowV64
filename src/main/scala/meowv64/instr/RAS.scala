@@ -17,7 +17,7 @@ class RAS(implicit val coredef: CoreDef) extends Module {
     }))
   })
 
-  val store = Reg(Vec(coredef.RAS_SIZE, UInt(coredef.XLEN.W)))
+  val store = RegInit(VecInit(Seq.fill(coredef.RAS_SIZE)(0.U(coredef.XLEN.W))))
   val ptr = RegInit(0.U(log2Ceil(coredef.RAS_SIZE).W))
   val empty = RegInit(true.B)
 
