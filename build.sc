@@ -8,9 +8,9 @@ import com.goyeau.mill.scalafix.ScalafixModule
 
 // learned from https://github.com/OpenXiangShan/fudian/blob/main/build.sc
 val defaultVersions = Map(
-  "chisel3" -> ("edu.berkeley.cs", "3.5.0-RC2", false),
-  "chisel3-plugin" -> ("edu.berkeley.cs", "3.5.0-RC2", true),
-  "chiseltest" -> ("edu.berkeley.cs", "0.5.0-RC2", false),
+  "chisel3" -> ("edu.berkeley.cs", "3.5.0", false),
+  "chisel3-plugin" -> ("edu.berkeley.cs", "3.5.0", true),
+  "chiseltest" -> ("edu.berkeley.cs", "0.5.0", false),
   "scalatest" -> ("org.scalatest", "3.2.10", false)
 )
 
