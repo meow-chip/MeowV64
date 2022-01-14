@@ -705,25 +705,7 @@ class Instr extends Bundle {
   }
 
   def getRdType() = {
-    val ret = WireDefault(RegType.integer)
-
-    switch(this.op) {
-      is(
-        Decoder.Op("OP-FP").ident,
-        Decoder.Op("LOAD-FP").ident // FLD
-      ) {
-        when(
-          this.funct5() === Decoder.FP_FUNC("FMV.X.D") ||
-            this.funct5() === Decoder.FP_FUNC("FCMP")
-        ) {
-          ret := RegType.integer
-        }.otherwise {
-          ret := RegType.float
-        }
-      }
-    }
-
-    ret
+    WireInit(this.info.rdType)
   }
 
   def getRd() = RegIndex.create(getRdType(), getRdIndex())
@@ -748,21 +730,7 @@ class Instr extends Bundle {
   }
 
   def getRs1Type() = {
-    val ret = WireDefault(RegType.integer)
-
-    switch(this.op) {
-      is(
-        Decoder.Op("OP-FP").ident
-      ) {
-        when(this.funct5() === Decoder.FP_FUNC("FMV.D.X")) {
-          ret := RegType.integer
-        }.otherwise {
-          ret := RegType.float
-        }
-      }
-    }
-
-    ret
+    WireInit(this.info.rs1Type)
   }
 
   def getRs1() = RegIndex.create(getRs1Type(), getRs1Index())
@@ -795,18 +763,7 @@ class Instr extends Bundle {
   }
 
   def getRs2Type() = {
-    val ret = WireDefault(RegType.integer)
-
-    switch(this.op) {
-      is(
-        Decoder.Op("OP-FP").ident,
-        Decoder.Op("STORE-FP").ident // FST
-      ) {
-        ret := RegType.float
-      }
-    }
-
-    ret
+    WireInit(this.info.rs2Type)
   }
 
   def getRs2() = RegIndex.create(getRs2Type(), getRs2Index())
