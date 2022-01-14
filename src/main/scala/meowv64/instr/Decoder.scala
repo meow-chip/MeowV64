@@ -182,12 +182,12 @@ object Decoder {
       val result = Wire(new Instr)
       val isInstr16 = WireDefault(false.B)
       val ui = self.asUInt
-      result.info := DecodeInfo.decode(ui)
 
       when(!ui.orR()) {
         // Defined invalid instr
         result := DontCare
         result.base := InstrType.RESERVED
+        result.info := DecodeInfo.invalid
       }.elsewhen(ui(1, 0) =/= "11".asBits(2.W)) {
         result := self.asInstr16()
         isInstr16 := true.B
