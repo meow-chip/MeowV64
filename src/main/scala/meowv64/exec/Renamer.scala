@@ -136,7 +136,8 @@ class Renamer(implicit coredef: CoreDef) extends Module {
     }
 
     // the instruction does not read this register
-    when(!readReg) {
+    // or this is x0
+    when(!readReg || (reg === 0.U && (bankIdx == 0).B)) {
       ready := true.B
       value := 0.U
     }

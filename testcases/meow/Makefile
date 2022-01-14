@@ -30,7 +30,7 @@ hex/%.hex: bin/%.bin Makefile
 	hexdump -ve '1/1 "%02x" "\n"' $< > $@
 
 dump/%.S: bin/%.linked
-	$(PREFIX)objdump -S $^ > $@
+	$(PREFIX)objdump -M no-aliases -S $^ > $@
 
 ref: $(REFS)
 
