@@ -452,12 +452,15 @@ object Decoder {
         }
 
         is("10000".asBits(5.W)) { // SLLI
-          result.op := Op("OP-IMM").ident
-          result.rd := rs1e
-          result.rs1 := rs1e
-          result.rs2 := DontCare
           result.imm := (0.U(1.W) ## ui(12) ## ui(6, 2)).asSInt
+          // funct7 = 0000000 | (shamt >> 5)
+          // rs2 = shamt[4:0]
+          result.funct7 := ui(12)
+          result.rs2 := ui(6, 2)
+          result.rs1 := rs1e
+          result.rd := rs1e
           result.funct3 := OP_FUNC("SLL")
+          result.op := Op("OP-IMM").ident
         }
         is("10001".asBits(5.W)) { // FLDSP
           fail()
@@ -481,12 +484,14 @@ object Decoder {
         is("10100".asBits(5.W)) { // J[AL]R/MV/ADD
           when(ui(12) === 0.U) {
             when(rs2e === 0.U) { // JR
-              result.op := Op("JALR").ident
-              result.rs1 := rs1e
-              result.rs2 := DontCare
-              result.rd := 0.U // Ignore result
               result.imm := 0.S
-              result.funct3 := DontCare
+
+              result.funct7 := 0.U
+              result.rs2 := 0.U
+              result.rs1 := rs1e
+              result.funct3 := 0.U
+              result.rd := 0.U // Ignore result
+              result.op := Op("JALR").ident
             }.otherwise { // MV, encode as or rd, x0, rs2, same as add rd, x0, rs2
               result.op := Op("OP").ident
               result.rd := rs1e
@@ -543,6 +548,7 @@ object Decoder {
         }
       }
 
+      // convert instr16 to instr32 and decode
       result.info := DecodeInfo.decode(
         Cat(
           result.funct7,
@@ -550,7 +556,8 @@ object Decoder {
           result.rs1,
           result.funct3,
           result.rd,
-          result.op
+          result.op,
+          3.U(2.W),
         )
       )
       result
