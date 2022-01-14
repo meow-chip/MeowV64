@@ -3,9 +3,13 @@ package meowv64.reg
 import chisel3._
 import chisel3.experimental.ChiselEnum
 import chisel3.util.log2Ceil
+import chisel3.util.BitPat
 
 object RegType extends ChiselEnum {
   val integer, float = Value
+
+  implicit def bitpat(op: RegType.Type): BitPat =
+    BitPat(op.litValue.U)
 }
 
 class RegReader(val WIDTH: Int = 64, val COUNT: Int = 32) extends Bundle {
