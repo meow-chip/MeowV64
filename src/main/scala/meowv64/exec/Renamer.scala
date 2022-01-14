@@ -110,7 +110,7 @@ class Renamer(implicit coredef: CoreDef) extends Module {
     }
   })
 
-  def readRegs(r: RegReader, reg: UInt, bankIdx: Int) = {
+  def readRegs(r: RegReader, reg: UInt, bankIdx: Int, readReg: Bool) = {
     r.addr := reg
 
     val reg2name = banks(bankIdx).reg2name
@@ -133,8 +133,8 @@ class Renamer(implicit coredef: CoreDef) extends Module {
       value := r.data
     }
 
-    // FIXME: do not hardcode integer bank as zero
-    when(reg === 0.U && (bankIdx == 0).B) {
+    // the instruction does not read this register
+    when(!readReg) {
       ready := true.B
       value := 0.U
     }
@@ -197,7 +197,12 @@ class Renamer(implicit coredef: CoreDef) extends Module {
 
       when(instr.instr.getRs1Type === ty) {
         val (rs1name, rs1ready, rs1val) =
-          readRegs(rr(idx)(0), instr.instr.getRs1Index, bankIdx)
+          readRegs(
+            rr(idx)(0),
+            instr.instr.getRs1Index,
+            bankIdx,
+            instr.instr.info.readRs1
+          )
         toExec.output(idx).rs1name := rs1name
         toExec.output(idx).rs1ready := rs1ready
         toExec.output(idx).rs1val := rs1val
@@ -205,7 +210,12 @@ class Renamer(implicit coredef: CoreDef) extends Module {
 
       when(instr.instr.getRs2Type === ty) {
         val (rs2name, rs2ready, rs2val) =
-          readRegs(rr(idx)(1), instr.instr.getRs2Index, bankIdx)
+          readRegs(
+            rr(idx)(1),
+            instr.instr.getRs2Index,
+            bankIdx,
+            instr.instr.info.readRs2
+          )
         toExec.output(idx).rs2name := rs2name
         toExec.output(idx).rs2ready := rs2ready
         toExec.output(idx).rs2val := rs2val

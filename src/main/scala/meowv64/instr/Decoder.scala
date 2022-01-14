@@ -692,79 +692,21 @@ class Instr extends Bundle {
       p"  F3:   0b${Binary(funct3)}"
   }
 
-  def getRdIndex() = {
-    val ret = WireDefault(rd)
-    // B-types and S-types don't have rd
-    switch(this.op) {
-      is(Decoder.Op("BRANCH").ident, Decoder.Op("STORE").ident) {
-        ret := 0.U
-      }
-    }
+  def getRdIndex() = Mux(info.writeRd, rd, 0.U)
 
-    ret
-  }
-
-  def getRdType() = {
-    WireInit(this.info.rdType)
-  }
+  def getRdType() = WireInit(this.info.rdType)
 
   def getRd() = RegIndex.create(getRdType(), getRdIndex())
 
-  def getRs1Index() = {
-    val ret = WireDefault(rs1)
-    // The only instructions that don't have RS1 is AUIPC/LUI and JAL (U and J type)
+  def getRs1Index() = Mux(info.readRs1, rs1, 0.U)
 
-    // TODO: investigate if SYSTEM instrs can have a rs1 field containing non-zero values?
-
-    switch(this.op) {
-      is(
-        Decoder.Op("LUI").ident,
-        Decoder.Op("AUIPC").ident,
-        Decoder.Op("JAL").ident
-      ) {
-        ret := 0.U
-      }
-    }
-
-    ret
-  }
-
-  def getRs1Type() = {
-    WireInit(this.info.rs1Type)
-  }
+  def getRs1Type() = WireInit(this.info.rs1Type)
 
   def getRs1() = RegIndex.create(getRs1Type(), getRs1Index())
 
-  def getRs2Index() = {
-    val ret = WireDefault(rs2)
-    switch(this.op) {
-      // U-type and J-type
-      is(
-        Decoder.Op("LUI").ident,
-        Decoder.Op("AUIPC").ident,
-        Decoder.Op("JAL").ident
-      ) {
-        ret := 0.U
-      }
+  def getRs2Index() = Mux(info.readRs2, rs2, 0.U)
 
-      // I-type
-      is(
-        Decoder.Op("LOAD").ident,
-        Decoder.Op("MISC-MEM").ident,
-        Decoder.Op("OP-IMM").ident,
-        Decoder.Op("OP-IMM-32").ident,
-        Decoder.Op("JALR").ident,
-        Decoder.Op("SYSTEM").ident
-      ) {
-        ret := 0.U
-      }
-    }
-    ret
-  }
-
-  def getRs2Type() = {
-    WireInit(this.info.rs2Type)
-  }
+  def getRs2Type() = WireInit(this.info.rs2Type)
 
   def getRs2() = RegIndex.create(getRs2Type(), getRs2Index())
 

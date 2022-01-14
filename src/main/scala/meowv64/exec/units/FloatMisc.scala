@@ -5,7 +5,6 @@ import chisel3.util._
 import hardfloat.CompareRecFN
 import hardfloat.recFNFromFN
 import meowv64.core.CoreDef
-import meowv64.core.ExType
 import meowv64.exec._
 import meowv64.instr.Decoder
 
