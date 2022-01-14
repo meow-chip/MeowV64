@@ -247,11 +247,15 @@ object Decoder {
 
       def fail() = {
         result.base := InstrType.RESERVED
-        result.rs1 := DontCare
-        result.rs2 := DontCare
-        result.rd := DontCare
-        result.imm := DontCare
-        result.funct3 := DontCare
+        result.imm := 0.S
+
+        // illegal instruction
+        result.funct7 := 0.U
+        result.rs2 := 0.U
+        result.rs1 := 0.U
+        result.rd := 0.U
+        result.funct3 := 0.U
+        result.op := 0.U
       }
 
       // Table 12.3 RVC opcode map
@@ -635,7 +639,7 @@ class Instr extends Bundle {
   val op = UInt(5.W)
   val base = InstrType()
 
-  // Immediates
+  // Immediate
   val imm = SInt(32.W)
 
   // Registers

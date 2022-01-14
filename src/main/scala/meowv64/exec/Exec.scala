@@ -694,63 +694,34 @@ object Exec {
     val ret = Wire(UInt(coredef.UNIT_COUNT.W))
     ret := 0.U
 
-    // FIXME: do not hardcode bitset
-    switch(instr.op) {
-      is(
-        // lui
-        Decoder.Op("LUI").ident,
-        // auipc
-        Decoder.Op("AUIPC").ident,
-        // jal
-        Decoder.Op("JAL").ident
-      ) {
+    // TODO: compute bitset from unit configuration
+    switch(instr.info.execUnit) {
+      is(ExecUnit.alu) {
+        ret := "b0011".U(coredef.UNIT_COUNT.W)
+      }
+      is(ExecUnit.branch) {
         ret := "b0001".U(coredef.UNIT_COUNT.W)
       }
-
-      is(
-        // jalr
-        Decoder.Op("JALR").ident,
-        // ecall, ebreak, csrrw, csrrs, csrrc, csrrwi, csrrsi, csrrci
-        Decoder.Op("SYSTEM").ident,
-        // beq, bne, blt, bge, bltu, bgeu
-        Decoder.Op("BRANCH").ident
-      ) {
+      is(ExecUnit.bypass) {
         ret := "b0001".U(coredef.UNIT_COUNT.W)
       }
-
-      is(
-        Decoder.Op("OP-IMM").ident,
-        Decoder.Op("OP-IMM-32").ident,
-        Decoder.Op("OP").ident,
-        Decoder.Op("OP-32").ident
-      ) {
-        when(instr.funct7 === Decoder.MULDIV_FUNCT7) {
-          ret := "b0010".U(coredef.UNIT_COUNT.W)
-        }.otherwise {
-          ret := "b0011".U(coredef.UNIT_COUNT.W)
-        }
+      is(ExecUnit.csr) {
+        ret := "b0001".U(coredef.UNIT_COUNT.W)
       }
-
-      is(
-        // lb, lh, lw, lbu, lhu
-        Decoder.Op("LOAD").ident,
-        // sb, sh, sw
-        Decoder.Op("STORE").ident,
-        // flw
-        Decoder.Op("LOAD-FP").ident,
-        // fsw
-        Decoder.Op("STORE-FP").ident,
-        Decoder.Op("MISC-MEM").ident,
-        Decoder.Op("AMO").ident
-      ) {
-        ret := "b1000".U(coredef.UNIT_COUNT.W)
+      is(ExecUnit.div) {
+        ret := "b0010".U(coredef.UNIT_COUNT.W)
       }
-
-      is(
-        // fadd, fsub, fmul, fdiv, fsqrt, etc
-        Decoder.Op("OP-FP").ident
-      ) {
+      is(ExecUnit.mul) {
+        ret := "b0010".U(coredef.UNIT_COUNT.W)
+      }
+      is(ExecUnit.fma) {
         ret := "b0100".U(coredef.UNIT_COUNT.W)
+      }
+      is(ExecUnit.floatMisc) {
+        ret := "b0100".U(coredef.UNIT_COUNT.W)
+      }
+      is(ExecUnit.lsu) {
+        ret := "b1000".U(coredef.UNIT_COUNT.W)
       }
     }
 

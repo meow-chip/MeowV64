@@ -185,6 +185,9 @@ object DecodeInfo {
       SRET -> List(Y, N, X, N, X, N, X, branch),
       MRET -> List(Y, N, X, N, X, N, X, branch),
 
+      // Interrupt-Management Instructions
+      WFI -> List(Y, N, X, N, X, N, X, branch),
+
       // Memory-Management Instructions
       SFENCE_VMA -> List(Y, N, X, Y, integer, Y, integer, branch)
     )
