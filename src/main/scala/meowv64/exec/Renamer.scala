@@ -97,13 +97,15 @@ class Renamer(implicit coredef: CoreDef) extends Module {
 
       // check if this instruction relies on previous instructions
       for (i <- (0 until idx)) {
-        val rd = toExec.input(i).instr.getRd
-        when(rs1.ty === rd.ty && rs1.index === rd.index) {
-          ret := false.B
-        }
+        when(toExec.input(i).instr.info.writeRd) {
+          val rd = toExec.input(i).instr.getRd
+          when(rs1.ty === rd.ty && rs1.index === rd.index) {
+            ret := false.B
+          }
 
-        when(rs2.ty === rd.ty && rs2.index === rd.index) {
-          ret := false.B
+          when(rs2.ty === rd.ty && rs2.index === rd.index) {
+            ret := false.B
+          }
         }
       }
       ret
@@ -228,7 +230,7 @@ class Renamer(implicit coredef: CoreDef) extends Module {
 
     when(idx.U < toExec.commit) {
       for (((ty, _), bank) <- coredef.REGISTERS_TYPES.zip(banks)) {
-        when(instr.instr.getRdType() === ty) {
+        when(instr.instr.getRdType() === ty && instr.instr.info.writeRd) {
           bank.reg2name(instr.instr.getRdIndex) := tags(idx)
           bank.regMapped(instr.instr.getRdIndex) := true.B
         }
