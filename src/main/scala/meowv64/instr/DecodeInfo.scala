@@ -192,6 +192,26 @@ object DecodeInfo {
       SFENCE_VMA -> List(Y, N, X, Y, integer, Y, integer, branch)
     )
 
+  def assign(inst: BitPat) = {
+    val res   = Wire(new DecodeInfo)
+    val entry =
+      table.find(e => e._1.mask == inst.mask && e._1.value == inst.value).get
+    for ((signal, value) <- res.signals.zip(entry._2)) {
+      signal := value.value.U.asTypeOf(signal)
+    }
+
+    res
+  }
+
+  def invalid = {
+    val res = Wire(new DecodeInfo)
+    for ((signal, value) <- res.signals.zip(default)) {
+      signal := value.value.U.asTypeOf(signal)
+    }
+
+    res
+  }
+
   def decode(inst: UInt) = {
     val res = Wire(new DecodeInfo)
 

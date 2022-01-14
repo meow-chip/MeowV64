@@ -246,6 +246,7 @@ object Decoder {
       // RD position will differ by instr
 
       def fail() = {
+        result.info := DecodeInfo.invalid
         result.base := InstrType.RESERVED
         result.imm := 0.S
 
@@ -263,10 +264,11 @@ object Decoder {
         is("00000".asBits(5.W)) { // ADDI4SPN
           result.op := Op("OP-IMM").ident
           result.rd := rs2t
-          result.rs1 := 2.U
+          result.rs1 := 2.U // sp
           result.rs2 := DontCare
           uimm := ui(10, 7) ## ui(12, 11) ## ui(5) ## ui(6) ## 0.U(2.W)
           result.funct3 := OP_FUNC("ADD/SUB") // ADDI
+          result.info := DecodeInfo.assign(Instructions.ADDI)
         }
         is("00001".asBits(5.W)) { // FLD
           fail()
@@ -278,6 +280,7 @@ object Decoder {
           result.rd := rs2t
           uimm := ui(5) ## ui(12, 10) ## ui(6) ## 0.U(2.W)
           result.funct3 := MEM_WIDTH_FUNC("W")
+          result.info := DecodeInfo.assign(Instructions.LW)
         }
         is("00011".asBits(5.W)) { // LD
           result.op := Op("LOAD").ident
@@ -286,6 +289,7 @@ object Decoder {
           result.rd := rs2t
           uimm := ui(6, 5) ## ui(12, 10) ## 0.U(3.W)
           result.funct3 := MEM_WIDTH_FUNC("D")
+          result.info := DecodeInfo.assign(Instructions.LD)
         }
         is("00100".asBits(5.W)) { // Reserved
           fail()
@@ -300,6 +304,7 @@ object Decoder {
           result.rd := DontCare
           uimm := ui(5) ## ui(12, 10) ## ui(6) ## 0.U(2.W)
           result.funct3 := MEM_WIDTH_FUNC("W")
+          result.info := DecodeInfo.assign(Instructions.SW)
         }
         is("00111".asBits(5.W)) { // SD
           result.op := Op("STORE").ident
@@ -308,6 +313,7 @@ object Decoder {
           result.rd := DontCare
           uimm := ui(6, 5) ## ui(12, 10) ## 0.U(3.W)
           result.funct3 := MEM_WIDTH_FUNC("D")
+          result.info := DecodeInfo.assign(Instructions.SD)
         }
 
         is("01000".asBits(5.W)) { // ADDI
@@ -317,6 +323,7 @@ object Decoder {
           result.rs2 := DontCare
           result.imm := (ui(12) ## ui(6, 2)).asSInt
           result.funct3 := OP_FUNC("ADD/SUB") // Can only be ADDI
+          result.info := DecodeInfo.assign(Instructions.ADDI)
         }
         is("01001".asBits(5.W)) { // ADDIW
           result.op := Op("OP-IMM-32").ident
@@ -325,6 +332,7 @@ object Decoder {
           result.rs2 := DontCare
           result.imm := (ui(12) ## ui(6, 2)).asSInt
           result.funct3 := OP_FUNC("ADD/SUB") // Can only be ADDI
+          result.info := DecodeInfo.assign(Instructions.ADDIW)
         }
         is("01010".asBits(5.W)) { // LI, encode as ori rd, x0, imm
           result.op := Op("OP-IMM").ident
@@ -333,17 +341,19 @@ object Decoder {
           result.rs2 := DontCare
           result.imm := (ui(12) ## ui(6, 2)).asSInt
           result.funct3 := OP_FUNC("OR")
+          result.info := DecodeInfo.assign(Instructions.ORI)
         }
         is("01011".asBits(5.W)) { // LUI/ADDI16SP
           when(rs1e === 2.U) { // ADDI16SP
             result.op := Op("OP-IMM").ident
-            result.rd := 2.U
-            result.rs1 := 2.U
+            result.rd := 2.U // sp
+            result.rs1 := 2.U // sp
             result.rs2 := DontCare
             result.imm := (ui(12) ## ui(4, 3) ## ui(5) ## ui(2) ## ui(
               6
             )).asSInt << 4
             result.funct3 := OP_FUNC("ADD/SUB") // ADDI
+            result.info := DecodeInfo.assign(Instructions.ADDI)
           }.otherwise { // LUI
             result.op := Op("LUI").ident
             result.rd := rs1e
@@ -351,6 +361,7 @@ object Decoder {
             result.rs2 := DontCare
             result.imm := (ui(12) ## ui(6, 2)).asSInt << 12
             result.funct3 := DontCare
+            result.info := DecodeInfo.assign(Instructions.LUI)
           }
         }
         is("01100".asBits(5.W)) { // MISC-ALU
@@ -362,6 +373,11 @@ object Decoder {
             result.imm := (0.U(1.W) ## ui(12) ## ui(6, 2)).asSInt
             result.funct3 := OP_FUNC("SRL/SRA")
             result.funct7 := ui(11, 10) ## 0.U(5.W)
+            when(ui(10) === 0.U) {
+              result.info := DecodeInfo.assign(Instructions.SRLI)
+            } otherwise {
+              result.info := DecodeInfo.assign(Instructions.SRAI)
+            }
           }.elsewhen(ui(10) === 0.U) { // ANDI
             result.op := Op("OP-IMM").ident
             result.rs1 := rs1t
@@ -369,6 +385,7 @@ object Decoder {
             result.rd := rs1t
             result.imm := (ui(12) ## ui(6, 2)).asSInt
             result.funct3 := OP_FUNC("AND")
+            result.info := DecodeInfo.assign(Instructions.ANDI)
           }.otherwise { // OP MISC
             result.op := Op("OP").ident
             result.rs1 := rs1t
@@ -380,30 +397,36 @@ object Decoder {
               is("000".asBits(3.W)) { // SUB
                 result.funct3 := OP_FUNC("ADD/SUB")
                 result.funct7 := "0100000".asBits(7.W)
+                result.info := DecodeInfo.assign(Instructions.SUB)
               }
 
               is("001".asBits(3.W)) { // XOR
                 result.funct3 := OP_FUNC("XOR")
+                result.info := DecodeInfo.assign(Instructions.XOR)
               }
 
               is("010".asBits(3.W)) { // OR
                 result.funct3 := OP_FUNC("OR")
+                result.info := DecodeInfo.assign(Instructions.OR)
               }
 
               is("011".asBits(3.W)) { // AND
                 result.funct3 := OP_FUNC("AND")
+                result.info := DecodeInfo.assign(Instructions.AND)
               }
 
               is("100".asBits(3.W)) { // SUBW
                 result.op := Op("OP-32").ident
                 result.funct3 := OP_FUNC("ADD/SUB")
                 result.funct7 := "0100000".asBits(7.W)
+                result.info := DecodeInfo.assign(Instructions.SUBW)
               }
 
               is("101".asBits(3.W)) { // ADDW
                 result.op := Op("OP-32").ident
                 result.funct3 := OP_FUNC("ADD/SUB")
                 result.funct7 := "0000000".asBits(7.W)
+                result.info := DecodeInfo.assign(Instructions.ADDW)
               }
 
               is("110".asBits(3.W)) { // Reserved
@@ -427,6 +450,7 @@ object Decoder {
             ) ## ui(5, 3) ## 0.U(1.W)
           ).asSInt
           result.funct3 := DontCare // TODO: trigger error on treadle when reading DontCare
+          result.info := DecodeInfo.assign(Instructions.JAL)
         }
         is("01110".asBits(5.W)) { // BEQZ
           result.op := Op("BRANCH").ident
@@ -438,6 +462,7 @@ object Decoder {
             3
           ) ## 0.U(1.W)).asSInt
           result.funct3 := BRANCH_FUNC("BEQ")
+          result.info := DecodeInfo.assign(Instructions.BEQ)
         }
         is("01111".asBits(5.W)) { // BNEZ
           result.op := Op("BRANCH").ident
@@ -449,18 +474,16 @@ object Decoder {
             3
           ) ## 0.U(1.W)).asSInt
           result.funct3 := BRANCH_FUNC("BNE")
+          result.info := DecodeInfo.assign(Instructions.BNE)
         }
 
         is("10000".asBits(5.W)) { // SLLI
           result.imm := (0.U(1.W) ## ui(12) ## ui(6, 2)).asSInt
-          // funct7 = 0000000 | (shamt >> 5)
-          // rs2 = shamt[4:0]
-          result.funct7 := ui(12)
-          result.rs2 := ui(6, 2)
           result.rs1 := rs1e
           result.rd := rs1e
           result.funct3 := OP_FUNC("SLL")
           result.op := Op("OP-IMM").ident
+          result.info := DecodeInfo.assign(Instructions.SLLI)
         }
         is("10001".asBits(5.W)) { // FLDSP
           fail()
@@ -472,6 +495,7 @@ object Decoder {
           result.rd := rs1e
           uimm := ui(3, 2) ## ui(12) ## ui(6, 4) ## 0.U(2.W)
           result.funct3 := MEM_WIDTH_FUNC("W")
+          result.info := DecodeInfo.assign(Instructions.LW)
         }
         is("10011".asBits(5.W)) { // LDSP
           result.op := Op("LOAD").ident
@@ -480,18 +504,18 @@ object Decoder {
           result.rd := rs1e
           uimm := ui(4, 2) ## ui(12) ## ui(6, 5) ## 0.U(3.W)
           result.funct3 := MEM_WIDTH_FUNC("D")
+          result.info := DecodeInfo.assign(Instructions.LD)
         }
         is("10100".asBits(5.W)) { // J[AL]R/MV/ADD
           when(ui(12) === 0.U) {
             when(rs2e === 0.U) { // JR
               result.imm := 0.S
 
-              result.funct7 := 0.U
               result.rs2 := 0.U
               result.rs1 := rs1e
-              result.funct3 := 0.U
               result.rd := 0.U // Ignore result
               result.op := Op("JALR").ident
+              result.info := DecodeInfo.assign(Instructions.JALR)
             }.otherwise { // MV, encode as or rd, x0, rs2, same as add rd, x0, rs2
               result.op := Op("OP").ident
               result.rd := rs1e
@@ -499,6 +523,7 @@ object Decoder {
               result.rs2 := rs2e
               result.imm := DontCare
               result.funct3 := OP_FUNC("OR")
+              result.info := DecodeInfo.assign(Instructions.OR)
             }
           }.otherwise {
             when(rs2e === 0.U && rs1e === 0.U) { // EBREAK
@@ -509,6 +534,7 @@ object Decoder {
               result.imm := 0.S
               result.funct3 := 0.U
               result.funct7 := 0.U
+              result.info := DecodeInfo.assign(Instructions.EBREAK)
             }.elsewhen(rs2e === 0.U) { // JALR
               result.op := Op("JALR").ident
               result.rs1 := rs1e
@@ -516,6 +542,7 @@ object Decoder {
               result.rd := 1.U // x1 = ra
               result.imm := 0.S
               result.funct3 := DontCare
+              result.info := DecodeInfo.assign(Instructions.JALR)
             }.otherwise { // ADD
               result.op := Op("OP").ident
               result.rs1 := rs1e
@@ -524,6 +551,7 @@ object Decoder {
               result.imm := DontCare
               result.funct3 := OP_FUNC("ADD/SUB")
               result.funct7 := "0000000".asBits(7.W)
+              result.info := DecodeInfo.assign(Instructions.ADD)
             }
           }
         }
@@ -537,6 +565,7 @@ object Decoder {
           result.rd := DontCare
           uimm := ui(8, 7) ## ui(12, 9) ## 0.U(2.W)
           result.funct3 := MEM_WIDTH_FUNC("W")
+          result.info := DecodeInfo.assign(Instructions.SW)
         }
         is("10111".asBits(5.W)) { // SDSP
           result.op := Op("STORE").ident
@@ -545,21 +574,10 @@ object Decoder {
           result.rd := DontCare
           uimm := ui(9, 7) ## ui(12, 10) ## 0.U(3.W)
           result.funct3 := MEM_WIDTH_FUNC("D")
+          result.info := DecodeInfo.assign(Instructions.SD)
         }
       }
 
-      // convert instr16 to instr32 and decode
-      result.info := DecodeInfo.decode(
-        Cat(
-          result.funct7,
-          result.rs2,
-          result.rs1,
-          result.funct3,
-          result.rd,
-          result.op,
-          3.U(2.W),
-        )
-      )
       result
     }
 
