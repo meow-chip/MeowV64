@@ -231,6 +231,7 @@ object Decoder {
       val ui = self.asUInt
       result.raw := ui
 
+      // 0-7 -> 8-15
       val rs1t = ui(9, 7) + 8.U
       val rs2t = ui(4, 2) + 8.U
 
@@ -253,6 +254,7 @@ object Decoder {
         result.funct3 := DontCare
       }
 
+      // Table 12.3 RVC opcode map
       switch(ui(1, 0) ## ui(15, 13)) {
         is("00000".asBits(5.W)) { // ADDI4SPN
           result.op := Op("OP-IMM").ident
