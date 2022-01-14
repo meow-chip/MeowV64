@@ -9,7 +9,7 @@ object RegType extends ChiselEnum {
   val integer, float = Value
 
   implicit def bitpat(op: RegType.Type): BitPat =
-    BitPat(op.litValue.U)
+    BitPat(op.litValue.U(getWidth.W))
 }
 
 class RegReader(val WIDTH: Int = 64, val COUNT: Int = 32) extends Bundle {
