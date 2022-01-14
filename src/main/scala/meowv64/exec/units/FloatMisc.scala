@@ -14,7 +14,6 @@ class IntFloatExt(implicit val coredef: CoreDef) extends Bundle {
 
   val updateFFlags = Bool()
   val fflags = UInt(5.W)
-  val illegal = Bool()
 }
 
 /** Handles instructions: FMV.X.D, FMV.D.X, FCLASS.D, FEQ.D, FLT.D, FLE.D
@@ -28,7 +27,6 @@ class FloatMisc(override implicit val coredef: CoreDef)
   ): (IntFloatExt, Bool) = {
     val ext = Wire(new IntFloatExt)
     ext.res := 0.U
-    ext.illegal := false.B
     ext.updateFFlags := false.B
     ext.fflags := 0.U
 
@@ -105,14 +103,10 @@ class FloatMisc(override implicit val coredef: CoreDef)
       }.elsewhen(pipe.instr.instr.funct3 === 0.U) {
         // FLE
         ext.res := cmp.io.lt || cmp.io.eq
-      }.otherwise {
-        ext.illegal := true.B
       }
 
       ext.updateFFlags := true.B
       ext.fflags := cmp.io.exceptionFlags
-    } otherwise {
-      ext.illegal := true.B
     }
 
     (ext, false.B)
@@ -121,17 +115,12 @@ class FloatMisc(override implicit val coredef: CoreDef)
   def finalize(pipe: PipeInstr, ext: IntFloatExt): RetireInfo = {
     val info = WireDefault(RetireInfo.vacant)
 
-    when(ext.illegal) {
-      info.branch.ex(ExType.ILLEGAL_INSTR)
-      info.wb := DontCare
-    } otherwise {
-      // result
-      info.wb := ext.res.asUInt
+    // result
+    info.wb := ext.res.asUInt
 
-      // fflags
-      info.updateFFlags := ext.updateFFlags
-      info.fflags := ext.fflags
-    }
+    // fflags
+    info.updateFFlags := ext.updateFFlags
+    info.fflags := ext.fflags
 
     info
   }

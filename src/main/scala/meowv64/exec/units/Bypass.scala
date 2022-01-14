@@ -11,7 +11,7 @@ import meowv64.instr.FetchEx
 
 class BypassExt(implicit val coredef: CoreDef) extends Bundle {
   val acc = UInt(coredef.XLEN.W)
-  val inval = Bool()
+  val illegal = Bool()
 }
 
 class Bypass(override implicit val coredef: CoreDef)
@@ -23,26 +23,20 @@ class Bypass(override implicit val coredef: CoreDef)
   ): (BypassExt, chisel3.Bool) = {
     val ext = Wire(new BypassExt)
     ext.acc := DontCare
-    ext.inval := true.B
+    ext.illegal := ~pipe.instr.instr.info.legal
 
     switch(pipe.instr.instr.op) {
       is(Decoder.Op("LUI").ident) {
         val extended = Wire(SInt(coredef.XLEN.W))
         extended := pipe.instr.instr.imm
         ext.acc := extended.asUInt
-        ext.inval := false.B
       }
 
       is(Decoder.Op("AUIPC").ident) {
         val result = Wire(SInt(coredef.XLEN.W))
         result := pipe.instr.instr.imm + pipe.instr.addr.asSInt
         ext.acc := result.asUInt
-        ext.inval := false.B
         // printf(p"AUIPC Written: ${Hexadecimal(result)}\n")
-      }
-
-      is(Decoder.Op("JAL").ident) {
-        ext.inval := false.B
       }
     }
 
@@ -62,7 +56,7 @@ class Bypass(override implicit val coredef: CoreDef)
     }.elsewhen(pipe.instr.fetchEx === FetchEx.invalAddr) {
       info.branch.ex(ExType.INSTR_ACCESS_FAULT)
       info.wb := ifAddr
-    }.elsewhen(ext.inval) {
+    }.elsewhen(ext.illegal) {
       info.branch.ex(ExType.ILLEGAL_INSTR)
       info.wb := 0.U
     }.elsewhen(pipe.instr.instr.op === Decoder.Op("JAL").ident) {

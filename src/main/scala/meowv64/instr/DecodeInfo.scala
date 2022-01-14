@@ -174,6 +174,9 @@ object DecodeInfo {
       FADD_D   -> List(Y, Y, float, Y, float, Y, float, fma),
       FSUB_D   -> List(Y, Y, float, Y, float, Y, float, fma),
       FMUL_D   -> List(Y, Y, float, Y, float, Y, float, fma),
+      FEQ_D    -> List(Y, Y, integer, Y, float, Y, float, floatMisc),
+      FLT_D    -> List(Y, Y, integer, Y, float, Y, float, floatMisc),
+      FLE_D    -> List(Y, Y, integer, Y, float, Y, float, floatMisc),
       FCLASS_D -> List(Y, Y, integer, Y, float, Y, float, floatMisc),
 
       // RV64D Standard Extension (in addition to RV32D)
