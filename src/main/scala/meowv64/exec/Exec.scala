@@ -130,31 +130,11 @@ class Exec(implicit val coredef: CoreDef) extends Module {
           Module(new Bypass).suggestName("Bypass")
         ),
         instr => {
-          val gotoALU = (
-            instr.op === Decoder.Op("OP").ident ||
-              instr.op === Decoder.Op("OP-IMM").ident ||
-              instr.op === Decoder.Op("OP-32").ident ||
-              instr.op === Decoder.Op("OP-IMM-32").ident
-          )
-
-          val gotoBr = (
-            instr.op === Decoder.Op("JALR").ident ||
-              instr.op === Decoder.Op("BRANCH").ident ||
-              instr.op === Decoder
-                .Op("SYSTEM")
-                .ident && instr.funct3 === Decoder.SYSTEM_FUNC("PRIV")
-          )
-
-          val gotoCSR = (
-            instr.op === Decoder.Op("SYSTEM").ident && instr.funct3 =/= Decoder
-              .SYSTEM_FUNC("PRIV")
-          )
-
           Seq(
-            gotoALU,
-            gotoBr,
-            gotoCSR,
-            !gotoALU && !gotoBr && !gotoCSR
+            instr.info.execUnit === ExecUnit.alu,
+            instr.info.execUnit === ExecUnit.branch,
+            instr.info.execUnit === ExecUnit.csr,
+            instr.info.execUnit === ExecUnit.bypass
           )
         },
         Some(3),
@@ -170,23 +150,11 @@ class Exec(implicit val coredef: CoreDef) extends Module {
           Module(new Div(16)).suggestName("Div")
         ),
         instr => {
-          val regALU = (
-            instr.op === Decoder.Op("OP").ident ||
-              instr.op === Decoder.Op("OP-32").ident
+          Seq(
+            instr.info.execUnit === ExecUnit.alu,
+            instr.info.execUnit === ExecUnit.mul,
+            instr.info.execUnit === ExecUnit.div
           )
-          val isMul = (
-            regALU &&
-              instr.funct7 === Decoder.MULDIV_FUNCT7 && (
-                instr.funct3 === Decoder.MULDIV_FUNC("MUL") ||
-                  instr.funct3 === Decoder.MULDIV_FUNC("MULH") ||
-                  instr.funct3 === Decoder.MULDIV_FUNC("MULHSU") ||
-                  instr.funct3 === Decoder.MULDIV_FUNC("MULHU")
-              )
-          )
-
-          val isDiv = regALU && instr.funct7 === Decoder.MULDIV_FUNCT7 && !isMul
-
-          Seq(!isMul && !isDiv, isMul, isDiv)
         },
         hasPipe = false
       )
@@ -199,21 +167,10 @@ class Exec(implicit val coredef: CoreDef) extends Module {
           Module(new FloatMisc).suggestName("FloatMisc")
         ),
         instr => {
-          val gotoFMA = (
-            instr.op === Decoder.Op("OP-FP").ident &&
-              (instr.funct5 === Decoder.FP_FUNC(
-                "FADD"
-              ) || instr.funct5 === Decoder.FP_FUNC("FSUB")
-                || instr.funct5 === Decoder.FP_FUNC("FMUL"))
+          Seq(
+            instr.info.execUnit === ExecUnit.fma,
+            instr.info.execUnit === ExecUnit.floatMisc
           )
-          val gotoIntFloat = (
-            instr.op === Decoder.Op("OP-FP").ident &&
-              (instr.funct5 === Decoder.FP_FUNC("FMV.X.D") ||
-                instr.funct5 === Decoder.FP_FUNC("FMV.D.X") ||
-                instr.funct5 === Decoder.FP_FUNC("FCLASS") ||
-                instr.funct5 === Decoder.FP_FUNC("FCMP"))
-          )
-          Seq(gotoFMA, gotoIntFloat)
         },
         hasPipe = true
       )

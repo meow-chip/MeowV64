@@ -179,7 +179,15 @@ object DecodeInfo {
 
       // RV64D Standard Extension (in addition to RV32D)
       FMV_X_D -> List(Y, Y, integer, Y, float, N, X, floatMisc),
-      FMV_D_X -> List(Y, Y, float, Y, integer, N, X, floatMisc)
+      FMV_D_X -> List(Y, Y, float, Y, integer, N, X, floatMisc),
+
+      // Trap-Return Instructions
+      URET -> List(Y, N, X, N, X, N, X, branch),
+      SRET -> List(Y, N, X, N, X, N, X, branch),
+      MRET -> List(Y, N, X, N, X, N, X, branch),
+
+      // Memory-Management Instructions
+      SFENCE_VMA -> List(Y, N, X, Y, integer, Y, integer, branch)
     )
 
   def decode(inst: UInt) = {
@@ -393,4 +401,16 @@ object Instructions {
   val FCVT_D_L  = BitPat("b110100100010?????????????1010011")
   val FCVT_D_LU = BitPat("b110100100011?????????????1010011")
   val FMV_D_X   = BitPat("b111100100000?????000?????1010011")
+
+  // Privileged Spec
+  // Trap-Return Instructions
+  val URET = BitPat("b00000000001000000000000001110011")
+  val SRET = BitPat("b00010000001000000000000001110011")
+  val MRET = BitPat("b00110000001000000000000001110011")
+
+  // Interrupt-Management Instructions
+  val WFI = BitPat("b00010000010100000000000001110011")
+
+  // Memory-Management Instructions
+  val SFENCE_VMA = BitPat("b0001001??????????000000001110011")
 }
