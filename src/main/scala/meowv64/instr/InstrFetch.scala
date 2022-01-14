@@ -346,6 +346,8 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
         // force predict branch to be taken
         decoded(i).forcePred := true.B
       }
+    }.otherwise {
+      decoded(i).pred.valid := false.B
     }
 
     decoded(i).predTarget := (decoded(i).instr.imm +% decoded(i).addr.asSInt())
