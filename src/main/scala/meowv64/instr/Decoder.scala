@@ -162,7 +162,10 @@ object Decoder {
     "FADD" -> "00000",
     "FSUB" -> "00001",
     "FMUL" -> "00010",
+    "FLOAT2FLOAT" -> "01000",
     "FCMP" -> "10100",
+    "FLOAT2INT" -> "11000",
+    "INT2FLOAT" -> "11010",
     "FMV.X.D" -> "11100",
     "FCLASS" -> "11100",
     "FMV.D.X" -> "11110"

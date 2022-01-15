@@ -168,20 +168,34 @@ object DecodeInfo {
       AMOMINU_D -> List(Y, Y, integer, Y, integer, Y, integer, lsu),
       AMOMAXU_D -> List(Y, Y, integer, Y, integer, Y, integer, lsu),
 
+      // RV32F Standard Extension
+      FLW -> List(Y, Y, float, Y, integer, N, X, lsu),
+      FSW -> List(Y, N, X, Y, integer, Y, float, lsu),
+
       // RV32D Standard Extension
-      FLD      -> List(Y, Y, float, Y, integer, N, X, lsu),
-      FSD      -> List(Y, N, X, Y, integer, Y, float, lsu),
-      FADD_D   -> List(Y, Y, float, Y, float, Y, float, fma),
-      FSUB_D   -> List(Y, Y, float, Y, float, Y, float, fma),
-      FMUL_D   -> List(Y, Y, float, Y, float, Y, float, fma),
-      FEQ_D    -> List(Y, Y, integer, Y, float, Y, float, floatMisc),
-      FLT_D    -> List(Y, Y, integer, Y, float, Y, float, floatMisc),
-      FLE_D    -> List(Y, Y, integer, Y, float, Y, float, floatMisc),
-      FCLASS_D -> List(Y, Y, integer, Y, float, Y, float, floatMisc),
+      FLD       -> List(Y, Y, float, Y, integer, N, X, lsu),
+      FSD       -> List(Y, N, X, Y, integer, Y, float, lsu),
+      FADD_D    -> List(Y, Y, float, Y, float, Y, float, fma),
+      FSUB_D    -> List(Y, Y, float, Y, float, Y, float, fma),
+      FMUL_D    -> List(Y, Y, float, Y, float, Y, float, fma),
+      FCVT_S_D  -> List(Y, Y, float, Y, float, N, X, floatMisc),
+      FCVT_D_S  -> List(Y, Y, float, Y, float, N, X, floatMisc),
+      FEQ_D     -> List(Y, Y, integer, Y, float, Y, float, floatMisc),
+      FLT_D     -> List(Y, Y, integer, Y, float, Y, float, floatMisc),
+      FLE_D     -> List(Y, Y, integer, Y, float, Y, float, floatMisc),
+      FCLASS_D  -> List(Y, Y, integer, Y, float, Y, float, floatMisc),
+      FCVT_W_D  -> List(Y, Y, integer, Y, float, N, X, floatMisc),
+      FCVT_WU_D -> List(Y, Y, integer, Y, float, N, X, floatMisc),
+      FCVT_D_W  -> List(Y, Y, float, Y, integer, N, X, floatMisc),
+      FCVT_D_WU -> List(Y, Y, float, Y, integer, N, X, floatMisc),
 
       // RV64D Standard Extension (in addition to RV32D)
-      FMV_X_D -> List(Y, Y, integer, Y, float, N, X, floatMisc),
-      FMV_D_X -> List(Y, Y, float, Y, integer, N, X, floatMisc),
+      FCVT_L_D  -> List(Y, Y, integer, Y, float, N, X, floatMisc),
+      FCVT_LU_D -> List(Y, Y, integer, Y, float, N, X, floatMisc),
+      FMV_X_D   -> List(Y, Y, integer, Y, float, N, X, floatMisc),
+      FCVT_D_L  -> List(Y, Y, float, Y, integer, N, X, floatMisc),
+      FCVT_D_LU -> List(Y, Y, float, Y, integer, N, X, floatMisc),
+      FMV_D_X   -> List(Y, Y, float, Y, integer, N, X, floatMisc),
 
       // Trap-Return Instructions
       URET -> List(Y, N, X, N, X, N, X, branch),
