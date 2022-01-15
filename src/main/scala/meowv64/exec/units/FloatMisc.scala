@@ -126,31 +126,47 @@ class FloatMisc(override implicit val coredef: CoreDef)
       )
     ) {
       // convert float to int
-      val convF2I = Module(new RecFNToIN(expWidth, sigWidth, coredef.XLEN))
-      convF2I.io.in := rs1valHF
-      convF2I.io.signedOut := false.B
-      convF2I.io.roundingMode := 0.U
 
-      when(pipe.instr.instr.rs2 === 0.U) {
-        // FCVT.W.D
-        convF2I.io.signedOut := true.B
-      }.elsewhen(pipe.instr.instr.rs2 === 1.U) {
-        // FCVT.WU.D
-      }.elsewhen(pipe.instr.instr.rs2 === 2.U) {
-        // FCVT.L.D
-        convF2I.io.signedOut := true.B
-      }.elsewhen(pipe.instr.instr.rs2 === 3.U) {
-        // FCVT.LU.D
-      }.otherwise {
-        assert(false.B)
+      when(pipe.instr.instr.rs2(1) === 0.U) {
+        // FCVT.W.D/FCVT.WU.D
+        val convF2I = Module(new RecFNToIN(expWidth, sigWidth, 32))
+        convF2I.io.in := rs1valHF
+        convF2I.io.signedOut := false.B
+        convF2I.io.roundingMode := pipe.instr.instr.funct3
+
+        when(pipe.instr.instr.rs2 === 0.U) {
+          // FCVT.W.D
+          convF2I.io.signedOut := true.B
+        }
+
+        // sign extension
+        ext.res := Fill(32, convF2I.io.out(31)) ## convF2I.io.out
+        // see rocket chip
+        ext.fflags := Cat(
+          convF2I.io.intExceptionFlags(2, 1).orR,
+          0.U(3.W),
+          convF2I.io.intExceptionFlags(0)
+        )
+      } otherwise {
+        // FCVT.L.D/FCVT.LU.D
+        val convF2I = Module(new RecFNToIN(expWidth, sigWidth, coredef.XLEN))
+        convF2I.io.in := rs1valHF
+        convF2I.io.signedOut := false.B
+        convF2I.io.roundingMode := pipe.instr.instr.funct3
+
+        when(pipe.instr.instr.rs2 === 2.U) {
+          // FCVT.L.D
+          convF2I.io.signedOut := true.B
+        }
+        ext.res := convF2I.io.out
+        // see rocket chip
+        ext.fflags := Cat(
+          convF2I.io.intExceptionFlags(2, 1).orR,
+          0.U(3.W),
+          convF2I.io.intExceptionFlags(0)
+        )
       }
-      ext.res := convF2I.io.out
-      // see rocket chip
-      ext.fflags := Cat(
-        convF2I.io.intExceptionFlags(2, 1).orR,
-        0.U(3.W),
-        convF2I.io.intExceptionFlags(0)
-      )
+
       ext.updateFFlags := true.B
     }.elsewhen(
       pipe.instr.instr.funct5 === Decoder.FP_FUNC(
