@@ -3,6 +3,7 @@ package meowv64.core
 import chisel3.util.log2Ceil
 import meowv64.cache._
 import meowv64.reg.RegType
+import meowv64.instr.ExecUnitType
 
 abstract class CoreDef {
   outer =>
@@ -27,7 +28,33 @@ abstract class CoreDef {
     * reserving name 0 for reg 0
     */
   val INFLIGHT_INSTR_LIMIT = 8
-  val UNIT_COUNT: Int = 4
+
+  /** Execution units
+    */
+  val EXECUTION_UNITS: Seq[Seq[ExecUnitType.Type]] = Seq(
+    // port 1: ALU + Branch + CSR + Bypass
+    Seq(
+      ExecUnitType.alu,
+      ExecUnitType.branch,
+      ExecUnitType.csr,
+      ExecUnitType.bypass
+    ),
+    // port 2: ALU + Mul + Div
+    Seq(
+      ExecUnitType.alu,
+      ExecUnitType.mul,
+      ExecUnitType.div
+    ),
+    // port 3: FMA + FloatMisc
+    Seq(
+      ExecUnitType.fma,
+      ExecUnitType.floatMisc
+    ),
+    // port 4: LSU
+    Seq(ExecUnitType.lsu)
+  )
+
+  val UNIT_COUNT: Int = EXECUTION_UNITS.length
   val RESERVATION_STATION_DEPTHS = Seq(
     4,
     2,

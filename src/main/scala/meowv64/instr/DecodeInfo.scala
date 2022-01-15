@@ -8,12 +8,12 @@ import chisel3.util.experimental.decode.decoder
 import meowv64.reg.RegType
 
 // scalafmt: { align.preset = most }
-object ExecUnit extends ChiselEnum {
+object ExecUnitType extends ChiselEnum {
   val alu, branch, bypass, csr = Value
   val div, mul                 = Value
   val fma, floatMisc, lsu      = Value
 
-  implicit def bitpat(op: ExecUnit.Type): BitPat =
+  implicit def bitpat(op: ExecUnitType.Type): BitPat =
     BitPat(op.litValue.U(getWidth.W))
 }
 
@@ -36,7 +36,7 @@ class DecodeInfo extends Bundle {
   val rs2Type = RegType()
 
   // execution unit related
-  val execUnit = ExecUnit()
+  val execUnit = ExecUnitType()
 
   def signals = Seq(
     legal,
@@ -57,7 +57,7 @@ object DecodeInfo {
 
   import Instructions._
   import RegType._
-  import ExecUnit._
+  import ExecUnitType._
   val default: List[BitPat] =
     List(N, N, X, N, X, N, X, bypass)
   val table: Array[(BitPat, List[BitPat])] =

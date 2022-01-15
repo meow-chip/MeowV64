@@ -131,10 +131,10 @@ class Exec(implicit val coredef: CoreDef) extends Module {
         ),
         instr => {
           Seq(
-            instr.info.execUnit === ExecUnit.alu,
-            instr.info.execUnit === ExecUnit.branch,
-            instr.info.execUnit === ExecUnit.csr,
-            instr.info.execUnit === ExecUnit.bypass
+            instr.info.execUnit === ExecUnitType.alu,
+            instr.info.execUnit === ExecUnitType.branch,
+            instr.info.execUnit === ExecUnitType.csr,
+            instr.info.execUnit === ExecUnitType.bypass
           )
         },
         Some(3),
@@ -151,9 +151,9 @@ class Exec(implicit val coredef: CoreDef) extends Module {
         ),
         instr => {
           Seq(
-            instr.info.execUnit === ExecUnit.alu,
-            instr.info.execUnit === ExecUnit.mul,
-            instr.info.execUnit === ExecUnit.div
+            instr.info.execUnit === ExecUnitType.alu,
+            instr.info.execUnit === ExecUnitType.mul,
+            instr.info.execUnit === ExecUnitType.div
           )
         },
         hasPipe = false
@@ -168,8 +168,8 @@ class Exec(implicit val coredef: CoreDef) extends Module {
         ),
         instr => {
           Seq(
-            instr.info.execUnit === ExecUnit.fma,
-            instr.info.execUnit === ExecUnit.floatMisc
+            instr.info.execUnit === ExecUnitType.fma,
+            instr.info.execUnit === ExecUnitType.floatMisc
           )
         },
         hasPipe = true
@@ -696,31 +696,31 @@ object Exec {
 
     // TODO: compute bitset from unit configuration
     switch(instr.info.execUnit) {
-      is(ExecUnit.alu) {
+      is(ExecUnitType.alu) {
         ret := "b0011".U(coredef.UNIT_COUNT.W)
       }
-      is(ExecUnit.branch) {
+      is(ExecUnitType.branch) {
         ret := "b0001".U(coredef.UNIT_COUNT.W)
       }
-      is(ExecUnit.bypass) {
+      is(ExecUnitType.bypass) {
         ret := "b0001".U(coredef.UNIT_COUNT.W)
       }
-      is(ExecUnit.csr) {
+      is(ExecUnitType.csr) {
         ret := "b0001".U(coredef.UNIT_COUNT.W)
       }
-      is(ExecUnit.div) {
+      is(ExecUnitType.div) {
         ret := "b0010".U(coredef.UNIT_COUNT.W)
       }
-      is(ExecUnit.mul) {
+      is(ExecUnitType.mul) {
         ret := "b0010".U(coredef.UNIT_COUNT.W)
       }
-      is(ExecUnit.fma) {
+      is(ExecUnitType.fma) {
         ret := "b0100".U(coredef.UNIT_COUNT.W)
       }
-      is(ExecUnit.floatMisc) {
+      is(ExecUnitType.floatMisc) {
         ret := "b0100".U(coredef.UNIT_COUNT.W)
       }
-      is(ExecUnit.lsu) {
+      is(ExecUnitType.lsu) {
         ret := "b1000".U(coredef.UNIT_COUNT.W)
       }
     }
