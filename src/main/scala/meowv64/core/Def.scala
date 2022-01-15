@@ -39,12 +39,18 @@ abstract class CoreDef {
     */
   val L1_LINE_BYTES: Int = 16
 
+  /** Return address stack size
+    */
   val RAS_SIZE: Int = 8;
 
   /** List of (register type, width)
     */
-  def REGISTERS_TYPES: Seq[(RegType.Type, Int)] =
+  def REGISTER_TYPES: Seq[(RegType.Type, Int)] =
     Seq((RegType.integer, XLEN), (RegType.float, XLEN));
+
+  /** List of supported float types
+    */
+  def FLOAT_TYPES: Seq[FloatType] = Seq(FloatD, FloatS)
 
   object L1I
       extends {

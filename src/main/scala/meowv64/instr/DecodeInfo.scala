@@ -169,8 +169,10 @@ object DecodeInfo {
       AMOMAXU_D -> List(Y, Y, integer, Y, integer, Y, integer, lsu),
 
       // RV32F Standard Extension
-      FLW -> List(Y, Y, float, Y, integer, N, X, lsu),
-      FSW -> List(Y, N, X, Y, integer, Y, float, lsu),
+      FLW     -> List(Y, Y, float, Y, integer, N, X, lsu),
+      FSW     -> List(Y, N, X, Y, integer, Y, float, lsu),
+      FMV_X_W -> List(Y, Y, integer, Y, float, N, X, floatMisc),
+      FMV_W_X -> List(Y, Y, float, Y, integer, N, X, floatMisc),
 
       // RV32D Standard Extension
       FLD       -> List(Y, Y, float, Y, integer, N, X, lsu),

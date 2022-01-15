@@ -58,7 +58,7 @@ class Core(implicit val coredef: CoreDef) extends Module {
   val bpu = Module(new BPU)
   val ras = Module(new RAS)
   val exec = Module(new Exec)
-  val regFiles = for ((ty, width) <- coredef.REGISTERS_TYPES) yield {
+  val regFiles = for ((ty, width) <- coredef.REGISTER_TYPES) yield {
     val reg = Module(
       new RegFile(
         width,
@@ -86,7 +86,7 @@ class Core(implicit val coredef: CoreDef) extends Module {
   ras.toExec.realign.valid := false.B
 
   exec.toIF <> fetch.toExec
-  for (i <- 0 until coredef.REGISTERS_TYPES.length) {
+  for (i <- 0 until coredef.REGISTER_TYPES.length) {
     exec.toRF.ports(i).rr <> regFiles(i).io.reads
     exec.toRF.ports(i).rw <> regFiles(i).io.writes
   }

@@ -72,7 +72,7 @@ class Exec(implicit val coredef: CoreDef) extends Module {
   // for each register type
   val toRF = IO(new Bundle {
     val ports =
-      MixedVec(for ((ty, width) <- coredef.REGISTERS_TYPES) yield new Bundle {
+      MixedVec(for ((ty, width) <- coredef.REGISTER_TYPES) yield new Bundle {
         // two read ports per issued instruction
         val rr = Vec(coredef.ISSUE_NUM * 2, new RegReader(width))
         // one write port per retired instruction
@@ -92,7 +92,7 @@ class Exec(implicit val coredef: CoreDef) extends Module {
   val cdb = Wire(new CDB)
 
   val renamer = Module(new Renamer)
-  for (idx <- 0 until coredef.REGISTERS_TYPES.length) {
+  for (idx <- 0 until coredef.REGISTER_TYPES.length) {
     for (i <- (0 until coredef.ISSUE_NUM)) {
       renamer.ports(idx).rr(i)(0) <> toRF.ports(idx).rr(i * 2)
       renamer.ports(idx).rr(i)(1) <> toRF.ports(idx).rr(i * 2 + 1)
@@ -464,7 +464,7 @@ class Exec(implicit val coredef: CoreDef) extends Module {
   when(!retireNext.valid) {
     // First one invalid, cannot retire anything
     retireNum := 0.U
-    for (i <- 0 until coredef.REGISTERS_TYPES.length) {
+    for (i <- 0 until coredef.REGISTER_TYPES.length) {
       for (rwp <- toRF.ports(i).rw) {
         rwp.valid := false.B
         rwp.addr := 0.U
@@ -474,7 +474,7 @@ class Exec(implicit val coredef: CoreDef) extends Module {
     toCtrl.branch := BranchResult.empty
   }.elsewhen(retireNext.hasMem) {
     // Is memory operation, wait for memAccSucc
-    for (i <- 0 until coredef.REGISTERS_TYPES.length) {
+    for (i <- 0 until coredef.REGISTER_TYPES.length) {
       for (rwp <- toRF.ports(i).rw) {
         rwp.valid := false.B
         rwp.addr := 0.U
@@ -498,7 +498,7 @@ class Exec(implicit val coredef: CoreDef) extends Module {
         cdb.entries(coredef.UNIT_COUNT).data := memResult.data
         cdb.entries(coredef.UNIT_COUNT).valid := true.B
 
-        for (((ty, _), i) <- coredef.REGISTERS_TYPES.zipWithIndex) {
+        for (((ty, _), i) <- coredef.REGISTER_TYPES.zipWithIndex) {
           val rw = toRF.ports(i).rw
 
           when(inflights.reader.view(0).erd.ty === ty) {
@@ -518,7 +518,7 @@ class Exec(implicit val coredef: CoreDef) extends Module {
   }.elsewhen(toCtrl.int && toCtrl.intAck) {
     // Interrupts inbound, retires nothing
     retireNum := 0.U
-    for (i <- 0 until coredef.REGISTERS_TYPES.length) {
+    for (i <- 0 until coredef.REGISTER_TYPES.length) {
       for (rwp <- toRF.ports(i).rw) {
         rwp.valid := false.B
         rwp.addr := 0.U
@@ -563,7 +563,7 @@ class Exec(implicit val coredef: CoreDef) extends Module {
       }
 
       when(idx.U < retireNum) {
-        for (((ty, _), i) <- coredef.REGISTERS_TYPES.zipWithIndex) {
+        for (((ty, _), i) <- coredef.REGISTER_TYPES.zipWithIndex) {
           val rw = toRF.ports(i).rw
           when(inflight.erd.ty === ty) {
             rw(idx).valid := true.B
@@ -595,7 +595,7 @@ class Exec(implicit val coredef: CoreDef) extends Module {
           pendingBr && pendingBrTag === tag && pendingBrResult.ex =/= ExReq.none
         ) {
           // Don't write-back exceptioned instr
-          for (i <- 0 until coredef.REGISTERS_TYPES.length) {
+          for (i <- 0 until coredef.REGISTER_TYPES.length) {
             val rw = toRF.ports(i).rw
             rw(idx).valid := false.B
             rw(idx).addr := 0.U
@@ -612,7 +612,7 @@ class Exec(implicit val coredef: CoreDef) extends Module {
 
         info.valid := false.B
       }.otherwise {
-        for (i <- 0 until coredef.REGISTERS_TYPES.length) {
+        for (i <- 0 until coredef.REGISTER_TYPES.length) {
           val rw = toRF.ports(i).rw
           rw(idx).valid := false.B
           rw(idx).addr := 0.U
