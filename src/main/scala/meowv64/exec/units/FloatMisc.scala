@@ -11,6 +11,7 @@ import hardfloat.RecFNToIN
 import hardfloat.INToRecFN
 import hardfloat.fNFromRecFN
 import hardfloat.RecFNToRecFN
+import meowv64.core.FloatD
 
 class IntFloatExt(implicit val coredef: CoreDef) extends Bundle {
   val res = UInt(coredef.XLEN.W)
@@ -264,30 +265,46 @@ class FloatMisc(override implicit val coredef: CoreDef)
       )
     ) {
       // convert int to float
-      val convI2F = Module(new INToRecFN(coredef.XLEN, expWidth, sigWidth))
-      convI2F.io.in := pipe.rs1val
-      convI2F.io.signedIn := false.B
-      convI2F.io.roundingMode := 0.U
-      convI2F.io.detectTininess := false.B
+      // int32 is a subset of int64
+      // so we convert int32 to int64 first
+      // and then convert to float32/float64
+      for (float <- coredef.FLOAT_TYPES) {
+        when(pipe.instr.instr.fmt === float.fmt) {
+          val convI2F =
+            Module(new INToRecFN(coredef.XLEN, float.exp, float.sig))
+          convI2F.suggestName(s"convI2F_${float.name}")
+          convI2F.io.signedIn := false.B
+          convI2F.io.roundingMode := 0.U
+          convI2F.io.detectTininess := false.B
 
-      when(pipe.instr.instr.rs2 === 0.U) {
-        // FCVT.D.W
-        convI2F.io.signedIn := true.B
-      }.elsewhen(pipe.instr.instr.rs2 === 1.U) {
-        // FCVT.D.WU
-        // clip to 32 bit
-        convI2F.io.in := pipe.rs1val(31, 0)
-      }.elsewhen(pipe.instr.instr.rs2 === 2.U) {
-        // FCVT.D.L
-        convI2F.io.signedIn := true.B
-      }.elsewhen(pipe.instr.instr.rs2 === 3.U) {
-        // FCVT.D.LU
-      }.otherwise {
-        assert(false.B)
+          convI2F.io.in := pipe.rs1val
+          when(pipe.instr.instr.rs2 === 0.U) {
+            // FCVT.D.W/FCVT.S.W
+            // convert 32-bit int to 32/64-bit float
+            convI2F.io.signedIn := true.B
+            convI2F.io.in := Fill(32, pipe.rs1val(31)) ## pipe.rs1val(31, 0)
+          }.elsewhen(pipe.instr.instr.rs2 === 1.U) {
+            // FCVT.D.WU/FCVT.S.WU
+            // convert 32-bit uint to 32/64-bit float
+            convI2F.io.in := pipe.rs1val(31, 0)
+          }.elsewhen(pipe.instr.instr.rs2 === 2.U) {
+            // FCVT.D.L/FCVT.S.L
+            // convert 64-bit int to 32/64-bit float
+            convI2F.io.signedIn := true.B
+          }.elsewhen(pipe.instr.instr.rs2 === 3.U) {
+            // FCVT.D.LU/FCVT.S.LU
+            // convert 64-bit uint to 32/64-bit float
+          }.otherwise {
+            assert(false.B)
+          }
+          ext.res := float.box(
+            float.fromHardfloat(convI2F.io.out),
+            coredef.XLEN
+          )
+          ext.fflags := convI2F.io.exceptionFlags
+          ext.updateFFlags := true.B
+        }
       }
-      ext.res := fNFromRecFN(expWidth, sigWidth, convI2F.io.out)
-      ext.fflags := convI2F.io.exceptionFlags
-      ext.updateFFlags := true.B
     }.elsewhen(
       pipe.instr.instr.funct5 === Decoder.FP_FUNC(
         "FLOAT2FLOAT"

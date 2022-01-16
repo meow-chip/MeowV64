@@ -176,19 +176,30 @@ object DecodeInfo {
       AMOMAXU_D -> List(Y, Y, integer, Y, integer, Y, integer, N, X, lsu),
 
       // RV32F Standard Extension
-      FLW      -> List(Y, Y, float, Y, integer, N, X, N, X, lsu),
-      FSW      -> List(Y, N, X, Y, integer, Y, float, N, X, lsu),
-      FADD_S   -> List(Y, Y, float, Y, float, Y, float, N, X, fma),
-      FSUB_S   -> List(Y, Y, float, Y, float, Y, float, N, X, fma),
-      FMUL_S   -> List(Y, Y, float, Y, float, Y, float, N, X, fma),
-      FSGNJ_S  -> List(Y, Y, float, Y, float, Y, float, N, X, floatMisc),
-      FSGNJN_S -> List(Y, Y, float, Y, float, Y, float, N, X, floatMisc),
-      FSGNJX_S -> List(Y, Y, float, Y, float, Y, float, N, X, floatMisc),
-      FEQ_S    -> List(Y, Y, integer, Y, float, Y, float, N, X, floatMisc),
-      FLT_S    -> List(Y, Y, integer, Y, float, Y, float, N, X, floatMisc),
-      FLE_S    -> List(Y, Y, integer, Y, float, Y, float, N, X, floatMisc),
-      FMV_X_W  -> List(Y, Y, integer, Y, float, N, X, N, X, floatMisc),
-      FMV_W_X  -> List(Y, Y, float, Y, integer, N, X, N, X, floatMisc),
+      FLW       -> List(Y, Y, float, Y, integer, N, X, N, X, lsu),
+      FSW       -> List(Y, N, X, Y, integer, Y, float, N, X, lsu),
+      FADD_S    -> List(Y, Y, float, Y, float, Y, float, N, X, fma),
+      FSUB_S    -> List(Y, Y, float, Y, float, Y, float, N, X, fma),
+      FMUL_S    -> List(Y, Y, float, Y, float, Y, float, N, X, fma),
+      FSGNJ_S   -> List(Y, Y, float, Y, float, Y, float, N, X, floatMisc),
+      FSGNJN_S  -> List(Y, Y, float, Y, float, Y, float, N, X, floatMisc),
+      FSGNJX_S  -> List(Y, Y, float, Y, float, Y, float, N, X, floatMisc),
+      FCVT_W_S  -> List(Y, Y, integer, Y, float, N, X, N, X, floatMisc),
+      FCVT_WU_S -> List(Y, Y, integer, Y, float, N, X, N, X, floatMisc),
+      FMV_X_W   -> List(Y, Y, integer, Y, float, N, X, N, X, floatMisc),
+      FEQ_S     -> List(Y, Y, integer, Y, float, Y, float, N, X, floatMisc),
+      FLT_S     -> List(Y, Y, integer, Y, float, Y, float, N, X, floatMisc),
+      FLE_S     -> List(Y, Y, integer, Y, float, Y, float, N, X, floatMisc),
+      FCLASS_S  -> List(Y, Y, integer, Y, float, N, X, N, X, floatMisc),
+      FCVT_S_W  -> List(Y, Y, float, Y, integer, N, X, N, X, floatMisc),
+      FCVT_S_WU -> List(Y, Y, float, Y, integer, N, X, N, X, floatMisc),
+      FMV_W_X   -> List(Y, Y, float, Y, integer, N, X, N, X, floatMisc),
+
+      // RV64F Standard Extension (in addition to RV32F)
+      FCVT_L_S  -> List(Y, Y, integer, Y, float, N, X, N, X, floatMisc),
+      FCVT_LU_S -> List(Y, Y, integer, Y, float, N, X, N, X, floatMisc),
+      FCVT_S_L  -> List(Y, Y, float, Y, integer, N, X, N, X, floatMisc),
+      FCVT_S_LU -> List(Y, Y, float, Y, integer, N, X, N, X, floatMisc),
 
       // RV32D Standard Extension
       FLD       -> List(Y, Y, float, Y, integer, N, X, N, X, lsu),
@@ -212,7 +223,7 @@ object DecodeInfo {
       FEQ_D     -> List(Y, Y, integer, Y, float, Y, float, N, X, floatMisc),
       FLT_D     -> List(Y, Y, integer, Y, float, Y, float, N, X, floatMisc),
       FLE_D     -> List(Y, Y, integer, Y, float, Y, float, N, X, floatMisc),
-      FCLASS_D  -> List(Y, Y, integer, Y, float, Y, float, N, X, floatMisc),
+      FCLASS_D  -> List(Y, Y, integer, Y, float, N, X, N, X, floatMisc),
       FCVT_W_D  -> List(Y, Y, integer, Y, float, N, X, N, X, floatMisc),
       FCVT_WU_D -> List(Y, Y, integer, Y, float, N, X, N, X, floatMisc),
       FCVT_D_W  -> List(Y, Y, float, Y, integer, N, X, N, X, floatMisc),
@@ -417,7 +428,7 @@ object Instructions {
   val FMAX_S    = BitPat("b0010100??????????001?????1010011")
   val FCVT_W_S  = BitPat("b110000000000?????????????1010011")
   val FCVT_WU_S = BitPat("b110000000001?????????????1010011")
-  val FMV_X_W   = BitPat("b111000000000?????????????1010011")
+  val FMV_X_W   = BitPat("b111000000000?????000?????1010011")
   val FEQ_S     = BitPat("b1010000??????????010?????1010011")
   val FLT_S     = BitPat("b1010000??????????001?????1010011")
   val FLE_S     = BitPat("b1010000??????????000?????1010011")
