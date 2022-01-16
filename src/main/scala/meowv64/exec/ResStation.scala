@@ -217,6 +217,7 @@ class LSBuf(val idx: Int)(implicit val coredef: CoreDef)
 
   val headIsLoad = (
     store(head).instr.instr.op === Decoder.Op("LOAD").ident
+      || store(head).instr.instr.op === Decoder.Op("LOAD-FP").ident
       || store(head).instr.instr.op === Decoder.Op("AMO").ident && store(
         head
       ).instr.instr.funct7(6, 2) === Decoder.AMO_FUNC("LR")
@@ -256,7 +257,7 @@ class LSBuf(val idx: Int)(implicit val coredef: CoreDef)
         // > This cannot happen because we limit the inflight instr count,
         // > so that reg names should not wrap around for in-flight instrs
 
-        // This is not true anomore, because we can refer to previous tags used by a reg, that haven't been
+        // This is not true anymore, because we can refer to previous tags used by a reg, that haven't been
         // re-assigned to another instruction
 
         // assert(!instr.rs1ready)
