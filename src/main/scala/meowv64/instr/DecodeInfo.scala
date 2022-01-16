@@ -172,6 +172,9 @@ object DecodeInfo {
       // RV32F Standard Extension
       FLW      -> List(Y, Y, float, Y, integer, N, X, lsu),
       FSW      -> List(Y, N, X, Y, integer, Y, float, lsu),
+      FADD_S   -> List(Y, Y, float, Y, float, Y, float, fma),
+      FSUB_S   -> List(Y, Y, float, Y, float, Y, float, fma),
+      FMUL_S   -> List(Y, Y, float, Y, float, Y, float, fma),
       FSGNJ_S  -> List(Y, Y, float, Y, float, Y, float, floatMisc),
       FSGNJN_S -> List(Y, Y, float, Y, float, Y, float, floatMisc),
       FSGNJX_S -> List(Y, Y, float, Y, float, Y, float, floatMisc),

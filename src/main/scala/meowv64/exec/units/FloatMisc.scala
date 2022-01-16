@@ -122,7 +122,7 @@ class FloatMisc(override implicit val coredef: CoreDef)
       for ((float, idx) <- coredef.FLOAT_TYPES.zipWithIndex) {
         when(pipe.instr.instr.fmt === float.fmt) {
           val cmp = Module(new CompareRecFN(float.exp, float.sig))
-          cmp.suggestName(s"cmp_${float.kind()}")
+          cmp.suggestName(s"cmp_${float.name}")
           cmp.io.a := rs1HFValues(idx)
           cmp.io.b := rs2HFValues(idx)
           cmp.io.signaling := true.B
@@ -187,11 +187,14 @@ class FloatMisc(override implicit val coredef: CoreDef)
               retNaN := true.B
             }
 
-            ext.res := float.unbox(Mux(
-              retNaN,
-              float.nan(),
-              Mux(retRs1, pipe.rs1val, pipe.rs2val)
-            ), coredef.XLEN)
+            ext.res := float.unbox(
+              Mux(
+                retNaN,
+                float.nan(),
+                Mux(retRs1, pipe.rs1val, pipe.rs2val)
+              ),
+              coredef.XLEN
+            )
           }
           ext.fflags := cmp.io.exceptionFlags
         }

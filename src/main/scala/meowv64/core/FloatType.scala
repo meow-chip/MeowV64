@@ -62,6 +62,8 @@ trait FloatType {
   def isNaN(n: UInt) = getExp(n).andR && getSig(n).orR
   def isInf(n: UInt) = getExp(n).andR && getSig(n) === 0.U
   def isZero(n: UInt) = getExp(n) === 0.U && getSig(n) === 0.U
+
+  def name = getClass().getName()
 }
 
 /** Enum of floating point types
