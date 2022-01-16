@@ -11,7 +11,6 @@ import hardfloat.RecFNToIN
 import hardfloat.INToRecFN
 import hardfloat.fNFromRecFN
 import hardfloat.RecFNToRecFN
-import meowv64.core.FloatD
 
 class IntFloatExt(implicit val coredef: CoreDef) extends Bundle {
   val res = UInt(coredef.XLEN.W)
@@ -217,45 +216,78 @@ class FloatMisc(override implicit val coredef: CoreDef)
       )
     ) {
       // convert float to int
+      // convert float32/float64 to int64 first
+      // then clamp to int32
+      for ((float, idx) <- coredef.FLOAT_TYPES.zipWithIndex) {
+        when(pipe.instr.instr.fmt === float.fmt) {
+          val convF2I =
+            Module(new RecFNToIN(float.exp, float.sig, coredef.XLEN))
+          convF2I.io.in := rs1HFValues(idx)
+          convF2I.io.signedOut := false.B
+          convF2I.io.roundingMode := pipe.instr.instr.funct3
 
-      when(pipe.instr.instr.rs2(1) === 0.U) {
-        // FCVT.W.D/FCVT.WU.D
-        val convF2I = Module(new RecFNToIN(expWidth, sigWidth, 32))
-        convF2I.io.in := rs1valHF
-        convF2I.io.signedOut := false.B
-        convF2I.io.roundingMode := pipe.instr.instr.funct3
+          convF2I.suggestName(s"convF2I_${float.name}")
 
-        when(pipe.instr.instr.rs2 === 0.U) {
-          // FCVT.W.D
-          convF2I.io.signedOut := true.B
+          // overflow in int64 -> int32
+          val overflow = WireInit(false.B)
+          when(pipe.instr.instr.rs2(1) === 0.U) {
+            // FCVT.W.S/FCVT.WU.S/FCVT.W.D/FCVT.WU.D
+            // convert 32/64-bit float to 32-bit int/uint
+            // clamp to int32 range
+            val clamped = WireInit(0.U(32.W))
+
+            when(pipe.instr.instr.rs2(0) === 0.U) {
+              // signed
+              when(
+                convF2I.io.out(coredef.XLEN - 1) && ~convF2I.io
+                  .out(coredef.XLEN - 1, 31)
+                  .andR
+              ) {
+                // negative underflow
+                clamped := 1.U ## Fill(31, 0.U)
+                overflow := true.B
+              }.elsewhen(
+                ~convF2I.io.out(coredef.XLEN - 1) && convF2I.io
+                  .out(coredef.XLEN - 1, 31)
+                  .orR
+              ) {
+                // positive overflow
+                clamped := 0.U ## Fill(31, 1.U)
+                overflow := true.B
+              }.otherwise {
+                clamped := convF2I.io.out(31, 0)
+              }
+            }.otherwise {
+              // unsigned
+              when(convF2I.io.out(coredef.XLEN - 1, 32).orR) {
+                // positive overflow
+                clamped := Fill(32, 1.U)
+              }.otherwise {
+                clamped := convF2I.io.out(31, 0)
+              }
+            }
+
+            // sign extension
+            ext.res := Fill(32, clamped(31)) ## clamped(31, 0)
+          }.otherwise {
+            // FCVT.L.S/FCVT.LU.S/FCVT.L.D/FCVT.LU.D
+            // convert 32/64-bit float to 64-bit int/uint
+            ext.res := convF2I.io.out
+          }
+
+          when(pipe.instr.instr.rs2(0) === 0.U) {
+            // FCVT.W.D/FCVT.L.D/FCVT.W.S/FCVT.L.S
+            // signed int
+            convF2I.io.signedOut := true.B
+          }
+
+          // see rocket chip
+          ext.fflags := Cat(
+            convF2I.io.intExceptionFlags(2, 1).orR | overflow,
+            0.U(3.W),
+            convF2I.io.intExceptionFlags(0)
+          )
         }
-
-        // sign extension
-        ext.res := Fill(32, convF2I.io.out(31)) ## convF2I.io.out
-        // see rocket chip
-        ext.fflags := Cat(
-          convF2I.io.intExceptionFlags(2, 1).orR,
-          0.U(3.W),
-          convF2I.io.intExceptionFlags(0)
-        )
-      } otherwise {
-        // FCVT.L.D/FCVT.LU.D
-        val convF2I = Module(new RecFNToIN(expWidth, sigWidth, coredef.XLEN))
-        convF2I.io.in := rs1valHF
-        convF2I.io.signedOut := false.B
-        convF2I.io.roundingMode := pipe.instr.instr.funct3
-
-        when(pipe.instr.instr.rs2 === 2.U) {
-          // FCVT.L.D
-          convF2I.io.signedOut := true.B
-        }
-        ext.res := convF2I.io.out
-        // see rocket chip
-        ext.fflags := Cat(
-          convF2I.io.intExceptionFlags(2, 1).orR,
-          0.U(3.W),
-          convF2I.io.intExceptionFlags(0)
-        )
       }
 
       ext.updateFFlags := true.B
