@@ -45,7 +45,7 @@ trait FloatType {
   // classify
   def getExp(n: UInt) = n(exp + sig - 2, sig - 1)
   def getSig(n: UInt) = n(sig - 2, 0)
-  def isNan(n: UInt) = getExp(n).andR && getSig(n).orR
+  def isNaN(n: UInt) = getExp(n).andR && getSig(n).orR
   def isInf(n: UInt) = getExp(n).andR && getSig(n) === 0.U
   def isZero(n: UInt) = getExp(n) === 0.U && getSig(n) === 0.U
 }

@@ -76,13 +76,13 @@ class FloatMisc(override implicit val coredef: CoreDef)
       val isSubnormal = expZero && sig =/= 0.U
       val isNormal = exp.orR && ~exp.andR
       val isInf = expMax && sig === 0.U
-      val isNan = expMax && sig.orR
-      val isSNan = isNan && sig(sigWidth - 2) === false.B
-      val isQNan = isNan && sig(sigWidth - 2) === true.B
+      val isNaN = expMax && sig.orR
+      val isSNaN = isNaN && sig(sigWidth - 2) === false.B
+      val isQNaN = isNaN && sig(sigWidth - 2) === true.B
 
       ext.res := Cat(
-        isQNan,
-        isSNan,
+        isQNaN,
+        isSNaN,
         ~sign && isInf,
         ~sign && isNormal,
         ~sign && isSubnormal,
@@ -113,7 +113,7 @@ class FloatMisc(override implicit val coredef: CoreDef)
         when(pipe.instr.instr.funct3 === 2.U) {
           // FEQ
           ext.res := cmp.io.eq
-          // do not signal qNan in feq
+          // do not signal qNaN in feq
           cmp.io.signaling := false.B
         }.elsewhen(pipe.instr.instr.funct3 === 1.U) {
           // FLT
@@ -127,10 +127,10 @@ class FloatMisc(override implicit val coredef: CoreDef)
         cmp.io.signaling := false.B
         val floatType = FloatD
         val retRs1 = WireInit(true.B)
-        val retNan = WireInit(false.B)
+        val retNaN = WireInit(false.B)
 
-        val rs1Nan = floatType.isNan(pipe.rs1val)
-        val rs2Nan = floatType.isNan(pipe.rs2val)
+        val rs1NaN = floatType.isNaN(pipe.rs1val)
+        val rs2NaN = floatType.isNaN(pipe.rs2val)
 
         val lt = WireInit(cmp.io.lt)
         // special handling for -0.0 and +0.0
@@ -152,19 +152,19 @@ class FloatMisc(override implicit val coredef: CoreDef)
           retRs1 := ~lt
         }
 
-        when(rs1Nan && ~rs2Nan) {
+        when(rs1NaN && ~rs2NaN) {
           // rs2 is not nan
           retRs1 := false.B
-        }.elsewhen(~rs1Nan && rs2Nan) {
+        }.elsewhen(~rs1NaN && rs2NaN) {
           // rs1 is not nan
           retRs1 := true.B
-        }.elsewhen(rs1Nan && rs2Nan) {
+        }.elsewhen(rs1NaN && rs2NaN) {
           // return nan
-          retNan := true.B
+          retNaN := true.B
         }
 
         ext.res := Mux(
-          retNan,
+          retNaN,
           floatType.nan(),
           Mux(retRs1, pipe.rs1val, pipe.rs2val)
         )

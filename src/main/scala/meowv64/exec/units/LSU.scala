@@ -365,6 +365,20 @@ class LSU(implicit val coredef: CoreDef) extends Module with UnitSelIO {
     is(Decoder.MEM_WIDTH_FUNC("WU")) { result := shifted(31, 0) }
   }
 
+  // special handling for fld/flw/fsd/fsw
+  when(
+    pipeInstr.instr.instr.op === Decoder.Op("LOAD-FP").ident ||
+      pipeInstr.instr.instr.op === Decoder.Op("STORE-FP").ident
+  ) {
+    // nan boxing
+    switch(pipeInstr.instr.instr.funct3) {
+      is(Decoder.MEM_WIDTH_FUNC("W")) {
+        result := Fill(32, 1.U) ## shifted(31, 0)
+      }
+      is(Decoder.MEM_WIDTH_FUNC("D")) { result := shifted }
+    }
+  }
+
   // Retirement
   val mem = Wire(new DelayedMem)
   mem.noop() // By default
