@@ -226,14 +226,14 @@ class Status(implicit val coredef: CoreDef) extends Bundle {
 }
 
 object Status {
-  def hardwired(implicit coredef: CoreDef) = {
+  def hardwired(base: Status)(implicit coredef: CoreDef) = {
     val result = Wire(new Status)
     result := DontCare
 
-    // No SD & XS & FS
-    result.sd := 0.B
+    // SD = ((FS==11) OR (XS==11))
+    result.sd := base.fs === 3.U
+    // No XS
     result.xs := 0.U
-    result.fs := 0.U
 
     // Cannot change XLEN
     result.sxl := 2.U
@@ -260,7 +260,7 @@ object Status {
       "0" * 4 + // SXL and UXL not supported
       "0" * 9 + // WPRI
       "1" * 6 + // TSR - MPRV
-      "0000" + // XS & FS
+      "0011" + // XS & FS
       "11001" + // xPP
       "10111011" // xP?IE
     ,

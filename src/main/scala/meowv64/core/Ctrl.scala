@@ -202,6 +202,7 @@ class Ctrl(implicit coredef: CoreDef) extends Module {
 
   // xstatus
   val status = RegInit(Status.empty)
+  // WPRI fields
   val mwpri = RegInit(0.U(coredef.XLEN.W))
   val swpri = RegInit(0.U(coredef.XLEN.W))
   toExec.status := status
@@ -209,13 +210,13 @@ class Ctrl(implicit coredef: CoreDef) extends Module {
   csr.mstatus.rdata := (
     status.asUInt & Status.mmask
       | mwpri & Status.mwpri
-      | Status.hardwired.asUInt & ~(Status.mmask | Status.mwpri)
+      | Status.hardwired(status).asUInt & ~(Status.mmask | Status.mwpri)
   )
 
   csr.sstatus.rdata := (
     status.asUInt & Status.smask
       | swpri & Status.swpri
-      | Status.hardwired.asUInt & ~(Status.smask | Status.swpri)
+      | Status.hardwired(status).asUInt & ~(Status.smask | Status.swpri)
   )
 
   when(csr.mstatus.write) {
@@ -339,8 +340,10 @@ class Ctrl(implicit coredef: CoreDef) extends Module {
   csr.fcsr <> CSRPort.fromReg(8, fcsr)
 
   // update fflags
+  // and set mstatus.fs = 3(dirty)
   when(toExec.fflags.valid) {
     fcsr.fflags := toExec.fflags.bits
+    status.fs := 3.U
   }
 
   // Interrupts
