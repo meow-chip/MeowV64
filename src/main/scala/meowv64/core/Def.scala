@@ -78,7 +78,7 @@ abstract class CoreDef {
 
   /** List of supported float types
     */
-  def FLOAT_TYPES: Seq[FloatType] = Seq(FloatD, FloatS)
+  def FLOAT_TYPES: Seq[FloatType] = Seq(FloatS, FloatD)
 
   object L1I
       extends {

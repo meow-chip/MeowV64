@@ -15,6 +15,8 @@ trait FloatType {
   // (total - exp) bits
   def sig(): Int
   def kind(): FpKind.Type
+  // riscv instruction fmt field
+  def fmt(): UInt
 
   // auto implemented
   // total bits
@@ -32,7 +34,7 @@ trait FloatType {
   def oneHardfloat() =
     (BigInt(1) << (exp() + sig() - 1)).U(widthHardfloat().W)
 
-  // generate quiet nan
+  // generate canonical(quiet) nan
   // 0 1..1 10..0
   def nan() =
     (((BigInt(1) << (exp() + 1)) - 1) << (sig() - 2)).U(width().W)
@@ -40,7 +42,19 @@ trait FloatType {
   // NaN boxing/unboxing
   def box(n: UInt, xlen: Int) =
     ((BigInt(1) << xlen) - (BigInt(1) << width)).U | n
-  def unbox(n: UInt) = n(width - 1, 0)
+  def unbox(n: UInt, xlen: Int) = {
+    if (width == xlen) {
+      WireInit(n)
+    } else {
+      // return canonical nan
+      val res = WireInit(nan)
+      when(n(xlen - 1, width).andR) {
+        // correctly nan boxed
+        res := n(width - 1, 0)
+      }
+      res
+    }
+  }
 
   // classify
   def getExp(n: UInt) = n(exp + sig - 2, sig - 1)
@@ -66,6 +80,7 @@ object FloatD extends FloatType {
   def exp() = 11
   def sig() = 53
   def kind() = FpKind.D
+  def fmt() = 1.U
 }
 
 /** 32-bit Float
@@ -74,6 +89,7 @@ object FloatS extends FloatType {
   def exp() = 8
   def sig() = 24
   def kind() = FpKind.S
+  def fmt() = 0.U
 }
 
 /** 16-bit Half Float
@@ -82,4 +98,5 @@ object FloatH extends FloatType {
   def exp() = 5
   def sig() = 11
   def kind() = FpKind.H
+  def fmt() = ??? // not defined
 }

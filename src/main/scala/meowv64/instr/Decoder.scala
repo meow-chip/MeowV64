@@ -162,13 +162,14 @@ object Decoder {
     "FADD" -> "00000",
     "FSUB" -> "00001",
     "FMUL" -> "00010",
+    "FSGNJ" -> "00100",
     "FMINMAX" -> "00101",
     "FLOAT2FLOAT" -> "01000",
     "FSQRT" -> "01011",
     "FCMP" -> "10100",
     "FLOAT2INT" -> "11000",
     "INT2FLOAT" -> "11010",
-    "FMV.X.D" -> "11100",
+    "FMV.X.D/W" -> "11100",
     "FCLASS" -> "11100",
     "FMV.D.X" -> "11110"
   ).mapValues(Integer.parseInt(_, 2).U(5.W))
@@ -658,6 +659,8 @@ class Instr extends Bundle {
 
   // for R4-type
   def funct5() = funct7 >> 2
+  // floating point format
+  def fmt() = funct7(1, 0)
 
   override def toPrintable: Printable = {
     // Reverse check op
