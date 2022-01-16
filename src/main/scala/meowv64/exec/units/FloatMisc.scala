@@ -51,7 +51,6 @@ class FloatMisc(override implicit val coredef: CoreDef)
 
     // double
     val rs1valHF = WireInit(recFNFromFN(expWidth, sigWidth, pipe.rs1val))
-    val rs2valHF = WireInit(recFNFromFN(expWidth, sigWidth, pipe.rs2val))
     // single
     val rs1valSingleHF = WireInit(
       recFNFromFN(singleExpWidth, singleSigWidth, pipe.rs1val(31, 0))
