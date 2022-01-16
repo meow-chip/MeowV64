@@ -328,8 +328,9 @@ class Ctrl(implicit coredef: CoreDef) extends Module {
 
   // fcsr: frm + fflags
   class FCSR extends Bundle {
-    val fflags = UInt(5.W)
+    // from MSB to LSB
     val frm = UInt(3.W)
+    val fflags = UInt(5.W)
   }
 
   val fcsr = RegInit(0.U.asTypeOf(new FCSR))
