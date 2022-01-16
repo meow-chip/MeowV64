@@ -31,7 +31,6 @@ trait UnitSelIO {
 class UnitSel(
     gen: => Seq[ExecUnitInt],
     arbitration: Instr => Seq[Bool],
-    bypassIdx: Option[Int] = None,
     hasPipe: Boolean = true
 )(implicit val coredef: CoreDef)
     extends Module
@@ -95,14 +94,6 @@ class UnitSel(
   val execMap = Wire(Vec(units.length, Bool()))
   execMap := arbitration(rs.instr.bits.instr.instr)
   // Asserts exactly one can exec this instr
-
-  // Contains a bypass unit, bypassing all invalid instructions to there
-  if (bypassIdx.isDefined) {
-    when(rs.instr.bits.invalid) {
-      execMap := VecInit(Seq.fill(units.length)(false.B))
-      execMap(bypassIdx.get) := true.B
-    }
-  }
 
   val execMapUInt = execMap.asUInt
   val execMapNoDup = !((execMapUInt -% 1.U) & execMapUInt).orR

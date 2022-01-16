@@ -119,65 +119,39 @@ class Exec(implicit val coredef: CoreDef) extends Module {
 
   // Units
   val lsu = Module(new LSU).suggestName("LSU");
-  val units = Seq(
-    // port 1: ALU + Branch + CSR + Bypass
-    Module(
-      new UnitSel(
-        Seq(
-          Module(new ALU).suggestName("ALU"),
-          Module(new Branch).suggestName("Branch"),
-          Module(new CSR).suggestName("CSR"),
-          Module(new Bypass).suggestName("Bypass")
-        ),
-        instr => {
-          Seq(
-            instr.info.execUnit === ExecUnitType.alu,
-            instr.info.execUnit === ExecUnitType.branch,
-            instr.info.execUnit === ExecUnitType.csr,
-            instr.info.execUnit === ExecUnitType.bypass
-          )
-        },
-        Some(3),
-        hasPipe = false
-      )
-    ),
-    // port 2: ALU + Mul + Div
-    Module(
-      new UnitSel(
-        Seq(
-          Module(new ALU).suggestName("ALU"),
-          Module(new Mul).suggestName("Mul"),
-          Module(new Div(16)).suggestName("Div")
-        ),
-        instr => {
-          Seq(
-            instr.info.execUnit === ExecUnitType.alu,
-            instr.info.execUnit === ExecUnitType.mul,
-            instr.info.execUnit === ExecUnitType.div
-          )
-        },
-        hasPipe = false
-      )
-    ),
-    // port 3: FMA + FloatMisc
-    Module(
-      new UnitSel(
-        Seq(
-          Module(new FMA).suggestName("FMA"),
-          Module(new FloatMisc).suggestName("FloatMisc")
-        ),
-        instr => {
-          Seq(
-            instr.info.execUnit === ExecUnitType.fma,
-            instr.info.execUnit === ExecUnitType.floatMisc
-          )
-        },
-        hasPipe = true
-      )
-    ),
-    // port 4: LSU
-    lsu
-  )
+
+  // collect execution units dynamically
+  val units = for (seq <- coredef.EXECUTION_UNITS) yield {
+    if (seq == Seq(ExecUnitType.lsu)) {
+      lsu
+    } else {
+      Module(
+        new UnitSel(
+          for (ty <- seq) yield {
+            ty match {
+              case ExecUnitType.alu => Module(new ALU).suggestName("ALU")
+              case ExecUnitType.branch =>
+                Module(new Branch).suggestName("Branch")
+              case ExecUnitType.csr => Module(new CSR).suggestName("CSR")
+              case ExecUnitType.bypass =>
+                Module(new Bypass).suggestName("Bypass")
+              case ExecUnitType.mul => Module(new Mul).suggestName("Mul")
+              case ExecUnitType.div => Module(new Div(16)).suggestName("Div")
+              case ExecUnitType.fma => Module(new FMA).suggestName("FMA")
+              case ExecUnitType.floatMisc =>
+                Module(new FloatMisc).suggestName("FloatMisc")
+            }
+          },
+          instr => {
+            seq.map({ ty =>
+              instr.info.execUnit === ty
+            })
+          },
+          hasPipe = false
+        )
+      ),
+    }
+  }
 
   lsu.toMem.reader <> toDC.r
   lsu.toMem.writer <> toDC.w
@@ -694,34 +668,18 @@ object Exec {
     val ret = Wire(UInt(coredef.UNIT_COUNT.W))
     ret := 0.U
 
-    // TODO: compute bitset from unit configuration
-    switch(instr.info.execUnit) {
-      is(ExecUnitType.alu) {
-        ret := "b0011".U(coredef.UNIT_COUNT.W)
-      }
-      is(ExecUnitType.branch) {
-        ret := "b0001".U(coredef.UNIT_COUNT.W)
-      }
-      is(ExecUnitType.bypass) {
-        ret := "b0001".U(coredef.UNIT_COUNT.W)
-      }
-      is(ExecUnitType.csr) {
-        ret := "b0001".U(coredef.UNIT_COUNT.W)
-      }
-      is(ExecUnitType.div) {
-        ret := "b0010".U(coredef.UNIT_COUNT.W)
-      }
-      is(ExecUnitType.mul) {
-        ret := "b0010".U(coredef.UNIT_COUNT.W)
-      }
-      is(ExecUnitType.fma) {
-        ret := "b0100".U(coredef.UNIT_COUNT.W)
-      }
-      is(ExecUnitType.floatMisc) {
-        ret := "b0100".U(coredef.UNIT_COUNT.W)
-      }
-      is(ExecUnitType.lsu) {
-        ret := "b1000".U(coredef.UNIT_COUNT.W)
+    // compute bitset from unit configuration
+    for (ty <- ExecUnitType.all) {
+      when(instr.info.execUnit === ty) {
+        // compute bit mask
+        var mask = 0
+        for ((seq, idx) <- coredef.EXECUTION_UNITS.zipWithIndex) {
+          if (seq.contains(ty)) {
+            mask |= 1 << idx
+          }
+        }
+
+        ret := mask.U(coredef.UNIT_COUNT.W)
       }
     }
 
