@@ -13,7 +13,6 @@ import meowv64.core.Status
 import meowv64.instr.BHTPrediction
 import meowv64.instr.BPUResult
 import meowv64.instr.Decoder.InstrType
-import meowv64.instr.FetchEx
 import meowv64.instr.InstrExt
 import meowv64.instr.RegIndex
 

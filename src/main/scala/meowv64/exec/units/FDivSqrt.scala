@@ -1,15 +1,15 @@
 package meowv64.exec.units
 
 import chisel3._
+import hardfloat.DivSqrtRecFN_small
+import hardfloat.RecFNToRecFN
+import hardfloat.fNFromRecFN
 import hardfloat.recFNFromFN
 import meowv64.core.CoreDef
-import meowv64.exec._
 import meowv64.core.FloatD
-import hardfloat.DivSqrtRecFN_small
-import hardfloat.fNFromRecFN
-import meowv64.instr.Decoder
 import meowv64.core.FloatS
-import hardfloat.RecFNToRecFN
+import meowv64.exec._
+import meowv64.instr.Decoder
 
 class FDivSqrtExt(implicit val coredef: CoreDef) extends Bundle {
   // result

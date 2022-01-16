@@ -52,10 +52,22 @@ class Ctrl(implicit coredef: CoreDef) extends Module {
     val ctrl = StageCtrl.ctrl()
 
     val pc = Output(UInt(coredef.XLEN.W))
+
+    /** ICache Reset
+      */
     val iRst = Output(Bool())
+
+    /** TLB Reset
+      */
     val tlbRst = Output(Bool())
 
+    /** Privilege level
+      */
     val priv = Output(PrivLevel())
+
+    /** Allow floating point instructions (mstatus.fs != 0)
+      */
+    val allowFloat = Output(Bool())
   })
 
   val br = IO(new Bundle {
@@ -206,6 +218,9 @@ class Ctrl(implicit coredef: CoreDef) extends Module {
   val mwpri = RegInit(0.U(coredef.XLEN.W))
   val swpri = RegInit(0.U(coredef.XLEN.W))
   toExec.status := status
+
+  // when FS=0, trap for float instructions
+  toIF.allowFloat := status.fs =/= 0.U
 
   csr.mstatus.rdata := (
     status.asUInt & Status.mmask

@@ -1,10 +1,10 @@
 package meowv64.core
 
 import chisel3._
-import chisel3.util._
 import chisel3.experimental._
-import hardfloat.recFNFromFN
+import chisel3.util._
 import hardfloat.fNFromRecFN
+import hardfloat.recFNFromFN
 
 /** Trait for floating point type
   */

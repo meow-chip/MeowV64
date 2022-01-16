@@ -14,8 +14,6 @@ import meowv64.core.StageCtrl
 import meowv64.core.Status
 import meowv64.exec.Exec.ROBEntry
 import meowv64.exec.units._
-import meowv64.instr.Decoder.InstrType
-import meowv64.instr.FetchEx
 import meowv64.instr._
 import meowv64.paging.TLBExt
 import meowv64.reg._

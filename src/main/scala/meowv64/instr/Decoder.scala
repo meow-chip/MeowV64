@@ -180,7 +180,7 @@ object Decoder {
   }
 
   implicit class ConvertToInstr(self: Data) {
-    def parseInstr(): (Instr, Bool) = {
+    def parseInstr(allowFloat: Bool): (Instr, Bool) = {
       assert(
         self.getWidth == 32,
         s"Unexpected decoder input width: ${self.getWidth}"
@@ -199,6 +199,19 @@ object Decoder {
         isInstr16 := true.B
       }.otherwise {
         result := self.asInstr32()
+      }
+
+      // do not allow floating point instructions
+      when(
+        ~allowFloat && (result.op === Decoder.Op("LOAD-FP").ident
+          || result.op === Decoder.Op("STORE-FP").ident
+          || result.op === Decoder.Op("MADD").ident
+          || result.op === Decoder.Op("MSUB").ident
+          || result.op === Decoder.Op("NMSUB").ident
+          || result.op === Decoder.Op("OP-FP").ident)
+      ) {
+        result.base := InstrType.RESERVED
+        result.info := DecodeInfo.illegal
       }
 
       (result, isInstr16)

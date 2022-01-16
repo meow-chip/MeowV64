@@ -2,8 +2,8 @@ package meowv64.core
 
 import chisel3.util.log2Ceil
 import meowv64.cache._
-import meowv64.reg.RegType
 import meowv64.instr.ExecUnitType
+import meowv64.reg.RegType
 
 abstract class CoreDef {
   outer =>

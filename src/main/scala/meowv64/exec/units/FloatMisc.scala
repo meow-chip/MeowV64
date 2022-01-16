@@ -3,14 +3,14 @@ package meowv64.exec.units
 import chisel3._
 import chisel3.util._
 import hardfloat.CompareRecFN
+import hardfloat.INToRecFN
+import hardfloat.RecFNToIN
+import hardfloat.RecFNToRecFN
+import hardfloat.fNFromRecFN
 import hardfloat.recFNFromFN
 import meowv64.core.CoreDef
 import meowv64.exec._
 import meowv64.instr.Decoder
-import hardfloat.RecFNToIN
-import hardfloat.INToRecFN
-import hardfloat.fNFromRecFN
-import hardfloat.RecFNToRecFN
 
 class IntFloatExt(implicit val coredef: CoreDef) extends Bundle {
   val res = UInt(coredef.XLEN.W)

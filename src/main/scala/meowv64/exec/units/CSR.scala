@@ -107,7 +107,9 @@ class CSR(implicit val coredef: CoreDef)
   /* Stage 2 */
   val pipeAddr = RegNext(addr)
   val pipeRdata = RegNext(rdata)
-  val pipeWritten = RegNext(fault)
+  // when no fault occurred
+  // send branch to npc to flush pipeline
+  val pipeWritten = RegNext(!fault)
   when(state === CSRState.pipe) {
     writer.addr := pipeAddr
     writer.write := true.B
@@ -119,6 +121,8 @@ class CSR(implicit val coredef: CoreDef)
   when(fault) {
     info.branch.ex(ExType.ILLEGAL_INSTR)
   }.elsewhen(pipeWritten) {
+    // csr is updated
+    // flush pipeline to avoid stale value
     info.branch.fire(instr.addr + 4.U)
     info.wb := pipeRdata
   } otherwise {

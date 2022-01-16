@@ -90,7 +90,13 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
     val iRst = Input(Bool())
     val tlbRst = Input(Bool())
 
+    /** Privilege level
+      */
     val priv = Input(PrivLevel())
+
+    /** Allow floating point instructions (mstatus.fs != 0)
+      */
+    val allowFloat = Input(Bool())
   })
 
   val toIC = IO(Flipped(new ICPort(coredef.L1I)))
@@ -263,7 +269,7 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
     }
 
     val raw = joinedVec(decodePtr(i))
-    val (instr, isInstr16) = raw.parseInstr()
+    val (instr, isInstr16) = raw.parseInstr(toCtrl.allowFloat)
     when(isInstr16) {
       decodePtr(i + 1) := decodePtr(i) + 1.U
     } otherwise {
