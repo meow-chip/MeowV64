@@ -283,11 +283,11 @@ class Exec(implicit val coredef: CoreDef) extends Module {
       sending := 0.U
 
       when(
-        toIF.view(idx).fetchEx =/= FetchEx.none
-          || toIF.view(idx).instr.base === InstrType.RESERVED
+        toIF.view(idx).illegal
           || !applicable.orR()
       ) {
-        // Is an invalid instruction
+        // Is an illegal instruction
+        // Forward to bypass unit
         selfCanIssue := stations(0).ingress.free && !taken(0)
         sending := 1.U
         // Run immediately

@@ -58,6 +58,11 @@ class InstrExt(implicit val coredef: CoreDef) extends Bundle {
   /** Whether this instruction is predicted to be taken
     */
   def taken: Bool = forcePred || pred.prediction === BHTPrediction.taken
+
+  /** Illegal instruction
+    */
+  def illegal =
+    fetchEx =/= FetchEx.none || instr.base === InstrType.RESERVED
 }
 
 object InstrExt {

@@ -190,10 +190,10 @@ object Decoder {
       val ui = self.asUInt
 
       when(!ui.orR()) {
-        // Defined invalid instr
+        // Defined illegal instr
         result := DontCare
         result.base := InstrType.RESERVED
-        result.info := DecodeInfo.invalid
+        result.info := DecodeInfo.illegal
       }.elsewhen(ui(1, 0) =/= "11".asBits(2.W)) {
         result := self.asInstr16()
         isInstr16 := true.B
@@ -227,7 +227,7 @@ object Decoder {
       // RD position will differ by instr
 
       def fail() = {
-        result.info := DecodeInfo.invalid
+        result.info := DecodeInfo.illegal
         result.base := InstrType.RESERVED
         result.imm := 0.S
 

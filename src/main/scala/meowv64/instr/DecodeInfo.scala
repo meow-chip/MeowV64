@@ -268,7 +268,9 @@ object DecodeInfo {
     res
   }
 
-  def invalid = {
+  /** Illegal Instruction
+    */
+  def illegal = {
     val res = Wire(new DecodeInfo)
     for ((signal, value) <- res.signals.zip(default)) {
       signal := value.value.U.asTypeOf(signal)

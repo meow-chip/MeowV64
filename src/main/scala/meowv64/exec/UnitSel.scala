@@ -99,7 +99,7 @@ class UnitSel(
   // Contains a bypass unit, bypassing all invalid instructions to there
   // e.g. page fault, decoded exec unit might be inaccurate
   if (bypassIdx.isDefined) {
-    when(rs.instr.bits.invalid) {
+    when(rs.instr.bits.illegal) {
       execMap := VecInit(Seq.fill(units.length)(false.B))
       execMap(bypassIdx.get) := true.B
     }
