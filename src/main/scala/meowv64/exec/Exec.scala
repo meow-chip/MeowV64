@@ -125,6 +125,7 @@ class Exec(implicit val coredef: CoreDef) extends Module {
     if (seq == Seq(ExecUnitType.lsu)) {
       lsu
     } else {
+      val bypassIdx = seq.indexOf(ExecUnitType.bypass)
       Module(
         new UnitSel(
           for (ty <- seq) yield {
@@ -147,6 +148,8 @@ class Exec(implicit val coredef: CoreDef) extends Module {
               instr.info.execUnit === ty
             })
           },
+          bypassIdx = if (bypassIdx == -1) { None }
+          else { Option(bypassIdx) },
           hasPipe = false
         )
       ),

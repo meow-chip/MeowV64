@@ -201,31 +201,6 @@ object Decoder {
       (result, isInstr16)
     }
 
-    def tryAsInstr16(): (Instr, Bool) = {
-      assert(
-        self.getWidth == 16,
-        s"Unexpected decoder input width: ${self.getWidth}"
-      )
-      val result = Wire(new Instr)
-      val success = Wire(Bool())
-      val ui = self.asUInt
-
-      when(!ui.orR()) {
-        // Defined invalid instr
-        result := DontCare
-        success := true.B
-        result.base := InstrType.RESERVED
-      }.elsewhen(ui(1, 0) =/= "11".asBits(2.W)) {
-        result := self.asInstr16
-        success := true.B
-      }.otherwise {
-        result := DontCare
-        success := false.B
-      }
-
-      (result, success)
-    }
-
     def asInstr16(): Instr = {
       val result = Wire(new Instr)
       result := DontCare
