@@ -53,32 +53,66 @@ class FMA(override implicit val coredef: CoreDef)
           // convert to hardfloat
           val rs1val = float.unbox(pipe.rs1val, coredef.XLEN)
           val rs2val = float.unbox(pipe.rs2val, coredef.XLEN)
+          val rs3val = float.unbox(pipe.rs3val, coredef.XLEN)
           val rs1valHF = float.toHardfloat(rs1val)
           val rs2valHF = float.toHardfloat(rs2val)
+          val rs3valHF = float.toHardfloat(rs3val)
           val oneHF =
             (BigInt(1) << (float.exp + float.sig - 1)).U(float.widthHardfloat.W)
 
           val neg = WireInit(false.B)
           val sign = WireInit(false.B)
           val op = Cat(neg, sign)
-          switch(pipe.instr.instr.funct5) {
-            is(Decoder.FP_FUNC("FADD")) {
-              // 1 * rs1 + rs2
-              a := oneHF
-              b := rs1valHF
-              c := rs2valHF
-            }
-            is(Decoder.FP_FUNC("FSUB")) {
-              // 1 * rs1 - rs2
-              sign := true.B
-              a := oneHF
-              b := rs1valHF
-              c := rs2valHF
-            }
-            is(Decoder.FP_FUNC("FMUL")) {
-              // rs1 * rs2 + 0
+          switch(pipe.instr.instr.op) {
+            is(Decoder.Op("MADD").ident) {
+              // rs1 * rs2 + rs3
               a := rs1valHF
               b := rs2valHF
+              c := rs3valHF
+            }
+            is(Decoder.Op("MSUB").ident) {
+              // rs1 * rs2 - rs3
+              sign := true.B
+              a := rs1valHF
+              b := rs2valHF
+              c := rs3valHF
+            }
+            is(Decoder.Op("NMSUB").ident) {
+              // - (rs1 * rs2 - rs3)
+              neg := true.B
+              a := rs1valHF
+              b := rs2valHF
+              c := rs3valHF
+            }
+            is(Decoder.Op("NMADD").ident) {
+              // - (rs1 * rs2 + rs3)
+              neg := true.B
+              sign := true.B
+              a := rs1valHF
+              b := rs2valHF
+              c := rs3valHF
+            }
+            is(Decoder.Op("OP-FP").ident) {
+              switch(pipe.instr.instr.funct5) {
+                is(Decoder.FP_FUNC("FADD")) {
+                  // 1 * rs1 + rs2
+                  a := oneHF
+                  b := rs1valHF
+                  c := rs2valHF
+                }
+                is(Decoder.FP_FUNC("FSUB")) {
+                  // 1 * rs1 - rs2
+                  sign := true.B
+                  a := oneHF
+                  b := rs1valHF
+                  c := rs2valHF
+                }
+                is(Decoder.FP_FUNC("FMUL")) {
+                  // rs1 * rs2 + 0
+                  a := rs1valHF
+                  b := rs2valHF
+                }
+              }
             }
           }
 

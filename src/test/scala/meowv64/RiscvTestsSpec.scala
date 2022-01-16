@@ -8,8 +8,7 @@ import org.scalatest.matchers.should.Matchers
 import java.io.File
 
 object RiscvTestsSpec {
-  // fmadd not implemented
-  val knownFails = Seq("rv64ud-p-fmadd.bin", "rv64ud-v-fmadd.bin")
+  val knownFails = Seq()
   val cases = new File("./testcases/riscv-tests/build/isa").listFiles
     .filter(_.isFile)
     .filter(_.getName.endsWith(".bin"))
