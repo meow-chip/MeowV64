@@ -65,7 +65,8 @@ class FloatMisc(override implicit val coredef: CoreDef)
       when(pipe.instr.instr.funct7(1, 0) === 0.U) {
         // fmv.x.w
         // sign extension
-        ext.res := Fill(32, rs1Values(0)(31)) ## rs1Values(0)
+        // do not consider nan boxing here
+        ext.res := Fill(32, pipe.rs1val(31)) ## pipe.rs1val(31, 0)
       }.otherwise {
         // fmv.x.d
         ext.res := pipe.rs1val
@@ -121,6 +122,7 @@ class FloatMisc(override implicit val coredef: CoreDef)
       for ((float, idx) <- coredef.FLOAT_TYPES.zipWithIndex) {
         when(pipe.instr.instr.fmt === float.fmt) {
           val cmp = Module(new CompareRecFN(float.exp, float.sig))
+          cmp.suggestName(s"cmp_${float.kind()}")
           cmp.io.a := rs1HFValues(idx)
           cmp.io.b := rs2HFValues(idx)
           cmp.io.signaling := true.B
