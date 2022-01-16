@@ -73,11 +73,17 @@ class FloatMisc(override implicit val coredef: CoreDef)
       }
     }.elsewhen(
       pipe.instr.instr.funct5 === Decoder.FP_FUNC(
-        "FMV.D.X"
+        "FMV.D/W.X"
       ) && pipe.instr.instr.funct3 === 0.U
     ) {
-      // fmv.d.x
-      ext.res := pipe.rs1val
+      when(pipe.instr.instr.funct7(1, 0) === 0.U) {
+        // fmv.w.x
+        // nan boxing
+        ext.res := Fill(32, 1.U) ## pipe.rs1val(31, 0)
+      }.otherwise {
+        // fmv.d.x
+        ext.res := pipe.rs1val
+      }
     }.elsewhen(
       pipe.instr.instr.funct5 === Decoder.FP_FUNC(
         "FCLASS"
