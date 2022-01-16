@@ -378,7 +378,8 @@ object Simulator {
       println("CI detected")
       annotations
     } else {
-      annotations ++ Seq(WriteVcdAnnotation)
+      // fst is smaller than vcd
+      annotations ++ Seq(WriteFstAnnotation)
     }
   }
 }
