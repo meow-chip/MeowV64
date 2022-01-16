@@ -185,6 +185,8 @@ object DecodeInfo {
       FSGNJN_S -> List(Y, Y, float, Y, float, Y, float, N, X, floatMisc),
       FSGNJX_S -> List(Y, Y, float, Y, float, Y, float, N, X, floatMisc),
       FEQ_S    -> List(Y, Y, integer, Y, float, Y, float, N, X, floatMisc),
+      FLT_S    -> List(Y, Y, integer, Y, float, Y, float, N, X, floatMisc),
+      FLE_S    -> List(Y, Y, integer, Y, float, Y, float, N, X, floatMisc),
       FMV_X_W  -> List(Y, Y, integer, Y, float, N, X, N, X, floatMisc),
       FMV_W_X  -> List(Y, Y, float, Y, integer, N, X, N, X, floatMisc),
 

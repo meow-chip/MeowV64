@@ -35,6 +35,7 @@ class RiscvTestsSpec
       "rv64uc",
       "rv64um",
       "rv64ua",
+      "rv64uf",
       "rv64ud",
       "rv64si",
       "rv64mi"

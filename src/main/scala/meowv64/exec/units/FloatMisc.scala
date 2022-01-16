@@ -88,32 +88,36 @@ class FloatMisc(override implicit val coredef: CoreDef)
         "FCLASS"
       ) && pipe.instr.instr.funct3 === 1.U
     ) {
-      val sign = pipe.rs1val(expWidth + sigWidth - 1)
-      val exp = pipe.rs1val(expWidth + sigWidth - 2, sigWidth - 1)
-      val sig = pipe.rs1val(sigWidth - 2, 0)
+      for ((float, idx) <- coredef.FLOAT_TYPES.zipWithIndex) {
+        when(pipe.instr.instr.fmt === float.fmt) {
+          val sign = rs1Values(idx)(float.exp + float.sig - 1)
+          val exp = rs1Values(idx)(float.exp + float.sig - 2, float.sig - 1)
+          val sig = rs1Values(idx)(float.sig - 2, 0)
 
-      val expZero = exp === 0.U
-      val expMax = exp.andR
-      val isZero = expZero && sig === 0.U
-      val isSubnormal = expZero && sig =/= 0.U
-      val isNormal = exp.orR && ~exp.andR
-      val isInf = expMax && sig === 0.U
-      val isNaN = expMax && sig.orR
-      val isSNaN = isNaN && sig(sigWidth - 2) === false.B
-      val isQNaN = isNaN && sig(sigWidth - 2) === true.B
+          val expZero = exp === 0.U
+          val expMax = exp.andR
+          val isZero = expZero && sig === 0.U
+          val isSubnormal = expZero && sig =/= 0.U
+          val isNormal = exp.orR && ~exp.andR
+          val isInf = expMax && sig === 0.U
+          val isNaN = expMax && sig.orR
+          val isSNaN = isNaN && sig(float.sig - 2) === false.B
+          val isQNaN = isNaN && sig(float.sig - 2) === true.B
 
-      ext.res := Cat(
-        isQNaN,
-        isSNaN,
-        ~sign && isInf,
-        ~sign && isNormal,
-        ~sign && isSubnormal,
-        ~sign && isZero,
-        sign && isZero,
-        sign && isSubnormal,
-        sign && isNormal,
-        sign && isInf
-      )
+          ext.res := Cat(
+            isQNaN,
+            isSNaN,
+            ~sign && isInf,
+            ~sign && isNormal,
+            ~sign && isSubnormal,
+            ~sign && isZero,
+            sign && isZero,
+            sign && isSubnormal,
+            sign && isNormal,
+            sign && isInf
+          )
+        }
+      }
     }.elsewhen(
       pipe.instr.instr.funct5 === Decoder.FP_FUNC(
         "FCMP"
