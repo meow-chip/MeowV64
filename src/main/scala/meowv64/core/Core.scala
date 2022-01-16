@@ -63,7 +63,7 @@ class Core(implicit val coredef: CoreDef) extends Module {
       new RegFile(
         width,
         32,
-        coredef.ISSUE_NUM * 2,
+        coredef.ISSUE_NUM * 3, // rs1-3
         coredef.RETIRE_NUM,
         // hardwire x0 to zero
         FIXED_ZERO = (ty == RegType.integer)

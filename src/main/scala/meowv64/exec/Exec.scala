@@ -73,8 +73,8 @@ class Exec(implicit val coredef: CoreDef) extends Module {
   val toRF = IO(new Bundle {
     val ports =
       MixedVec(for ((ty, width) <- coredef.REGISTER_TYPES) yield new Bundle {
-        // two read ports per issued instruction
-        val rr = Vec(coredef.ISSUE_NUM * 2, new RegReader(width))
+        // three read ports per issued instruction
+        val rr = Vec(coredef.ISSUE_NUM * 3, new RegReader(width))
         // one write port per retired instruction
         val rw = Vec(coredef.RETIRE_NUM, new RegWriter(width))
       })
@@ -94,8 +94,9 @@ class Exec(implicit val coredef: CoreDef) extends Module {
   val renamer = Module(new Renamer)
   for (idx <- 0 until coredef.REGISTER_TYPES.length) {
     for (i <- (0 until coredef.ISSUE_NUM)) {
-      renamer.ports(idx).rr(i)(0) <> toRF.ports(idx).rr(i * 2)
-      renamer.ports(idx).rr(i)(1) <> toRF.ports(idx).rr(i * 2 + 1)
+      renamer.ports(idx).rr(i)(0) <> toRF.ports(idx).rr(i * 3)
+      renamer.ports(idx).rr(i)(1) <> toRF.ports(idx).rr(i * 3 + 1)
+      renamer.ports(idx).rr(i)(2) <> toRF.ports(idx).rr(i * 3 + 2)
     }
     renamer.ports(idx).rw <> toRF.ports(idx).rw
   }
@@ -292,6 +293,7 @@ class Exec(implicit val coredef: CoreDef) extends Module {
         // Run immediately
         instr.rs1ready := true.B
         instr.rs2ready := true.B
+        instr.rs3ready := true.B
       }.elsewhen(wasGFence && issuePtr =/= retirePtr) {
         // GFence in-flight
         sending := DontCare

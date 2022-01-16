@@ -661,6 +661,8 @@ class Instr extends Bundle {
   def funct5() = funct7 >> 2
   // floating point format
   def fmt() = funct7(1, 0)
+  // for fmadd
+  def rs3 = funct5
 
   override def toPrintable: Printable = {
     // Reverse check op
@@ -693,4 +695,9 @@ class Instr extends Bundle {
 
   def getRs2() = RegIndex.create(getRs2Type(), getRs2Index())
 
+  def getRs3Index() = Mux(info.readRs3, rs3, 0.U)
+
+  def getRs3Type() = WireInit(this.info.rs3Type)
+
+  def getRs3() = RegIndex.create(getRs3Type(), getRs3Index())
 }

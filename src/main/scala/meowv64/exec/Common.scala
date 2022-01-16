@@ -172,6 +172,7 @@ object RetireInfo {
   * fields
   *   - rs1val: value of the rs1 operand
   *   - rs2val: value of the rs2 operand
+  *   - rs3val: value of the rs3 operand
   *   - rdname: Name of the rd register. This comes from renaming
   *   - tag: tag of this instruction. Tags are self-incrementing based on issue
   *     order, and wraps around at length(rob) = 2^length(name) =
@@ -185,6 +186,7 @@ class PipeInstr(implicit val coredef: CoreDef) extends Bundle {
 
   val rs1val = UInt(coredef.XLEN.W)
   val rs2val = UInt(coredef.XLEN.W)
+  val rs3val = UInt(coredef.XLEN.W)
 
   val rdname = UInt(log2Ceil(coredef.INFLIGHT_INSTR_LIMIT).W)
   val tag = UInt(log2Ceil(coredef.INFLIGHT_INSTR_LIMIT).W)
@@ -195,21 +197,25 @@ class PipeInstr(implicit val coredef: CoreDef) extends Bundle {
   * Besides the fields in PipeStr, we have the following additional fields
   *   - rs1name: name of the rs1 operand
   *   - rs2name: name of the rs2 operand
+  *   - rs3name: name of the rs3 operand
   *   - rs1ready: is rs1 ready?
   *   - rs2ready: is rs2 ready?
+  *   - rs3ready: is rs3 ready?
   *
   * @param coredef
   */
 class ReservedInstr(override implicit val coredef: CoreDef) extends PipeInstr {
   val rs1name = UInt(log2Ceil(coredef.INFLIGHT_INSTR_LIMIT).W)
   val rs2name = UInt(log2Ceil(coredef.INFLIGHT_INSTR_LIMIT).W)
+  val rs3name = UInt(log2Ceil(coredef.INFLIGHT_INSTR_LIMIT).W)
   val rs1ready = Bool()
   val rs2ready = Bool()
+  val rs3ready = Bool()
 
   def invalid =
     instr.fetchEx =/= FetchEx.none || instr.instr.base === InstrType.RESERVED
 
-  def ready = (invalid || rs1ready && rs2ready)
+  def ready = (invalid || (rs1ready && rs2ready && rs3ready))
 }
 
 /** Instruction pushed by issuer, and reused by rob
@@ -253,6 +259,7 @@ object PipeInstr {
     ret.instr := InstrExt.empty
     ret.rs1val := DontCare
     ret.rs2val := DontCare
+    ret.rs3val := DontCare
     ret.rdname := DontCare
     ret.tag := DontCare
 

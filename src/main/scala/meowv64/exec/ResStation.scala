@@ -109,7 +109,7 @@ class OoOResStation(val idx: Int)(implicit val coredef: CoreDef)
           maskedStore(idx).rs1val := ent.data
         }
 
-        egMask(idx) := occupied(idx) && instr.rs2ready
+        egMask(idx) := occupied(idx) && instr.rs2ready && instr.rs3ready
       }
 
       when(ent.name === instr.rs2name && ent.valid) {
@@ -120,7 +120,18 @@ class OoOResStation(val idx: Int)(implicit val coredef: CoreDef)
           maskedStore(idx).rs2val := ent.data
         }
 
-        egMask(idx) := occupied(idx) && instr.rs1ready
+        egMask(idx) := occupied(idx) && instr.rs1ready && instr.rs3ready
+      }
+
+      when(ent.name === instr.rs3name && ent.valid) {
+        // assert(!instr.rs3ready)
+        when(!instr.rs3ready) {
+          instr.rs3ready := true.B
+          instr.rs3val := ent.data
+          maskedStore(idx).rs3val := ent.data
+        }
+
+        egMask(idx) := occupied(idx) && instr.rs1ready && instr.rs2ready
       }
     }
   }
@@ -260,6 +271,14 @@ class LSBuf(val idx: Int)(implicit val coredef: CoreDef)
         when(!instr.rs2ready) {
           instr.rs2ready := true.B
           instr.rs2val := ent.data
+        }
+      }
+
+      when(ent.name === instr.rs3name && ent.valid) {
+        // assert(!instr.rs3ready)
+        when(!instr.rs3ready) {
+          instr.rs3ready := true.B
+          instr.rs3val := ent.data
         }
       }
     }

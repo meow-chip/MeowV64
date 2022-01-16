@@ -21,8 +21,8 @@ class Renamer(implicit coredef: CoreDef) extends Module {
 
   val ports =
     IO(MixedVec(for ((ty, width) <- coredef.REGISTER_TYPES) yield new Bundle {
-      // each instruction read two registers
-      val rr = Vec(coredef.ISSUE_NUM, Vec(2, new RegReader(width)))
+      // each instruction read at most three registers
+      val rr = Vec(coredef.ISSUE_NUM, Vec(3, new RegReader(width)))
       // each instruction write to one register
       val rw = Vec(coredef.ISSUE_NUM, new RegWriter(width))
       rr.suggestName(s"rr_${ty}")
@@ -94,6 +94,7 @@ class Renamer(implicit coredef: CoreDef) extends Module {
       val ret = WireDefault(true.B)
       val rs1 = toExec.input(idx).instr.getRs1
       val rs2 = toExec.input(idx).instr.getRs2
+      val rs3 = toExec.input(idx).instr.getRs3
 
       // check if this instruction relies on previous instructions
       for (i <- (0 until idx)) {
@@ -104,6 +105,10 @@ class Renamer(implicit coredef: CoreDef) extends Module {
           }
 
           when(rs2.ty === rd.ty && rs2.index === rd.index) {
+            ret := false.B
+          }
+
+          when(rs3.ty === rd.ty && rs3.index === rd.index) {
             ret := false.B
           }
         }
@@ -192,11 +197,15 @@ class Renamer(implicit coredef: CoreDef) extends Module {
     toExec.output(idx).rs2name := 0.U
     toExec.output(idx).rs2ready := false.B
     toExec.output(idx).rs2val := 0.U
+    toExec.output(idx).rs3name := 0.U
+    toExec.output(idx).rs3ready := false.B
+    toExec.output(idx).rs3val := 0.U
 
     for (((ty, _), bankIdx) <- coredef.REGISTER_TYPES.zipWithIndex) {
       val rr = ports(bankIdx).rr
       rr(idx)(0).addr := 0.U
       rr(idx)(1).addr := 0.U
+      rr(idx)(2).addr := 0.U
 
       when(instr.instr.getRs1Type === ty) {
         val (rs1name, rs1ready, rs1val) =
@@ -222,6 +231,19 @@ class Renamer(implicit coredef: CoreDef) extends Module {
         toExec.output(idx).rs2name := rs2name
         toExec.output(idx).rs2ready := rs2ready
         toExec.output(idx).rs2val := rs2val
+      }
+
+      when(instr.instr.getRs3Type === ty) {
+        val (rs3name, rs3ready, rs3val) =
+          readRegs(
+            rr(idx)(2),
+            instr.instr.getRs3Index,
+            bankIdx,
+            instr.instr.info.readRs3
+          )
+        toExec.output(idx).rs3name := rs3name
+        toExec.output(idx).rs3ready := rs3ready
+        toExec.output(idx).rs3val := rs3val
       }
     }
 
