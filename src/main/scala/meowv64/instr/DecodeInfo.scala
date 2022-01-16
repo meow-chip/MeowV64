@@ -181,6 +181,8 @@ object DecodeInfo {
       FADD_S    -> List(Y, Y, float, Y, float, Y, float, N, X, fma),
       FSUB_S    -> List(Y, Y, float, Y, float, Y, float, N, X, fma),
       FMUL_S    -> List(Y, Y, float, Y, float, Y, float, N, X, fma),
+      FDIV_S    -> List(Y, Y, float, Y, float, Y, float, N, X, fDivSqrt),
+      FSQRT_S   -> List(Y, Y, float, Y, float, N, X, N, X, fDivSqrt),
       FSGNJ_S   -> List(Y, Y, float, Y, float, Y, float, N, X, floatMisc),
       FSGNJN_S  -> List(Y, Y, float, Y, float, Y, float, N, X, floatMisc),
       FSGNJX_S  -> List(Y, Y, float, Y, float, Y, float, N, X, floatMisc),
