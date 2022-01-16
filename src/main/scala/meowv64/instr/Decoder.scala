@@ -163,6 +163,7 @@ object Decoder {
     "FSUB" -> "00001",
     "FMUL" -> "00010",
     "FLOAT2FLOAT" -> "01000",
+    "FSQRT" -> "01011",
     "FCMP" -> "10100",
     "FLOAT2INT" -> "11000",
     "INT2FLOAT" -> "11010",

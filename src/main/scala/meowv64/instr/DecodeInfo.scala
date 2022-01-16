@@ -11,7 +11,8 @@ import meowv64.reg.RegType
 object ExecUnitType extends ChiselEnum {
   val alu, branch, bypass, csr = Value
   val div, mul                 = Value
-  val fma, floatMisc, lsu      = Value
+  val fma, floatMisc, fDivSqrt = Value
+  val lsu                      = Value
 
   implicit def bitpat(op: ExecUnitType.Type): BitPat =
     BitPat(op.litValue.U(getWidth.W))
@@ -179,6 +180,8 @@ object DecodeInfo {
       FSD       -> List(Y, N, X, Y, integer, Y, float, lsu),
       FADD_D    -> List(Y, Y, float, Y, float, Y, float, fma),
       FSUB_D    -> List(Y, Y, float, Y, float, Y, float, fma),
+      FDIV_D    -> List(Y, Y, float, Y, float, Y, float, fDivSqrt),
+      FSQRT_D   -> List(Y, Y, float, Y, float, N, X, fDivSqrt),
       FMUL_D    -> List(Y, Y, float, Y, float, Y, float, fma),
       FCVT_S_D  -> List(Y, Y, float, Y, float, N, X, floatMisc),
       FCVT_D_S  -> List(Y, Y, float, Y, float, N, X, floatMisc),
