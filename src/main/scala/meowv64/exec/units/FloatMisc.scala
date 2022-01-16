@@ -11,6 +11,7 @@ import hardfloat.RecFNToIN
 import hardfloat.INToRecFN
 import hardfloat.fNFromRecFN
 import hardfloat.RecFNToRecFN
+import meowv64.core.FloatD
 
 class IntFloatExt(implicit val coredef: CoreDef) extends Bundle {
   val res = UInt(coredef.XLEN.W)
@@ -44,9 +45,6 @@ class FloatMisc(override implicit val coredef: CoreDef)
     // single
     val rs1valSingleHF = WireInit(
       recFNFromFN(singleExpWidth, singleSigWidth, pipe.rs1val(31, 0))
-    )
-    val rs2valSingleHF = WireInit(
-      recFNFromFN(singleExpWidth, singleSigWidth, pipe.rs2val(31, 0))
     )
 
     when(
@@ -97,25 +95,79 @@ class FloatMisc(override implicit val coredef: CoreDef)
     }.elsewhen(
       pipe.instr.instr.funct5 === Decoder.FP_FUNC(
         "FCMP"
+      ) || pipe.instr.instr.funct5 === Decoder.FP_FUNC(
+        "FMINMAX"
       )
     ) {
-      // FEQ.D, FLT.D, FLE.D
       val cmp = Module(new CompareRecFN(expWidth, sigWidth))
       cmp.io.a := rs1valHF
       cmp.io.b := rs2valHF
       cmp.io.signaling := true.B
 
-      when(pipe.instr.instr.funct3 === 2.U) {
-        // FEQ
-        ext.res := cmp.io.eq
-        // do not signal qNan in feq
+      when(
+        pipe.instr.instr.funct5 === Decoder.FP_FUNC(
+          "FCMP"
+        )
+      ) {
+        // FEQ.D, FLT.D, FLE.D
+        when(pipe.instr.instr.funct3 === 2.U) {
+          // FEQ
+          ext.res := cmp.io.eq
+          // do not signal qNan in feq
+          cmp.io.signaling := false.B
+        }.elsewhen(pipe.instr.instr.funct3 === 1.U) {
+          // FLT
+          ext.res := cmp.io.lt
+        }.elsewhen(pipe.instr.instr.funct3 === 0.U) {
+          // FLE
+          ext.res := cmp.io.lt || cmp.io.eq
+        }
+      }.otherwise {
+        // FMIN.D, FMAX.D
         cmp.io.signaling := false.B
-      }.elsewhen(pipe.instr.instr.funct3 === 1.U) {
-        // FLT
-        ext.res := cmp.io.lt
-      }.elsewhen(pipe.instr.instr.funct3 === 0.U) {
-        // FLE
-        ext.res := cmp.io.lt || cmp.io.eq
+        val floatType = FloatD
+        val retRs1 = WireInit(true.B)
+        val retNan = WireInit(false.B)
+
+        val rs1Nan = floatType.isNan(pipe.rs1val)
+        val rs2Nan = floatType.isNan(pipe.rs2val)
+
+        val lt = WireInit(cmp.io.lt)
+        // special handling for -0.0 and +0.0
+        when(pipe.rs1val(coredef.XLEN - 1) && ~pipe.rs2val(coredef.XLEN - 1)) {
+          // -0.0 < +0.0
+          lt := true.B
+        }.elsewhen(
+          ~pipe.rs1val(coredef.XLEN - 1) && pipe.rs2val(coredef.XLEN - 1)
+        ) {
+          // -0.0 > +0.0
+          lt := false.B
+        }
+
+        when(pipe.instr.instr.funct3 === 0.U) {
+          // FMIN
+          retRs1 := lt
+        }.otherwise {
+          // FMAX
+          retRs1 := ~lt
+        }
+
+        when(rs1Nan && ~rs2Nan) {
+          // rs2 is not nan
+          retRs1 := false.B
+        }.elsewhen(~rs1Nan && rs2Nan) {
+          // rs1 is not nan
+          retRs1 := true.B
+        }.elsewhen(rs1Nan && rs2Nan) {
+          // return nan
+          retNan := true.B
+        }
+
+        ext.res := Mux(
+          retNan,
+          floatType.nan(),
+          Mux(retRs1, pipe.rs1val, pipe.rs2val)
+        )
       }
 
       ext.updateFFlags := true.B

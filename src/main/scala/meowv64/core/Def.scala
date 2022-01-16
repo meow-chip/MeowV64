@@ -49,7 +49,7 @@ abstract class CoreDef {
     Seq(
       ExecUnitType.fma,
       ExecUnitType.floatMisc,
-      ExecUnitType.fDivSqrt,
+      ExecUnitType.fDivSqrt
     ),
     // port 4: LSU
     Seq(ExecUnitType.lsu)

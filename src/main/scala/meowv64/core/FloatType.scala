@@ -27,16 +27,27 @@ trait FloatType {
   def fromHardfloat(n: UInt) = fNFromRecFN(exp(), sig(), n)
 
   // generate the representation of 1.0
-  // chisel
   def one() =
     (((BigInt(1) << (exp() - 1)) - 1) << (sig() - 1)).U(width().W)
   def oneHardfloat() =
     (BigInt(1) << (exp() + sig() - 1)).U(widthHardfloat().W)
 
+  // generate quiet nan
+  // 0 1..1 10..0
+  def nan() =
+    (((BigInt(1) << (exp() + 1)) - 1) << (sig() - 2)).U(width().W)
+
   // NaN boxing/unboxing
   def box(n: UInt, xlen: Int) =
     ((BigInt(1) << xlen) - (BigInt(1) << width)).U | n
   def unbox(n: UInt) = n(width - 1, 0)
+
+  // classify
+  def getExp(n: UInt) = n(exp + sig - 2, sig - 1)
+  def getSig(n: UInt) = n(sig - 2, 0)
+  def isNan(n: UInt) = getExp(n).andR && getSig(n).orR
+  def isInf(n: UInt) = getExp(n).andR && getSig(n) === 0.U
+  def isZero(n: UInt) = getExp(n) === 0.U && getSig(n) === 0.U
 }
 
 /** Enum of floating point types

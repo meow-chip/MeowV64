@@ -183,6 +183,8 @@ object DecodeInfo {
       FDIV_D    -> List(Y, Y, float, Y, float, Y, float, fDivSqrt),
       FSQRT_D   -> List(Y, Y, float, Y, float, N, X, fDivSqrt),
       FMUL_D    -> List(Y, Y, float, Y, float, Y, float, fma),
+      FMIN_D    -> List(Y, Y, float, Y, float, Y, float, floatMisc),
+      FMAX_D    -> List(Y, Y, float, Y, float, Y, float, floatMisc),
       FCVT_S_D  -> List(Y, Y, float, Y, float, N, X, floatMisc),
       FCVT_D_S  -> List(Y, Y, float, Y, float, N, X, floatMisc),
       FEQ_D     -> List(Y, Y, integer, Y, float, Y, float, floatMisc),
