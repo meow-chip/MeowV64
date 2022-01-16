@@ -22,7 +22,7 @@ object CSRHelper {
     csr.readers("marchid") := 0.U(csr.XLEN.W)
     csr.readers("mimpid") := 0.U(csr.XLEN.W)
     csr.readers("misa") := 2.U(2.W) ## 0
-      .U((csr.XLEN - 2 - 26).W) ## CSRHelper.buildExt("IMACSU").U(26.W)
+      .U((csr.XLEN - 2 - 26).W) ## CSRHelper.buildExt("IMAFDCSU").U(26.W)
     csr.readers("mcounteren") := 0.U(csr.XLEN.W)
     csr.readers("scounteren") := 0.U(csr.XLEN.W)
   }
