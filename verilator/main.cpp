@@ -145,15 +145,15 @@ void step() {
           printf("%c", input & 0xFF);
         } else if (data == 1) {
           // pass
-          printf("> ISA testsuite pass\n");
+          fprintf(stderr, "> ISA testsuite pass\n");
           finished = true;
         } else if ((data & 1) == 1) {
           uint32_t c = data >> 1;
-          printf("> ISA testsuite failed case %d\n", c);
+          fprintf(stderr, "> ISA testsuite failed case %d\n", c);
           finished = true;
           res = 1;
         } else {
-          printf("> Unhandled tohost: %x\n", input);
+          fprintf(stderr, "> Unhandled tohost: %x\n", input);
           assert(false);
         }
       }
@@ -322,7 +322,7 @@ int main(int argc, char **argv) {
   top->clock = 0;
   init();
 
-  printf("> Simulation started\n");
+  fprintf(stderr, "> Simulation started\n");
   uint64_t begin = get_time_us();
   while (!Verilated::gotFinish() && !finished) {
     if (main_time > 50) {
@@ -339,9 +339,9 @@ int main(int argc, char **argv) {
       // log per 10000 mcycle
       if ((top->io_debug_0_mcycle % 10000) == 0 && top->io_debug_0_mcycle > 0 &&
           progress) {
-        printf("> mcycle: %ld\n", top->io_debug_0_mcycle);
-        printf("> minstret: %ld\n", top->io_debug_0_minstret);
-        printf("> pc: %lx\n", top->io_debug_0_pc);
+        fprintf(stderr, "> mcycle: %ld\n", top->io_debug_0_mcycle);
+        fprintf(stderr, "> minstret: %ld\n", top->io_debug_0_minstret);
+        fprintf(stderr, "> pc: %lx\n", top->io_debug_0_pc);
       }
     }
     if ((main_time % 10) == 5) {
@@ -354,13 +354,13 @@ int main(int argc, char **argv) {
     main_time++;
   }
   uint64_t elapsed_us = get_time_us() - begin;
-  printf("> Simulation finished\n");
-  printf("> mcycle: %ld\n", top->io_debug_0_mcycle);
-  printf("> minstret: %ld\n", top->io_debug_0_minstret);
-  printf("> IPC: %.2lf\n",
-         (double)top->io_debug_0_minstret / top->io_debug_0_mcycle);
-  printf("> Simulation speed: %.2lf mcycle/s\n",
-         (double)top->io_debug_0_mcycle * 1000000 / elapsed_us);
+  fprintf(stderr, "> Simulation finished\n");
+  fprintf(stderr, "> mcycle: %ld\n", top->io_debug_0_mcycle);
+  fprintf(stderr, "> minstret: %ld\n", top->io_debug_0_minstret);
+  fprintf(stderr, "> IPC: %.2lf\n",
+          (double)top->io_debug_0_minstret / top->io_debug_0_mcycle);
+  fprintf(stderr, "> Simulation speed: %.2lf mcycle/s\n",
+          (double)top->io_debug_0_mcycle * 1000000 / elapsed_us);
 
   top->final();
   delete top;
