@@ -1,4 +1,5 @@
 #include "VMulticore.h"
+#include <elf.h>
 #include <iostream>
 #include <map>
 #include <string>
@@ -20,6 +21,7 @@ vluint64_t main_time = 0;
 double sc_time_stamp() { return main_time; }
 
 bool finished = false;
+int res = 0;
 
 // initialize signals
 void init() {
@@ -145,6 +147,7 @@ void step() {
           uint32_t c = data >> 1;
           printf("ISA testsuite failed case %d\n", c);
           finished = true;
+          res = 1;
         }
 
         pending_write_addr += 1L << pending_write_size;
@@ -178,11 +181,11 @@ void step() {
 // load file
 void load_file(const std::string &path) {
   size_t i = path.rfind('.');
-  if (i == std::string::npos) {
-    // load as elf
-    // TODO
-    assert(false);
-  } else {
+  std::string ext;
+  if (i != std::string::npos) {
+    ext = path.substr(i);
+  }
+  if (ext == ".bin") {
     // load as bin
     FILE *fp = fopen(path.c_str(), "rb");
     assert(fp);
@@ -208,8 +211,62 @@ void load_file(const std::string &path) {
     for (int i = 0; i < padded_size; i += 8) {
       memory[addr + i] = *((uint64_t *)&buffer[i]);
     }
-    printf("Loaded %ld bytes\n", size);
+    printf("Loaded %ld bytes from BIN\n", size);
     fclose(fp);
+    delete[] buffer;
+  } else {
+    // load as elf
+
+    // read whole file
+    FILE *fp = fopen(path.c_str(), "rb");
+    assert(fp);
+    fseek(fp, 0, SEEK_END);
+    size_t size = ftell(fp);
+    fseek(fp, 0, SEEK_SET);
+    uint8_t *buffer = new uint8_t[size];
+    memset(buffer, 0, size);
+
+    size_t offset = 0;
+    while (!feof(fp)) {
+      ssize_t read = fread(&buffer[offset], 1, size - offset, fp);
+      if (read <= 0) {
+        break;
+      }
+      offset += read;
+    }
+
+    Elf64_Ehdr *hdr = (Elf64_Ehdr *)buffer;
+    assert(hdr->e_ident[EI_MAG0] == ELFMAG0);
+    assert(hdr->e_ident[EI_MAG1] == ELFMAG1);
+    assert(hdr->e_ident[EI_MAG2] == ELFMAG2);
+    assert(hdr->e_ident[EI_MAG3] == ELFMAG3);
+    // 64bit
+    assert(hdr->e_ident[EI_CLASS] == ELFCLASS64);
+    // little endian
+    assert(hdr->e_ident[EI_DATA] == ELFDATA2LSB);
+
+    // https://github.com/eklitzke/parse-elf/blob/master/parse_elf.cc
+    // iterate program header
+    size_t total_size = 0;
+    for (int i = 0; i < hdr->e_phnum; i++) {
+      size_t offset = hdr->e_phoff + i * hdr->e_phentsize;
+      Elf64_Phdr *hdr = (Elf64_Phdr *)&buffer[offset];
+      if (hdr->p_type == PT_LOAD) {
+        // load memory
+        size_t size = hdr->p_filesz;
+        size_t offset = hdr->p_offset;
+        size_t dest = hdr->p_paddr;
+        total_size += size;
+        for (int i = 0;i < size;i += 8) {
+          uint64_t data = *(uint64_t *)&buffer[offset + i];
+          memory[dest + i] = data;
+        }
+      }
+    }
+
+    printf("Loaded %ld bytes from ELF\n", size);
+    fclose(fp);
+    delete[] buffer;
   }
 }
 
@@ -273,4 +330,5 @@ int main(int argc, char **argv) {
 
   top->final();
   delete top;
+  return res;
 }
