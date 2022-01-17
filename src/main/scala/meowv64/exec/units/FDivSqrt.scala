@@ -19,7 +19,7 @@ class FDivSqrtExt(implicit val coredef: CoreDef) extends Bundle {
 
 class FDivSqrt(override implicit val coredef: CoreDef)
     extends ExecUnit(
-      0,
+      1,
       new FDivSqrtExt
     ) {
 
@@ -49,6 +49,22 @@ class FDivSqrt(override implicit val coredef: CoreDef)
     convD2S.io.out
   }
 
+  val floatType = FloatD
+  val div_sqrt = Module(
+    new DivSqrtRecFN_small(
+      floatType.exp(),
+      floatType.sig(),
+      0
+    )
+  )
+  // default wiring
+  div_sqrt.io.inValid := false.B
+  div_sqrt.io.a := 0.U
+  div_sqrt.io.b := 0.U
+  div_sqrt.io.detectTininess := 0.U
+  div_sqrt.io.sqrtOp := false.B
+  div_sqrt.io.roundingMode := 0.U
+
   def map(
       stage: Int,
       pipe: PipeInstr,
@@ -57,46 +73,45 @@ class FDivSqrt(override implicit val coredef: CoreDef)
     val state = Wire(new FDivSqrtExt)
     state := DontCare
 
-    // convert to hardfloat
-    val floatType = FloatD
-    val rs1valHF = WireInit(
-      recFNFromFN(floatType.exp, floatType.sig, pipe.rs1val)
-    )
-    val rs2valHF = WireInit(
-      recFNFromFN(floatType.exp, floatType.sig, pipe.rs2val)
-    )
-
-    // convert single to double
-    when(pipe.instr.instr.fmt === FloatS.fmt) {
-      rs1valHF := single2double(
-        recFNFromFN(FloatS.exp, FloatS.sig, pipe.rs1val(31, 0))
-      )
-      rs2valHF := single2double(
-        recFNFromFN(FloatS.exp, FloatS.sig, pipe.rs2val(31, 0))
-      )
-    }
-
-    val div_sqrt = Module(
-      new DivSqrtRecFN_small(
-        floatType.exp(),
-        floatType.sig(),
-        0
-      )
-    )
-    div_sqrt.io.a := rs1valHF
-    div_sqrt.io.b := rs2valHF
-    val fire = pipe.instr.valid && idle && div_sqrt.io.inReady
-    div_sqrt.io.inValid := fire
-    when(fire) {
-      idle := false.B
-    }
-    div_sqrt.io.roundingMode := false.B
-    div_sqrt.io.detectTininess := false.B
-    div_sqrt.io.sqrtOp := pipe.instr.instr.funct5 === Decoder.FP_FUNC("FSQRT")
-
     // stalls
+    // pipeline flow if: 1. idle 2. output is valid
     val outValid = div_sqrt.io.outValid_div || div_sqrt.io.outValid_sqrt
-    when(outValid) {
+    val stall = ~(idle || outValid)
+
+    if (stage == 0) {
+      // stage 0: Input
+      // convert to hardfloat
+      val floatType = FloatD
+      val rs1valHF = WireInit(
+        recFNFromFN(floatType.exp, floatType.sig, pipe.rs1val)
+      )
+      val rs2valHF = WireInit(
+        recFNFromFN(floatType.exp, floatType.sig, pipe.rs2val)
+      )
+
+      // convert single to double
+      when(pipe.instr.instr.fmt === FloatS.fmt) {
+        rs1valHF := single2double(
+          recFNFromFN(FloatS.exp, FloatS.sig, pipe.rs1val(31, 0))
+        )
+        rs2valHF := single2double(
+          recFNFromFN(FloatS.exp, FloatS.sig, pipe.rs2val(31, 0))
+        )
+      }
+
+      div_sqrt.io.a := rs1valHF
+      div_sqrt.io.b := rs2valHF
+
+      val fire = pipe.instr.valid && idle && div_sqrt.io.inReady
+      div_sqrt.io.inValid := fire
+      when(fire) {
+        idle := false.B
+      }
+      div_sqrt.io.roundingMode := false.B
+      div_sqrt.io.detectTininess := false.B
+      div_sqrt.io.sqrtOp := pipe.instr.instr.funct5 === Decoder.FP_FUNC("FSQRT")
+    } else {
+      // stage 1: Output
       when(pipe.instr.instr.fmt === FloatS.fmt) {
         // convert double to single
         state.res := fNFromRecFN(
@@ -108,9 +123,11 @@ class FDivSqrt(override implicit val coredef: CoreDef)
         state.res := fNFromRecFN(floatType.exp, floatType.sig, div_sqrt.io.out)
       }
       state.fflags := div_sqrt.io.exceptionFlags
-      idle := true.B
+      when(outValid) {
+        idle := true.B
+      }
     }
-    (state, ~outValid)
+    (state, stall)
   }
 
   def finalize(pipe: PipeInstr, ext: FDivSqrtExt): RetireInfo = {
