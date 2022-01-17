@@ -19,6 +19,9 @@ build:
     - cd testcases
     - make
     - cd ..
+  artifacts:
+    paths:
+      - testcases/
 
 scala_test:
   stage: test
