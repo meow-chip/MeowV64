@@ -149,13 +149,13 @@ void step() {
           finished = true;
           res = 1;
         }
+      }
 
-        pending_write_addr += 1L << pending_write_size;
-        pending_write_len--;
-        if (top->io_axi_WLAST) {
-          assert(pending_write_len == -1);
-          pending_write_finished = true;
-        }
+      pending_write_addr += 1L << pending_write_size;
+      pending_write_len--;
+      if (top->io_axi_WLAST) {
+        assert(pending_write_len == -1);
+        pending_write_finished = true;
       }
     }
   } else {
@@ -257,7 +257,7 @@ void load_file(const std::string &path) {
         size_t offset = hdr->p_offset;
         size_t dest = hdr->p_paddr;
         total_size += size;
-        for (int i = 0;i < size;i += 8) {
+        for (int i = 0; i < size; i += 8) {
           uint64_t data = *(uint64_t *)&buffer[offset + i];
           memory[dest + i] = data;
         }
