@@ -6,7 +6,7 @@
 #include <sys/time.h>
 #include <unistd.h>
 #include <verilated.h>
-#include <verilated_vcd_c.h>
+#include <verilated_fst_c.h>
 
 // memory mapping
 // 8 byte aligned
@@ -309,12 +309,12 @@ int main(int argc, char **argv) {
 
   top = new VMulticore;
 
-  VerilatedVcdC *tfp = nullptr;
+  VerilatedFstC *tfp = nullptr;
   if (trace) {
     Verilated::traceEverOn(true);
-    tfp = new VerilatedVcdC;
+    tfp = new VerilatedFstC;
     top->trace(tfp, 99);
-    tfp->open("dump.vcd");
+    tfp->open("dump.fst");
     printf("> Enable tracing\n");
   }
 
@@ -362,6 +362,10 @@ int main(int argc, char **argv) {
   fprintf(stderr, "> Simulation speed: %.2lf mcycle/s\n",
           (double)top->io_debug_0_mcycle * 1000000 / elapsed_us);
 
+  if (tfp) {
+    tfp->flush();
+    tfp->close();
+  }
   top->final();
   delete top;
   return res;

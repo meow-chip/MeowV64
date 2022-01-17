@@ -1,5 +1,5 @@
 VERILATOR = verilator
-VERILATOR_FLAGS = -Wno-fatal -trace
+VERILATOR_FLAGS = -Wno-fatal --trace-fst
 VERILOG_SRCS = ../Multicore.v
 
 all: VMulticore
