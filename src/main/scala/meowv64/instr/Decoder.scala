@@ -265,7 +265,13 @@ object Decoder {
           result.info := DecodeInfo.assign(Instructions.ADDI)
         }
         is("00001".asBits(5.W)) { // FLD
-          fail()
+          result.op := Op("LOAD-FP").ident
+          result.rs1 := rs1t
+          result.rs2 := DontCare
+          result.rd := rs2t
+          uimm := ui(6, 5) ## ui(12, 10) ## 0.U(3.W)
+          result.funct3 := MEM_WIDTH_FUNC("D")
+          result.info := DecodeInfo.assign(Instructions.FLD)
         }
         is("00010".asBits(5.W)) { // LW
           result.op := Op("LOAD").ident
@@ -289,7 +295,13 @@ object Decoder {
           fail()
         }
         is("00101".asBits(5.W)) { // FSD
-          fail()
+          result.op := Op("STORE-FP").ident
+          result.rs1 := rs1t
+          result.rs2 := rs2t
+          result.rd := DontCare
+          uimm := ui(6, 5) ## ui(12, 10) ## 0.U(3.W)
+          result.funct3 := MEM_WIDTH_FUNC("D")
+          result.info := DecodeInfo.assign(Instructions.FSD)
         }
         is("00110".asBits(5.W)) { // SW
           result.op := Op("STORE").ident
@@ -480,7 +492,13 @@ object Decoder {
           result.info := DecodeInfo.assign(Instructions.SLLI)
         }
         is("10001".asBits(5.W)) { // FLDSP
-          fail()
+          result.op := Op("LOAD-FP").ident
+          result.rs1 := 2.U // x2 = sp
+          result.rs2 := DontCare
+          result.rd := rs1e
+          uimm := ui(4, 2) ## ui(12) ## ui(6, 5) ## 0.U(3.W)
+          result.funct3 := MEM_WIDTH_FUNC("D")
+          result.info := DecodeInfo.assign(Instructions.FLD)
         }
         is("10010".asBits(5.W)) { // LWSP
           result.op := Op("LOAD").ident
@@ -550,7 +568,13 @@ object Decoder {
           }
         }
         is("10101".asBits(5.W)) { // FSDSP
-          fail()
+          result.op := Op("STORE-FP").ident
+          result.rs1 := 2.U // x2 = sp
+          result.rs2 := rs2e
+          result.rd := DontCare
+          uimm := ui(9, 7) ## ui(12, 10) ## 0.U(3.W)
+          result.funct3 := MEM_WIDTH_FUNC("D")
+          result.info := DecodeInfo.assign(Instructions.FSD)
         }
         is("10110".asBits(5.W)) { // SWSP
           result.op := Op("STORE").ident
