@@ -28,7 +28,7 @@ int res = 0;
 // tohost/fromhost
 // default at 0x60000000
 uint64_t tohost_addr = 0x60000000;
-uint64_t fromhost_addr = 0x60000008;
+uint64_t fromhost_addr = 0x60000040;
 
 void ctrlc_handler(int arg) {
   fprintf(stderr, "Received Ctrl-C\n");
