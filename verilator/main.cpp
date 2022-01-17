@@ -57,17 +57,6 @@ void step() {
   static uint64_t pending_read_addr = 0;
   static uint64_t pending_read_len = 0;
   static uint64_t pending_read_size = 0;
-  if (!pending_read && top->io_axi_ARVALID) {
-    top->io_axi_ARREADY = 1;
-    pending_read = true;
-    pending_read_id = top->io_axi_ARID;
-    pending_read_addr = top->io_axi_ARADDR;
-    pending_read_len = top->io_axi_ARLEN;
-    pending_read_size = top->io_axi_ARSIZE;
-  } else {
-    top->io_axi_ARREADY = 0;
-  }
-
   if (pending_read) {
     top->io_axi_RVALID = 1;
     top->io_axi_RID = pending_read_id;
@@ -99,6 +88,18 @@ void step() {
   } else {
     top->io_axi_RVALID = 0;
   }
+  
+  if (!pending_read && top->io_axi_ARVALID) {
+    top->io_axi_ARREADY = 1;
+    pending_read = true;
+    pending_read_id = top->io_axi_ARID;
+    pending_read_addr = top->io_axi_ARADDR;
+    pending_read_len = top->io_axi_ARLEN;
+    pending_read_size = top->io_axi_ARSIZE;
+  } else {
+    top->io_axi_ARREADY = 0;
+  }
+
 
   // handle write
   static bool pending_write = false;
