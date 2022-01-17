@@ -211,7 +211,7 @@ void load_file(const std::string &path) {
     for (int i = 0; i < padded_size; i += 8) {
       memory[addr + i] = *((uint64_t *)&buffer[i]);
     }
-    printf("Loaded %ld bytes from BIN\n", size);
+    printf("Loaded %ld bytes from BIN %s\n", size, path.c_str());
     fclose(fp);
     delete[] buffer;
   } else {
@@ -264,7 +264,7 @@ void load_file(const std::string &path) {
       }
     }
 
-    printf("Loaded %ld bytes from ELF\n", size);
+    printf("Loaded %ld bytes from ELF %s\n", size, path.c_str());
     fclose(fp);
     delete[] buffer;
   }
