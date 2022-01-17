@@ -22,12 +22,16 @@ build:
 
 scala_test:
   stage: test
+  dependencies: 
+    - build
   image: jiegec/meowv64
   script:
     - mill $MILL_CLI meowv64.test.test
 
 verilator_test:
   stage: test
+  dependencies: 
+    - build
   image: jiegec/meowv64
   script:
     - mill $MILL_CLI meowv64.runMain meowv64.Main
