@@ -1,9 +1,10 @@
 cache:
   key: ${CI_JOB_NAME}
   paths:
-    - "out/"
+    - ".cache/"
 
 variables:
+  MILL_CLI: "-D coursier.cache=$CI_PROJECT_DIR/.cache"
   PREFIX: "riscv64-unknown-elf-"
   GIT_SUBMODULE_STRATEGY: recursive
 
@@ -17,4 +18,4 @@ exec_test:
     - cd testcases
     - make
     - cd ..
-    - mill meowv64.test.test
+    - mill $MILL_CLI meowv64.test.test
