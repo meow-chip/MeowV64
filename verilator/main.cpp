@@ -168,6 +168,10 @@ void step() {
           fprintf(stderr, "> Unhandled tohost: %x\n", input);
           assert(false);
         }
+      } else if (pending_write_addr == fromhost_addr) {
+        // write to fromhost
+        // clear tohost
+        memory[tohost_addr] = 0;
       }
 
       pending_write_addr += 1L << pending_write_size;
