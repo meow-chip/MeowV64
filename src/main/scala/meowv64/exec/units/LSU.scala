@@ -197,7 +197,7 @@ class LSU(implicit val coredef: CoreDef) extends Module with UnitSelIO {
 
   /** Is this access misaligned?
     *
-    * According to ISA, the least two bits of funct3 repersents the size of the
+    * According to ISA, the least two bits of funct3 represents the size of the
     * load/store:
     *   - (L/S)B[U]: 00
     *   - (L/S)H[U]: 01
@@ -229,7 +229,7 @@ class LSU(implicit val coredef: CoreDef) extends Module with UnitSelIO {
   val offset = addr(2, 0)
   val uncached = isUncached(addr) && next.instr.instr.op =/= Decoder
     .Op("AMO")
-    .ident // Uncached if phys bit 56 = high and is not AMO
+    .ident // Uncached if < 0x80000000 and is not AMO
   val read = (
     next.instr.instr.op === Decoder.Op("LOAD").ident
       || next.instr.instr.op === Decoder.Op("LOAD-FP").ident

@@ -502,4 +502,10 @@ object Instructions {
 
   // Memory-Management Instructions
   val SFENCE_VMA = BitPat("b0001001??????????000000001110011")
+
+  // CMO(Cache Memory Operation) extension
+  val CBO_CLEAN = BitPat("b000000000001?????010000000001111")
+  val CBO_FLUSH = BitPat("b000000000010?????010000000001111")
+  val CBO_INVAL = BitPat("b000000000000?????010000000001111")
+  val CBO_ZERO  = BitPat("b000000000100?????010000000001111")
 }
