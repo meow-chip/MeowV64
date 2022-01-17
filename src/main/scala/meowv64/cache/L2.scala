@@ -574,7 +574,7 @@ class L2Cache(val opts: L2Opts) extends Module {
               .zipWithIndex
           ) {
             when(idx.U =/= target && s =/= L2DirState.vacant) {
-              p := L1DCPort.L2Req.inval
+              p := L1DCPort.L2Req.invalidate
             }
           }
         }
@@ -663,7 +663,7 @@ class L2Cache(val opts: L2Opts) extends Module {
           for ((s, p) <- lookups(victim).states.zip(pendings)) {
             assert(s =/= L2DirState.modified)
             when(s === L2DirState.shared) {
-              p := L1DCPort.L2Req.inval
+              p := L1DCPort.L2Req.invalidate
             }
           }
 
@@ -769,7 +769,7 @@ class L2Cache(val opts: L2Opts) extends Module {
         }.otherwise {
           for ((s, p) <- ent.states.zip(pendings)) {
             when(s =/= L2DirState.vacant) { // FIXME: && target != s
-              p := L1DCPort.L2Req.inval
+              p := L1DCPort.L2Req.invalidate
             }
 
             // Don't flush sender on write requests

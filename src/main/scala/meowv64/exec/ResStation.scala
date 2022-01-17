@@ -201,15 +201,17 @@ class LSBuf(val idx: Int)(implicit val coredef: CoreDef)
     val flush = Input(Bool())
   })
 
+  /** Are there any unfinished pending memory operations? */
   val hasPending = IO(
     Input(Bool())
-  ) // Is there any unfinished pending memory operations?
+  )
 
   val store = RegInit(VecInit(Seq.fill(DEPTH)(ReservedInstr.empty)))
 
   val head = RegInit(0.U(log2Ceil(DEPTH).W))
   val tail = RegInit(0.U(log2Ceil(DEPTH).W))
 
+  // power of 2
   assume((DEPTH & (DEPTH - 1)) == 0)
 
   // Egress part
@@ -218,19 +220,17 @@ class LSBuf(val idx: Int)(implicit val coredef: CoreDef)
   val headIsLoad = (
     store(head).instr.instr.op === Decoder.Op("LOAD").ident
       || store(head).instr.instr.op === Decoder.Op("LOAD-FP").ident
-      || store(head).instr.instr.op === Decoder.Op("AMO").ident && store(
-        head
-      ).instr.instr.funct7(6, 2) === Decoder.AMO_FUNC("LR")
+      || (store(head).instr.instr.op === Decoder.Op("AMO").ident
+        && store(head).instr.instr.funct7(6, 2) === Decoder.AMO_FUNC("LR"))
   )
   val headIsFence = (
     store(head).instr.instr.op === Decoder.Op("MISC-MEM").ident
     // Release ops cannot be reordered before any previous ops
-      || store(head).instr.instr.op === Decoder.Op("AMO").ident && store(
-        head
-      ).instr.instr.funct7(1)
+      || (store(head).instr.instr.op === Decoder.Op("AMO").ident
+      && store(head).instr.instr.funct7(1))
   )
 
-  // FIXME: is there acquire ops dispatched?
+  // FIXME: are there acquire ops dispatched?
 
   // TODO: optimize: allow stores with different address to slip over?
   val loadBlocked = hasPending

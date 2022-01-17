@@ -281,7 +281,6 @@ object ReservedInstr {
   *
   *   - next: next instruction
   *   - stall: unit -> pipeline stall signal
-  *   - pause: pipeline -> unit stall signal
   *   - flush: Flush signal
   *   - retired: The instruction that just finished executing
   *   - retirement: Result of execution
@@ -294,11 +293,16 @@ class ExecUnitPort(implicit val coredef: CoreDef) extends Bundle {
   val stall = Output(Bool())
   val flush = Input(Bool())
 
+  /** The instruction that just finished execution
+    */
   val retirement = Output(new RetireInfo)
+
+  /** Result of execution
+    */
   val retired = Output(new PipeInstr)
 }
 
-/** Trait repersenting an execution unit
+/** Trait representing an execution unit
   *
   * DEPTH is the pipeline delay of this unit. For example, ALU, which works in
   * and asynchronous manner, have DEPTH = 0. LSU have a DEPTH of 1, and Div's
@@ -347,6 +351,7 @@ abstract class ExecUnit[T <: Data](
       )
     )
 
+    // default wiring
     for (i <- (0 until DEPTH)) {
       storeInit(i) := DontCare
       // storeInit(i).pipe.instr.instr.imm := 0.S // Treadle bug?
@@ -361,6 +366,7 @@ abstract class ExecUnit[T <: Data](
 
   def init(): Unit = {
     if (DEPTH != 0) {
+      // if any stage stall, the whole pipeline stalls
       val (fExt, fStall) = connectStage(0, io.next, None)
       var stall = fStall
 
@@ -421,6 +427,8 @@ abstract class ExecUnit[T <: Data](
     }
   }
 
+  /** Override this function and define combinatorial logic
+    */
   def map(stage: Int, pipe: PipeInstr, ext: Option[T]): (T, Bool)
 
   def finalize(pipe: PipeInstr, ext: T): RetireInfo

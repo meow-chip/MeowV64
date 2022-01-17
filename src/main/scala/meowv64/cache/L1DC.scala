@@ -123,6 +123,9 @@ class DCWriter(val opts: L1DOpts) extends Bundle {
 }
 
 class DCFenceStatus(val opts: L1DOpts) extends Bundle {
+
+  /** Write buffer is empty
+    */
   val wbufClear = Input(Bool())
 }
 
@@ -808,7 +811,7 @@ class L1DC(val opts: L1DOpts)(implicit coredef: CoreDef) extends Module {
       written.data := l2Rdata.asTypeOf(written.data)
       written.tag := getTag(toL2.l2addr)
       written.dirty := false.B
-      written.valid := toL2.l2req =/= L2Req.inval
+      written.valid := toL2.l2req =/= L2Req.invalidate
 
       // TODO: assert hit for flush,
       // Assert !dirty for inval
@@ -829,7 +832,7 @@ class L1DC(val opts: L1DOpts)(implicit coredef: CoreDef) extends Module {
       writingData := written
       writingAddr := getIndex(toL2.l2addr)
 
-      when(toL2.l2req === L2Req.inval && toL2.l2addr === reserved) {
+      when(toL2.l2req === L2Req.invalidate && toL2.l2addr === reserved) {
         resValid := false.B
       }
     }

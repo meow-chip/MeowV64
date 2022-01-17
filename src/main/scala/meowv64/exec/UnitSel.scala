@@ -41,7 +41,13 @@ class UnitSel(
   val units = gen
 
   val flush = IO(Input(Bool()))
+
+  /** Input from reservation station
+    */
   val rs = IO(Flipped(new ResStationEgress))
+
+  /** Retired instruction
+    */
   val retire = IO(Output(new Retirement))
 
   // Extra ports
@@ -190,6 +196,7 @@ class UnitSel(
     val retireHead = RegInit(0.U(log2Ceil(fifoDepth).W))
     val retireTail = RegInit(0.U(log2Ceil(fifoDepth).W))
 
+    // MPSC FIFO
     var prevTail = retireTail
     for (u <- units) {
       val newTail = Wire(UInt(log2Ceil(fifoDepth).W))
@@ -233,6 +240,10 @@ object UnitSel {
   class Retirement(implicit val coredef: CoreDef) extends Bundle {
     val instr = new PipeInstr
     val info = new RetireInfo
+
+    /** This retirement is valid
+      */
+    def valid = instr.instr.valid
   }
 
   object Retirement {
