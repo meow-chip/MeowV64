@@ -144,13 +144,16 @@ void step() {
           printf("%c", input & 0xFF);
         } else if (data == 1) {
           // pass
-          printf("ISA testsuite pass\n");
+          printf("> ISA testsuite pass\n");
           finished = true;
         } else if ((data & 1) == 1) {
           uint32_t c = data >> 1;
-          printf("ISA testsuite failed case %d\n", c);
+          printf("> ISA testsuite failed case %d\n", c);
           finished = true;
           res = 1;
+        } else {
+          printf("> Unhandled tohost: %x\n", input);
+          assert(false);
         }
       }
 
@@ -214,7 +217,7 @@ void load_file(const std::string &path) {
     for (int i = 0; i < padded_size; i += 8) {
       memory[addr + i] = *((uint64_t *)&buffer[i]);
     }
-    printf("Loaded %ld bytes from BIN %s\n", size, path.c_str());
+    printf("> Loaded %ld bytes from BIN %s\n", size, path.c_str());
     fclose(fp);
     delete[] buffer;
   } else {
@@ -267,7 +270,7 @@ void load_file(const std::string &path) {
       }
     }
 
-    printf("Loaded %ld bytes from ELF %s\n", size, path.c_str());
+    printf("> Loaded %ld bytes from ELF %s\n", size, path.c_str());
     fclose(fp);
     delete[] buffer;
   }
@@ -300,7 +303,7 @@ int main(int argc, char **argv) {
   top->clock = 0;
   init();
 
-  printf("Simulation started\n");
+  printf("> Simulation started\n");
   uint64_t begin = get_time_us();
   while (!Verilated::gotFinish() && !finished) {
     if (main_time > 50) {
@@ -316,9 +319,9 @@ int main(int argc, char **argv) {
 
       // log per 10000 mcycle
       if ((top->io_debug_0_mcycle % 10000) == 0 && top->io_debug_0_mcycle > 0) {
-        printf("mcycle: %ld\n", top->io_debug_0_mcycle);
-        printf("minstret: %ld\n", top->io_debug_0_minstret);
-        printf("pc: %lx\n", top->io_debug_0_pc);
+        printf("> mcycle: %ld\n", top->io_debug_0_mcycle);
+        printf("> minstret: %ld\n", top->io_debug_0_minstret);
+        printf("> pc: %lx\n", top->io_debug_0_pc);
       }
     }
     if ((main_time % 10) == 5) {
@@ -330,12 +333,12 @@ int main(int argc, char **argv) {
     main_time++;
   }
   uint64_t elapsed_us = get_time_us() - begin;
-  printf("Simulation finished\n");
-  printf("mcycle: %ld\n", top->io_debug_0_mcycle);
-  printf("minstret: %ld\n", top->io_debug_0_minstret);
-  printf("IPC: %.2lf\n",
+  printf("> Simulation finished\n");
+  printf("> mcycle: %ld\n", top->io_debug_0_mcycle);
+  printf("> minstret: %ld\n", top->io_debug_0_minstret);
+  printf("> IPC: %.2lf\n",
          (double)top->io_debug_0_minstret / top->io_debug_0_mcycle);
-  printf("Simulation speed: %.2lf mcycle/s\n",
+  printf("> Simulation speed: %.2lf mcycle/s\n",
          (double)top->io_debug_0_mcycle * 1000000 / elapsed_us);
 
   top->final();
