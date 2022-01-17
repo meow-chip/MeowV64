@@ -196,7 +196,7 @@ class ExecTest(dut: Multicore, file: String) {
               // Print to serial
               print((wdata.litValue & 0xff).toChar)
             }
-            case Some((addr, _, _)) if addr == 0x20000000L => {
+            case Some((addr, _, _)) if addr == 0x60000000L => {
               // tohost in ISA testsuite
               val data = (wdata.litValue & 0xffffffff).toLong
               if (

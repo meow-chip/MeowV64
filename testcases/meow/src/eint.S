@@ -52,6 +52,6 @@ die:
 .align 4
 pass:
   // Pass the test
-  li s0, 0x20000000
+  li s0, 0x60000000
   li t0, 1
   sd t0, 0(s0)

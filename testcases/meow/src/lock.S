@@ -53,7 +53,7 @@ acquire_again:
   li t1, EXPECTED_RESULT
   bne t0, t1, die
 
-  li s0, 0x20000000
+  li s0, 0x60000000
   li t0, 1
   sd t0, 0(s0)
 

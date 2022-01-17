@@ -2,6 +2,7 @@
 #include <elf.h>
 #include <iostream>
 #include <map>
+#include <signal.h>
 #include <string>
 #include <sys/time.h>
 #include <unistd.h>
@@ -23,6 +24,17 @@ double sc_time_stamp() { return main_time; }
 
 bool finished = false;
 int res = 0;
+
+// tohost/fromhost
+// default at 0x60000000
+uint64_t tohost_addr = 0x60000000;
+uint64_t fromhost_addr = 0x60000008;
+
+void ctrlc_handler(int arg) {
+  fprintf(stderr, "Received Ctrl-C\n");
+  finished = true;
+  res = 1;
+}
 
 // initialize signals
 void init() {
@@ -137,7 +149,7 @@ void step() {
       if (pending_write_addr == 0x10001000) {
         // serial
         printf("%c", input & 0xFF);
-      } else if (pending_write_addr == 0x20000000) {
+      } else if (pending_write_addr == tohost_addr) {
         // tohost
         uint32_t data = input & 0xFFFFFFFF;
         if (input == ((data & 0xFF) | 0x0101000000000000L)) {
@@ -271,10 +283,41 @@ void load_file(const std::string &path) {
       }
     }
 
+    // find symbol table
+    uint64_t symbol_table_offset = 0;
+    uint64_t symbol_table_size = 0;
+    uint64_t string_table = 0;
+    for (int i = 0; i < hdr->e_shnum; i++) {
+      size_t offset = hdr->e_shoff + i * hdr->e_shentsize;
+      Elf64_Shdr *hdr = (Elf64_Shdr *)&buffer[offset];
+      if (hdr->sh_type == SHT_SYMTAB) {
+        symbol_table_offset = hdr->sh_offset;
+        symbol_table_size = hdr->sh_size;
+      } else if (hdr->sh_type == SHT_STRTAB) {
+        if (!string_table) {
+          string_table = hdr->sh_offset;
+        }
+      }
+    }
+
+    // iterate symbol table
+    for (int i = 0; i < symbol_table_size; i += sizeof(Elf64_Sym)) {
+      size_t offset = symbol_table_offset + i;
+      Elf64_Sym *symbol = (Elf64_Sym *)&buffer[offset];
+      std::string name = (char *)&buffer[string_table + symbol->st_name];
+      if (name == "tohost") {
+        tohost_addr = symbol->st_value;
+      } else if (name == "fromhost") {
+        fromhost_addr = symbol->st_value;
+      }
+    }
+
     printf("> Loaded %ld bytes from ELF %s\n", size, path.c_str());
     fclose(fp);
     delete[] buffer;
   }
+  fprintf(stderr, "> Using tohost at %x\n", tohost_addr);
+  fprintf(stderr, "> Using fromhost at %x\n", fromhost_addr);
 }
 
 uint64_t get_time_us() {
@@ -285,6 +328,8 @@ uint64_t get_time_us() {
 
 int main(int argc, char **argv) {
   Verilated::commandArgs(argc, argv);
+
+  signal(SIGINT, ctrlc_handler);
 
   // https://man7.org/linux/man-pages/man3/getopt.3.html
   int opt;

@@ -12,7 +12,7 @@ import meowv64.interrupt._
   *
   * L2 is composed by two components: the primary component, and the external
   * interface. the primary component handles read/write from the underlying L1
-  * caches the external interface processes AXI requests/responsese
+  * caches the external interface processes AXI requests/responses
   *
   * Currently, neither component is pipelined to reduce complexity in impl L2. A
   * round-robin arbiter is included to deal with concurrent coherence protocol
