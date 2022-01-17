@@ -30,6 +30,10 @@ int res = 0;
 uint64_t tohost_addr = 0x60000000;
 uint64_t fromhost_addr = 0x60000040;
 
+// signature generation for riscv-torture
+uint64_t begin_signature = 0;
+uint64_t end_signature = 0;
+
 void ctrlc_handler(int arg) {
   fprintf(stderr, "Received Ctrl-C\n");
   finished = true;
@@ -88,7 +92,7 @@ void step() {
   } else {
     top->io_axi_RVALID = 0;
   }
-  
+
   if (!pending_read && top->io_axi_ARVALID) {
     top->io_axi_ARREADY = 1;
     pending_read = true;
@@ -99,7 +103,6 @@ void step() {
   } else {
     top->io_axi_ARREADY = 0;
   }
-
 
   // handle write
   static bool pending_write = false;
@@ -314,6 +317,10 @@ void load_file(const std::string &path) {
         tohost_addr = symbol->st_value;
       } else if (name == "fromhost") {
         fromhost_addr = symbol->st_value;
+      } else if (name == "begin_signature") {
+        begin_signature = symbol->st_value;
+      } else if (name == "end_signature") {
+        end_signature = symbol->st_value;
       }
     }
 
@@ -417,6 +424,16 @@ int main(int argc, char **argv) {
           (double)top->io_debug_0_minstret / top->io_debug_0_mcycle);
   fprintf(stderr, "> Simulation speed: %.2lf mcycle/s\n",
           (double)top->io_debug_0_mcycle * 1000000 / elapsed_us);
+
+  if (begin_signature && end_signature) {
+    fprintf(stderr, "> Dumping signature(%lx:%lx) to dump.sig\n",
+            begin_signature, end_signature);
+    FILE *fp = fopen("dump.sig", "w");
+    for (uint64_t addr = begin_signature; addr < end_signature; addr += 16) {
+      fprintf(fp, "%016llx%016llx\n", memory[addr + 8], memory[addr]);
+    }
+    fclose(fp);
+  }
 
   if (tfp) {
     tfp->flush();

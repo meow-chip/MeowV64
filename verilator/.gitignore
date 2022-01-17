@@ -2,4 +2,5 @@ obj_dir
 VMulticore
 *.vcd
 *.fst
+*.sig
 !benchmark.log
