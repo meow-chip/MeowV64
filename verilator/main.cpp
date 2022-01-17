@@ -31,6 +31,9 @@ void init() {
 
   top->io_axi_ARREADY = 0;
   top->io_axi_RVALID = 0;
+
+  // Always have interrupt 1 set at high
+  top->io_eints_1 = 1;
 }
 
 // step per clock fall

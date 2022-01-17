@@ -303,7 +303,8 @@ object ExecSpec {
     // ("RAS", "./testcases/meow/bin/ras.bin")
     ("Benchmark Loop 5", "./testcases/meow/bin/bench-loop-5.bin"),
     ("Benchmark Loop 6", "./testcases/meow/bin/bench-loop-6.bin"),
-    ("Benchmark Loop 8", "./testcases/meow/bin/bench-loop-8.bin")
+    ("Benchmark Loop 8", "./testcases/meow/bin/bench-loop-8.bin"),
+    ("CSR", "./testcases/meow/bin/csr.bin")
   )
 }
 

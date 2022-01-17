@@ -4,7 +4,7 @@
 .globl _start
 _start:
   csrrsi t0, misa, 0
-  li t1, 0x8000000000001105
+  li t1, 0x800000000014112D
   bne t1, t0, fail
 
   li t1, 1145141919810
