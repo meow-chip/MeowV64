@@ -308,6 +308,18 @@ int main(int argc, char **argv) {
     }
     if ((main_time % 10) == 0) {
       top->clock = 1;
+
+      // return address for meow testcases
+      if (top->io_debug_0_pc == 0x100000) {
+        finished = true;
+      }
+
+      // log per 10000 mcycle
+      if ((top->io_debug_0_mcycle % 10000) == 0 && top->io_debug_0_mcycle > 0) {
+        printf("mcycle: %ld\n", top->io_debug_0_mcycle);
+        printf("minstret: %ld\n", top->io_debug_0_minstret);
+        printf("pc: %lx\n", top->io_debug_0_pc);
+      }
     }
     if ((main_time % 10) == 5) {
       top->clock = 0;
@@ -316,11 +328,6 @@ int main(int argc, char **argv) {
     top->eval();
     tfp->dump(main_time);
     main_time++;
-
-    // return address for meow testcases
-    if (top->io_debug_0_pc == 0x100000) {
-      finished = true;
-    }
   }
   uint64_t elapsed_us = get_time_us() - begin;
   printf("Simulation finished\n");
