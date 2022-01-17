@@ -24,10 +24,9 @@ class FDivSqrt(override implicit val coredef: CoreDef)
     ) {
 
   val idle = RegInit(true.B)
-  // TODO: handle flush when there are inflight instructions
-  when(~idle) {
-    assert(~io.flush)
-  }
+  // if flush occurred when there are inflight instructions
+  // the result will be silently ignored by UnitSel
+  // and the unit will wait for last instruction to complete
 
   def single2double(n: UInt) = {
     val convS2D = Module(
@@ -76,7 +75,8 @@ class FDivSqrt(override implicit val coredef: CoreDef)
     // stalls
     // pipeline flow if: 1. idle 2. output is valid
     val outValid = div_sqrt.io.outValid_div || div_sqrt.io.outValid_sqrt
-    val stall = ~(idle || outValid)
+    val flow = idle || outValid
+    val stall = ~flow
 
     if (stage == 0) {
       // stage 0: Input
@@ -102,7 +102,7 @@ class FDivSqrt(override implicit val coredef: CoreDef)
       div_sqrt.io.a := rs1valHF
       div_sqrt.io.b := rs2valHF
 
-      val fire = pipe.instr.valid && idle && div_sqrt.io.inReady
+      val fire = pipe.instr.valid && flow && div_sqrt.io.inReady
       div_sqrt.io.inValid := fire
       when(fire) {
         idle := false.B

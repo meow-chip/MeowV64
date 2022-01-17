@@ -32,6 +32,8 @@ class UnitSel(
     gen: => Seq[ExecUnitInt],
     arbitration: Instr => Seq[Bool],
     bypassIdx: Option[Int] = None,
+    /** Add additional pipeline register to improve timing
+      */
     hasPipe: Boolean = true
 )(implicit val coredef: CoreDef)
     extends Module
