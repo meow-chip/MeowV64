@@ -4,6 +4,7 @@
 #include <map>
 #include <string>
 #include <sys/time.h>
+#include <unistd.h>
 #include <verilated.h>
 #include <verilated_vcd_c.h>
 
@@ -285,19 +286,32 @@ uint64_t get_time_us() {
 int main(int argc, char **argv) {
   Verilated::commandArgs(argc, argv);
 
-  if (argc != 2) {
-    printf("Usage: %s input_file\n", argv[0]);
-    return 1;
+  int opt;
+  bool trace = false;
+  while ((opt = getopt(argc, argv, "t")) != -1) {
+    switch (opt) {
+    case 't':
+      trace = true;
+      break;
+    default: /* '?' */
+      fprintf(stderr, "Usage: %s [-t] name\n", argv[0]);
+      return 1;
+    }
   }
-  load_file(argv[1]);
+
+  assert(optind < argc);
+  load_file(argv[optind]);
 
   top = new VMulticore;
 
-  Verilated::traceEverOn(true);
-
-  VerilatedVcdC *tfp = new VerilatedVcdC;
-  top->trace(tfp, 99);
-  tfp->open("dump.vcd");
+  VerilatedVcdC *tfp = nullptr;
+  if (trace) {
+    Verilated::traceEverOn(true);
+    tfp = new VerilatedVcdC;
+    top->trace(tfp, 99);
+    tfp->open("dump.vcd");
+    printf("> Enable tracing\n");
+  }
 
   top->reset = 1;
   top->clock = 0;
@@ -329,7 +343,8 @@ int main(int argc, char **argv) {
       step();
     }
     top->eval();
-    tfp->dump(main_time);
+    if (tfp)
+      tfp->dump(main_time);
     main_time++;
   }
   uint64_t elapsed_us = get_time_us() - begin;
