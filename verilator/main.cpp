@@ -19,6 +19,8 @@ vluint64_t main_time = 0;
 
 double sc_time_stamp() { return main_time; }
 
+bool finished = false;
+
 // initialize signals
 void init() {
   top->io_axi_AWREADY = 0;
@@ -51,7 +53,13 @@ void step() {
   if (pending_read) {
     top->io_axi_RVALID = 1;
     top->io_axi_RID = pending_read_id;
-    uint64_t r_data = memory[align(pending_read_addr)];
+    uint64_t r_data;
+    if (pending_read_addr == 0x10001014) {
+      // serial lsr
+      r_data = 1L << (32 + 5);
+    } else {
+      r_data = memory[align(pending_read_addr)];
+    }
     uint64_t mask = 0xffffffffffffffffL;
     if (pending_read_size != 3) {
       mask = (1L << ((1L << pending_read_size) * 8)) - 1L;
@@ -72,6 +80,98 @@ void step() {
     }
   } else {
     top->io_axi_RVALID = 0;
+  }
+
+  // handle write
+  static bool pending_write = false;
+  static bool pending_write_finished = false;
+  static uint64_t pending_write_addr = 0;
+  static uint64_t pending_write_len = 0;
+  static uint64_t pending_write_size = 0;
+  if (!pending_write && top->io_axi_AWVALID) {
+    top->io_axi_AWREADY = 1;
+    pending_write = 1;
+    pending_write_addr = top->io_axi_AWADDR;
+    pending_write_len = top->io_axi_AWLEN;
+    pending_write_size = top->io_axi_AWSIZE;
+    pending_write_finished = 0;
+  } else {
+    top->io_axi_AWREADY = 0;
+  }
+
+  if (pending_write && !pending_write_finished) {
+    top->io_axi_WREADY = 1;
+
+    // WVALID might be stale without eval()
+    top->eval();
+    if (top->io_axi_WVALID) {
+      uint64_t base = memory[align(pending_write_addr)];
+      uint64_t input = top->io_axi_WDATA;
+      uint64_t be = top->io_axi_WSTRB;
+      uint64_t offset = pending_write_addr & 7;
+      uint64_t size = 1 << pending_write_size;
+
+      uint64_t muxed = 0;
+      for (int i = 0; i < 8; i++) {
+        uint64_t sel;
+        if (i < offset) {
+          sel = (base >> (i * 8)) & 0xff;
+        } else if (i >= offset + size) {
+          sel = (base >> (i * 8)) & 0xff;
+        } else if (((be >> i) & 1) == 1) {
+          sel = (input >> (i * 8)) & 0xff;
+        } else {
+          sel = (base >> (i * 8)) & 0xff;
+        }
+        muxed |= (sel << (i * 8));
+      }
+
+      memory[align(pending_write_addr)] = muxed;
+
+      if (pending_write_addr == 0x10001000) {
+        // serial
+        printf("%c", input & 0xFF);
+      } else if (pending_write_addr == 0x20000000) {
+        // tohost
+        uint32_t data = input & 0xFFFFFFFF;
+        if (input == ((data & 0xFF) | 0x0101000000000000L)) {
+          // serial
+          printf("%c", input & 0xFF);
+        } else if (data == 1) {
+          // pass
+          printf("ISA testsuite pass\n");
+          finished = true;
+        } else if ((data & 1) == 1) {
+          uint32_t c = data >> 1;
+          printf("ISA testsuite failed case %d\n", c);
+          finished = true;
+        }
+
+        pending_write_addr += 1L << pending_write_size;
+        pending_write_len--;
+        if (top->io_axi_WLAST) {
+          assert(pending_write_len == -1);
+          pending_write_finished = true;
+        }
+      }
+    }
+  } else {
+    top->io_axi_WREADY = 0;
+  }
+
+  if (pending_write_finished) {
+    top->io_axi_BVALID = 1;
+    top->io_axi_BRESP = 0;
+    top->io_axi_BID = 0;
+
+    // BREADY might be stale without eval()
+    top->eval();
+    if (top->io_axi_BREADY) {
+      pending_write = false;
+      pending_write_finished = false;
+    }
+  } else {
+    top->io_axi_BVALID = 0;
   }
 }
 
@@ -142,7 +242,7 @@ int main(int argc, char **argv) {
 
   printf("Simulation started\n");
   uint64_t begin = get_time_us();
-  while (!Verilated::gotFinish()) {
+  while (!Verilated::gotFinish() && !finished) {
     if (main_time > 50) {
       top->reset = 0;
     }
@@ -159,7 +259,7 @@ int main(int argc, char **argv) {
 
     // return address for meow testcases
     if (top->io_debug_0_pc == 0x100000) {
-      break;
+      finished = true;
     }
   }
   uint64_t elapsed_us = get_time_us() - begin;
