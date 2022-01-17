@@ -388,6 +388,12 @@ int main(int argc, char **argv) {
         fprintf(stderr, "> minstret: %ld\n", top->io_debug_0_minstret);
         fprintf(stderr, "> pc: %lx\n", top->io_debug_0_pc);
       }
+
+      if (top->io_debug_0_mcycle > 1000000) {
+        fprintf(stderr, "> Timed out\n");
+        finished = true;
+        res = 1;
+      }
     }
     if ((main_time % 10) == 5) {
       top->clock = 0;
