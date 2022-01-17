@@ -286,12 +286,17 @@ uint64_t get_time_us() {
 int main(int argc, char **argv) {
   Verilated::commandArgs(argc, argv);
 
+  // https://man7.org/linux/man-pages/man3/getopt.3.html
   int opt;
   bool trace = false;
-  while ((opt = getopt(argc, argv, "t")) != -1) {
+  bool progress = false;
+  while ((opt = getopt(argc, argv, "tp")) != -1) {
     switch (opt) {
     case 't':
       trace = true;
+      break;
+    case 'p':
+      progress = true;
       break;
     default: /* '?' */
       fprintf(stderr, "Usage: %s [-t] name\n", argv[0]);
@@ -332,7 +337,8 @@ int main(int argc, char **argv) {
       }
 
       // log per 10000 mcycle
-      if ((top->io_debug_0_mcycle % 10000) == 0 && top->io_debug_0_mcycle > 0) {
+      if ((top->io_debug_0_mcycle % 10000) == 0 && top->io_debug_0_mcycle > 0 &&
+          progress) {
         printf("> mcycle: %ld\n", top->io_debug_0_mcycle);
         printf("> minstret: %ld\n", top->io_debug_0_minstret);
         printf("> pc: %lx\n", top->io_debug_0_pc);
