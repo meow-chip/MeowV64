@@ -9,13 +9,30 @@ variables:
   GIT_SUBMODULE_STRATEGY: recursive
 
 stages:
+  - build
   - test
 
-exec_test:
-  stage: test
+build:
+  stage: build
   image: jiegec/meowv64
   script:
     - cd testcases
     - make
     - cd ..
+
+scala_test:
+  stage: test
+  image: jiegec/meowv64
+  script:
     - mill $MILL_CLI meowv64.test.test
+
+verilator_test:
+  stage: test
+  image: jiegec/meowv64
+  script:
+    - mill $MILL_CLI meowv64.runMain meowv64.Main
+    - cd verilator
+    - make
+    - ./test.sh
+    - ./benchmark.sh
+    - cd ..
