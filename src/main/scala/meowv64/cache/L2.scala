@@ -251,7 +251,7 @@ class L2Cache(val opts: L2Opts) extends Module {
     p.getStall := s
   }
 
-  for (r <- rdatas) r := DontCare
+  for (r <- rdatas) r := 0.U
   stalls := VecInit(ops.map(op => op =/= L1Req.idle))
   for (uc <- directs) {
     uc.stall := uc.read || uc.write

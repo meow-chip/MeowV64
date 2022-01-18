@@ -31,7 +31,11 @@ class AMOALU(val opts: L1DOpts) extends Module {
   io.rsliced := rconverted
 
   rraw := io.rdata
+  // clip wdata to 32 bits if necessary
+  val wdata = Wire(UInt(opts.XLEN.W))
+  wdata := io.wdata
   when(io.length === DCWriteLen.W) {
+    wdata := io.wdata(31, 0)
     when(io.offset.head(1) === 0.U) {
       rextended := io.rdata(31, 0).asSInt()
       rraw := io.rdata(31, 0)
@@ -65,7 +69,7 @@ class AMOALU(val opts: L1DOpts) extends Module {
     }
 
     is(DCWriteOp.max) {
-      filtered := rextended.max(io.wdata.asSInt()).asUInt().asUInt()
+      filtered := rextended.max(wdata.asSInt()).asUInt()
     }
 
     is(DCWriteOp.maxu) {
@@ -73,7 +77,7 @@ class AMOALU(val opts: L1DOpts) extends Module {
     }
 
     is(DCWriteOp.min) {
-      filtered := rextended.min(io.wdata.asSInt()).asUInt()
+      filtered := rextended.min(wdata.asSInt()).asUInt()
     }
 
     is(DCWriteOp.minu) {
