@@ -1,3 +1,7 @@
+  # only one core
+  csrr a0, mhartid
+  bnez a0, end
+
   li sp, 0x10000
   li ra, 0x100000
   j _start
@@ -98,4 +102,6 @@ _start:
   ld	ra,24(sp)
   ld	s0,16(sp)
   addi	sp,sp,32
+
+end:
   jr	ra
