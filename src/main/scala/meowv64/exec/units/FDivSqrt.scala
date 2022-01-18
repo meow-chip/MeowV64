@@ -77,6 +77,7 @@ class FDivSqrt(override implicit val coredef: CoreDef)
     val outValid = div_sqrt.io.outValid_div || div_sqrt.io.outValid_sqrt
     val flow = idle || outValid
     val stall = ~flow
+    val fire = io.next.instr.valid && flow && div_sqrt.io.inReady
 
     if (stage == 0) {
       // stage 0: Input
@@ -102,7 +103,6 @@ class FDivSqrt(override implicit val coredef: CoreDef)
       div_sqrt.io.a := rs1valHF
       div_sqrt.io.b := rs2valHF
 
-      val fire = pipe.instr.valid && flow && div_sqrt.io.inReady
       div_sqrt.io.inValid := fire
       when(fire) {
         idle := false.B
@@ -123,7 +123,7 @@ class FDivSqrt(override implicit val coredef: CoreDef)
         state.res := fNFromRecFN(floatType.exp, floatType.sig, div_sqrt.io.out)
       }
       state.fflags := div_sqrt.io.exceptionFlags
-      when(outValid) {
+      when(outValid && ~fire) {
         idle := true.B
       }
     }
