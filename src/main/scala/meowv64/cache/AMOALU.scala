@@ -9,7 +9,9 @@ import chisel3.util.log2Ceil
 class AMOALU(val opts: L1DOpts) extends Module {
   val io = IO(new Bundle {
     val op = Input(DCWriteOp()) // write is treated as idle
+    // memory
     val rdata = Input(UInt(opts.XLEN.W))
+    // register
     val wdata = Input(UInt(opts.XLEN.W))
 
     val offset = Input(
@@ -17,25 +19,40 @@ class AMOALU(val opts: L1DOpts) extends Module {
     ) // If op =/= write or idle, then length must be W or D
     val length = Input(DCWriteLen())
 
+    // output register
     val rsliced = Output(
       UInt(opts.XLEN.W)
     ) // Only valid if length is W or D. This is for AMO
+    // output memory
     val muxed = Output(UInt(opts.XLEN.W))
   })
 
+  /** Memory, sign extended to 64 bits
+    */
   val rextended = Wire(SInt(opts.XLEN.W))
   rextended := io.rdata.asSInt()
 
   val rconverted = rextended.asUInt()
-  val rraw = Wire(UInt(opts.XLEN.W))
+
+  /** Return register: memory sign extended to 64 bits
+    */
   io.rsliced := rconverted
 
+  /** Memory, zero extended to 64 bits
+    */
+  val rraw = Wire(UInt(opts.XLEN.W))
+
   rraw := io.rdata
+
   // clip wdata to 32 bits if necessary
-  val wdata = Wire(UInt(opts.XLEN.W))
-  wdata := io.wdata
+  val wdataSigned = Wire(SInt(opts.XLEN.W))
+  val wdataUnsigned = Wire(UInt(opts.XLEN.W))
+  wdataUnsigned := io.wdata
+  wdataSigned := io.wdata.asSInt()
+
   when(io.length === DCWriteLen.W) {
-    wdata := io.wdata(31, 0)
+    wdataUnsigned := io.wdata(31, 0)
+    wdataSigned := io.wdata(31, 0).asSInt()
     when(io.offset.head(1) === 0.U) {
       rextended := io.rdata(31, 0).asSInt()
       rraw := io.rdata(31, 0)
@@ -45,6 +62,9 @@ class AMOALU(val opts: L1DOpts) extends Module {
     }
   }
 
+  /**
+    * Compute result
+    */
   val filtered = Wire(UInt(opts.XLEN.W))
   filtered := DontCare
   switch(io.op) {
@@ -69,19 +89,19 @@ class AMOALU(val opts: L1DOpts) extends Module {
     }
 
     is(DCWriteOp.max) {
-      filtered := rextended.max(wdata.asSInt()).asUInt()
+      filtered := rextended.max(wdataSigned).asUInt()
     }
 
     is(DCWriteOp.maxu) {
-      filtered := rraw.max(wdata)
+      filtered := rraw.max(wdataUnsigned)
     }
 
     is(DCWriteOp.min) {
-      filtered := rextended.min(wdata.asSInt()).asUInt()
+      filtered := rextended.min(wdataSigned).asUInt()
     }
 
     is(DCWriteOp.minu) {
-      filtered := rraw.min(wdata)
+      filtered := rraw.min(wdataUnsigned)
     }
   }
 
