@@ -26,6 +26,9 @@ trait L2Opts extends L1Opts {
   val MMIO: Seq[MMIOMapping]
 }
 
+/**
+  * MSI protocol states: vacant(I), shared(S), modified(M)
+  */
 object L2DirState extends ChiselEnum {
   val vacant, shared, modified = Value
 }
@@ -472,6 +475,7 @@ class L2Cache(val opts: L2Opts) extends Module {
         }
 
         is(L1DCPort.L1Req.writeback) {
+          // target core is M, other cores are I
           assert(lookups(hitIdx).hit(targetAddr))
           for (core <- (0 until opts.CORE_COUNT)) {
             when(core.U === target) {

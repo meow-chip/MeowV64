@@ -32,6 +32,7 @@ uint64_t fromhost_addr = 0x60000040;
 
 // signature generation for riscv-torture
 uint64_t begin_signature = 0;
+uint64_t begin_signature_override = 0;
 uint64_t end_signature = 0;
 
 void ctrlc_handler(int arg) {
@@ -61,6 +62,18 @@ void step() {
   static uint64_t pending_read_addr = 0;
   static uint64_t pending_read_len = 0;
   static uint64_t pending_read_size = 0;
+
+  if (!pending_read && top->io_axi_ARVALID) {
+    top->io_axi_ARREADY = 1;
+    pending_read = true;
+    pending_read_id = top->io_axi_ARID;
+    pending_read_addr = top->io_axi_ARADDR;
+    pending_read_len = top->io_axi_ARLEN;
+    pending_read_size = top->io_axi_ARSIZE;
+  } else {
+    top->io_axi_ARREADY = 0;
+  }
+
   if (pending_read) {
     top->io_axi_RVALID = 1;
     top->io_axi_RID = pending_read_id;
@@ -91,17 +104,6 @@ void step() {
     }
   } else {
     top->io_axi_RVALID = 0;
-  }
-
-  if (!pending_read && top->io_axi_ARVALID) {
-    top->io_axi_ARREADY = 1;
-    pending_read = true;
-    pending_read_id = top->io_axi_ARID;
-    pending_read_addr = top->io_axi_ARADDR;
-    pending_read_len = top->io_axi_ARLEN;
-    pending_read_size = top->io_axi_ARSIZE;
-  } else {
-    top->io_axi_ARREADY = 0;
   }
 
   // handle write
@@ -153,6 +155,7 @@ void step() {
       if (pending_write_addr == 0x10001000) {
         // serial
         printf("%c", input & 0xFF);
+        fflush(stdout);
       } else if (pending_write_addr == tohost_addr) {
         // tohost
         uint32_t data = input & 0xFFFFFFFF;
@@ -319,6 +322,8 @@ void load_file(const std::string &path) {
         fromhost_addr = symbol->st_value;
       } else if (name == "begin_signature") {
         begin_signature = symbol->st_value;
+      } else if (name == "begin_signature_override") {
+        begin_signature_override = symbol->st_value;
       } else if (name == "end_signature") {
         end_signature = symbol->st_value;
       }
@@ -426,6 +431,11 @@ int main(int argc, char **argv) {
           (double)top->io_debug_0_mcycle * 1000000 / elapsed_us);
 
   if (begin_signature && end_signature) {
+    if (begin_signature_override) {
+      // signature is copied
+      end_signature = end_signature - begin_signature + begin_signature_override;
+      begin_signature = begin_signature_override;
+    }
     fprintf(stderr, "> Dumping signature(%lx:%lx) to dump.sig\n",
             begin_signature, end_signature);
     FILE *fp = fopen("dump.sig", "w");
