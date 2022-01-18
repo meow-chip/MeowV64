@@ -73,7 +73,7 @@ class AMOALU(val opts: L1DOpts) extends Module {
     }
 
     is(DCWriteOp.maxu) {
-      filtered := rraw.max(io.wdata)
+      filtered := rraw.max(wdata)
     }
 
     is(DCWriteOp.min) {
@@ -81,7 +81,7 @@ class AMOALU(val opts: L1DOpts) extends Module {
     }
 
     is(DCWriteOp.minu) {
-      filtered := rraw.min(io.wdata)
+      filtered := rraw.min(wdata)
     }
   }
 
