@@ -227,7 +227,7 @@ class LSBuf(val idx: Int)(implicit val coredef: CoreDef)
     store(head).instr.instr.op === Decoder.Op("MISC-MEM").ident
     // Release ops cannot be reordered before any previous ops
       || (store(head).instr.instr.op === Decoder.Op("AMO").ident
-      && store(head).instr.instr.funct7(1))
+        && store(head).instr.instr.funct7(1))
   )
 
   // FIXME: are there acquire ops dispatched?

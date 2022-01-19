@@ -26,8 +26,7 @@ trait L2Opts extends L1Opts {
   val MMIO: Seq[MMIOMapping]
 }
 
-/**
-  * MSI protocol states: vacant(I), shared(S), modified(M)
+/** MSI protocol states: vacant(I), shared(S), modified(M)
   */
 object L2DirState extends ChiselEnum {
   val vacant, shared, modified = Value
@@ -177,9 +176,9 @@ class L2Cache(val opts: L2Opts) extends Module {
   })
 
   dataWriter := DontCare
-  dataWriter.mask := VecInit(Seq.fill(4)(false.B))
+  dataWriter.mask := VecInit(Seq.fill(opts.ASSOC)(false.B))
   dirWriter := DontCare
-  dirWriter.mask := VecInit(Seq.fill(4)(false.B))
+  dirWriter.mask := VecInit(Seq.fill(opts.ASSOC)(false.B))
 
   stores.write(
     dataWriter.addr,
@@ -191,6 +190,8 @@ class L2Cache(val opts: L2Opts) extends Module {
     VecInit(Seq.fill(opts.ASSOC)(dirWriter.dir)),
     dirWriter.mask
   )
+
+  // valid state when writing to directory
   when(PopCount(dirWriter.mask) =/= 0.U) {
     dirWriter.dir.validate()
   }
@@ -295,6 +296,7 @@ class L2Cache(val opts: L2Opts) extends Module {
   )
 
   for ((m, r) <- misses.zip(refilled)) assert(m || !r) // refilled implies miss
+  for ((m, s) <- misses.zip(sent)) assert(m || !s) // sent implies miss
   // for((m, c) <- misses.zip(collided)) assert(!(m && c)) // miss and collided is never true at the same time
 
   // Writebacks
@@ -609,6 +611,7 @@ class L2Cache(val opts: L2Opts) extends Module {
         stalls(target) := false.B
         misses(target) := false.B
         refilled(target) := false.B
+        sent(target) := false.B
 
         val newState = Wire(L2DirState())
         when(targetOps === L1DCPort.L1Req.read) {
@@ -836,6 +839,7 @@ class L2Cache(val opts: L2Opts) extends Module {
             stalls(target) := false.B
             misses(target) := false.B
             refilled(target) := false.B
+            sent(target) := false.B
 
             nstate := L2MainState.idle
           }
@@ -888,32 +892,29 @@ class L2Cache(val opts: L2Opts) extends Module {
   assume(reqAddr.getWidth == opts.ADDR_WIDTH)
 
   when(reqTarget < (opts.CORE_COUNT * 2).U) {
-    when(sent(reqTarget) =/= misses(reqTarget)) {
-      when(misses(reqTarget)) {
-        assert(rawReqAddr === addrs(reqTarget))
+    when(misses(reqTarget) && ~sent(reqTarget)) {
+      // missed and ar not sent
+      assert(rawReqAddr === addrs(reqTarget))
 
-        axi.ARADDR := reqAddr
-        axi.ARBURST := AXI.Constants.Burst.INCR.U
-        // axi.ARCACHE ignored
-        // Yeah.. we are finally using id
-        axi.ARID := reqTarget
-        assume(
-          opts.LINE_BYTES * 8 % axi.DATA_WIDTH == 0,
-          "Line cannot be filled with a integer number of AXI transfers"
-        )
-        axi.ARLEN := (axiGrpNum - 1).U
-        // axi.ARPROT ignored
-        // axi.ARQOS ignored
-        // axi.ARREGION ignored
-        axi.ARSIZE := AXI.Constants.Size.from(axi.DATA_WIDTH / 8).U
+      axi.ARADDR := reqAddr
+      axi.ARBURST := AXI.Constants.Burst.INCR.U
+      // axi.ARCACHE ignored
+      // Yeah.. we are finally using id
+      axi.ARID := reqTarget
+      assume(
+        opts.LINE_BYTES * 8 % axi.DATA_WIDTH == 0,
+        "Line cannot be filled with a integer number of AXI transfers"
+      )
+      axi.ARLEN := (axiGrpNum - 1).U
+      // axi.ARPROT ignored
+      // axi.ARQOS ignored
+      // axi.ARREGION ignored
+      axi.ARSIZE := AXI.Constants.Size.from(axi.DATA_WIDTH / 8).U
 
-        axi.ARVALID := true.B
-        when(axi.ARREADY) {
-          sent(reqTarget) := true.B
-          stepRefiller(reqTarget)
-        }
-      }.otherwise {
-        sent(reqTarget) := false.B
+      axi.ARVALID := true.B
+      when(axi.ARREADY) {
+        // ar request sent
+        sent(reqTarget) := true.B
         stepRefiller(reqTarget)
       }
     }.otherwise {

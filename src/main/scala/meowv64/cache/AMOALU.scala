@@ -9,9 +9,13 @@ import chisel3.util.log2Ceil
 class AMOALU(val opts: L1DOpts) extends Module {
   val io = IO(new Bundle {
     val op = Input(DCWriteOp()) // write is treated as idle
-    // memory
+
+    /** Data read from memory
+      */
     val rdata = Input(UInt(opts.XLEN.W))
-    // register
+
+    /** Data from register
+      */
     val wdata = Input(UInt(opts.XLEN.W))
 
     val offset = Input(
@@ -23,7 +27,9 @@ class AMOALU(val opts: L1DOpts) extends Module {
     val rsliced = Output(
       UInt(opts.XLEN.W)
     ) // Only valid if length is W or D. This is for AMO
-    // output memory
+
+    /** Data to be written to memory
+      */
     val muxed = Output(UInt(opts.XLEN.W))
   })
 
@@ -62,8 +68,7 @@ class AMOALU(val opts: L1DOpts) extends Module {
     }
   }
 
-  /**
-    * Compute result
+  /** Compute result
     */
   val filtered = Wire(UInt(opts.XLEN.W))
   filtered := DontCare

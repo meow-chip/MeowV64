@@ -258,6 +258,9 @@ class L1DC(val opts: L1DOpts)(implicit coredef: CoreDef) extends Module {
   amoalu.io.wdata := pendingWData
   amoalu.io.length := pendingWLen
   amoalu.io.op := pendingWOp
+
+  /** Write result for amo and sc instructions
+    */
   val pendingWret = RegInit(0.U(opts.XLEN.W))
 
   // Write FIFO
@@ -266,6 +269,9 @@ class L1DC(val opts: L1DOpts)(implicit coredef: CoreDef) extends Module {
     val be = UInt((opts.TRANSFER_WIDTH / 8).W)
     val sdata = UInt(opts.TRANSFER_WIDTH.W)
     val isAMO = Bool()
+
+    /** Store conditional
+      */
     val isCond = Bool()
     val valid = Bool()
   }
