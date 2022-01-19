@@ -113,12 +113,12 @@ class FDivSqrt(override implicit val coredef: CoreDef)
     } else {
       // stage 1: Output
       when(pipe.instr.instr.fmt === FloatS.fmt) {
-        // convert double to single
-        state.res := fNFromRecFN(
+        // convert double to single and NaN-box
+        state.res := FloatS.box(fNFromRecFN(
           FloatS.exp,
           FloatS.sig,
           double2single(div_sqrt.io.out)
-        )
+        ), coredef.XLEN)
       }.otherwise {
         state.res := fNFromRecFN(floatType.exp, floatType.sig, div_sqrt.io.out)
       }

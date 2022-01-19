@@ -64,7 +64,10 @@ class L2DirEntry(val opts: L2Opts) extends Bundle {
       val modifiedCnt = PopCount(states.map(_ === L2DirState.modified))
       val sharedCnt = PopCount(states.map(_ === L2DirState.shared))
 
-      assert(modifiedCnt === 0.U || (sharedCnt === 0.U && modifiedCnt === 1.U))
+      assert(
+        modifiedCnt === 0.U || (sharedCnt === 0.U && modifiedCnt === 1.U),
+        "Verify M=0 or (M=1 and S=0)"
+      )
     }
   }
 }
@@ -295,8 +298,8 @@ class L2Cache(val opts: L2Opts) extends Module {
     )
   )
 
-  for ((m, r) <- misses.zip(refilled)) assert(m || !r) // refilled implies miss
-  for ((m, s) <- misses.zip(sent)) assert(m || !s) // sent implies miss
+  for ((m, r) <- misses.zip(refilled)) assert(m || !r, "refilled implies miss")
+  for ((m, s) <- misses.zip(sent)) assert(m || !s, "sent implies miss")
   // for((m, c) <- misses.zip(collided)) assert(!(m && c)) // miss and collided is never true at the same time
 
   // Writebacks
@@ -446,8 +449,9 @@ class L2Cache(val opts: L2Opts) extends Module {
             step()
           }.otherwise {
             assert(
-              !(fifoHit && sameAddrRefilling)
-            ) // FIFO inhabitance and AXI refilling are mutually exclusive
+              !(fifoHit && sameAddrRefilling),
+              "FIFO inhabitance and AXI refilling are mutually exclusive"
+            )
 
             // hit == false && missed == false
             // Init a refill
@@ -478,12 +482,12 @@ class L2Cache(val opts: L2Opts) extends Module {
 
         is(L1DCPort.L1Req.writeback) {
           // target core is M, other cores are I
-          assert(lookups(hitIdx).hit(targetAddr))
+          assert(lookups(hitIdx).hit(targetAddr), "Target core hits")
           for (core <- (0 until opts.CORE_COUNT)) {
             when(core.U === target) {
-              assert(lookups(hitIdx).states(core) === L2DirState.modified)
+              assert(lookups(hitIdx).states(core) === L2DirState.modified, "Target core is in M")
             }.otherwise {
-              assert(lookups(hitIdx).states(core) === L2DirState.vacant)
+              assert(lookups(hitIdx).states(core) === L2DirState.vacant, "Other cores are in I")
             }
           }
 
@@ -903,7 +907,7 @@ class L2Cache(val opts: L2Opts) extends Module {
       axi.ARID := reqTarget
       assume(
         opts.LINE_BYTES * 8 % axi.DATA_WIDTH == 0,
-        "Line cannot be filled with a integer number of AXI transfers"
+        "Line cannot be filled with an integer number of AXI transfers"
       )
       axi.ARLEN := (axiGrpNum - 1).U
       // axi.ARPROT ignored
@@ -958,9 +962,9 @@ class L2Cache(val opts: L2Opts) extends Module {
     )
   )
 
+  axi.RREADY := true.B
   when(axi.RVALID) {
     // TODO: handle RRESP
-    axi.RREADY := true.B
 
     when(axi.RID < (opts.CORE_COUNT * 2).U) {
       val ptr = Wire(UInt())
