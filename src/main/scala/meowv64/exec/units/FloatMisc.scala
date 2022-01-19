@@ -9,6 +9,7 @@ import hardfloat.RecFNToRecFN
 import hardfloat.fNFromRecFN
 import hardfloat.recFNFromFN
 import meowv64.core.CoreDef
+import meowv64.core.FloatS
 import meowv64.exec._
 import meowv64.instr.Decoder
 
@@ -78,7 +79,7 @@ class FloatMisc(override implicit val coredef: CoreDef)
       when(pipe.instr.instr.funct7(1, 0) === 0.U) {
         // fmv.w.x
         // nan boxing
-        ext.res := Fill(32, 1.U) ## pipe.rs1val(31, 0)
+        ext.res := FloatS.box(pipe.rs1val(31, 0), coredef.XLEN)
       }.otherwise {
         // fmv.d.x
         ext.res := pipe.rs1val
@@ -196,7 +197,7 @@ class FloatMisc(override implicit val coredef: CoreDef)
               retNaN := true.B
             }
 
-            ext.res := float.unbox(
+            ext.res := float.box(
               Mux(
                 retNaN,
                 float.nan(),
@@ -368,9 +369,9 @@ class FloatMisc(override implicit val coredef: CoreDef)
         convD2S.io.roundingMode := 0.U
 
         // NaN boxing
-        ext.res := Cat(
-          "hFFFFFFFF".U,
-          fNFromRecFN(singleExpWidth, singleSigWidth, convD2S.io.out)
+        ext.res := FloatS.box(
+          fNFromRecFN(singleExpWidth, singleSigWidth, convD2S.io.out),
+          coredef.XLEN
         )
         ext.fflags := convD2S.io.exceptionFlags
       }.otherwise {

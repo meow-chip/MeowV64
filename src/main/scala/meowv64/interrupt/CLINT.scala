@@ -46,7 +46,7 @@ class CLINT(implicit mcdef: MulticoreDef) extends Module {
   val time = IO(Output(UInt(64.W)))
 
   toL2.req.nodeq()
-  toL2.resp.bits := DontCare
+  toL2.resp.bits := 0.U
   toL2.resp.valid := false.B
 
   // Timer
@@ -74,16 +74,14 @@ class CLINT(implicit mcdef: MulticoreDef) extends Module {
   }
 
   val state = RegInit(State.idle)
-  val seg = Reg(Seg())
-  val idx = Reg(UInt(log2Ceil(mcdef.CORE_COUNT).W))
-  val wdata = Reg(UInt(64.W))
+  val seg = RegInit(Seg.msip)
+  val idx = RegInit(0.U(log2Ceil(mcdef.CORE_COUNT).W))
+  val wdata = RegInit(0.U(64.W))
   val write = RegInit(false.B)
 
   switch(state) {
     is(State.idle) {
       val cur = toL2.req.deq()
-      seg := DontCare
-      idx := DontCare
       wdata := cur.wdata
       write := cur.op === MMIOReqOp.write
 
@@ -105,7 +103,6 @@ class CLINT(implicit mcdef: MulticoreDef) extends Module {
     is(State.commit) {
       state := State.idle
 
-      toL2.resp.bits := DontCare
       toL2.resp.valid := true.B
 
       switch(seg) {
