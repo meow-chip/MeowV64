@@ -196,7 +196,7 @@ class L2CacheTest(dut: WrappedL2, seed: Long, len: Int) {
         var wmask = BigInt(0)
         for (i <- (0 until 8)) {
           if (((be >> i) & 1) != 0) {
-            wmask |= 0xff << (i * 8)
+            wmask |= BigInt(0xff) << (i * 8)
           }
         }
 
