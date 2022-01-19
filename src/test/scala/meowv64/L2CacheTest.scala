@@ -226,7 +226,7 @@ object L2CacheTest {
 
 object L2CacheSpec {
   val DEFAULT_SEED = 0L
-  val DEFAULT_LENGTH = 10000
+  val DEFAULT_LENGTH = 50000
 }
 
 class L2CacheSpec extends AnyFlatSpec with Matchers with ChiselScalatestTester {

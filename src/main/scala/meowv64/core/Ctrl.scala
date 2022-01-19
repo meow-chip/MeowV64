@@ -133,9 +133,9 @@ class Ctrl(implicit coredef: CoreDef) extends Module {
   toIF.ctrl.flush := false.B
   toExec.ctrl.flush := false.B
   toExec.tlbRst := false.B
-  toIF.iRst := DontCare
+  toIF.iRst := false.B
   toIF.tlbRst := false.B
-  toIF.pc := DontCare
+  toIF.pc := 0.U
   toIF.priv := priv
 
   val branch = Wire(Bool())

@@ -240,7 +240,7 @@ class L1DC(val opts: L1DOpts)(implicit coredef: CoreDef) extends Module {
 
   // AMO/SC stuff
   val amoalu = Module(new AMOALU(opts))
-  amoalu.io := DontCare
+  amoalu.io.rdata := 0.U
   val resValid = RegInit(false.B)
   val resCommitted = RegInit(false.B)
   val reserved = Reg(UInt(opts.ADDR_WIDTH.W))
@@ -280,9 +280,9 @@ class L1DC(val opts: L1DOpts)(implicit coredef: CoreDef) extends Module {
     def default(opts: L1DOpts): WriteEv = {
       val ret = Wire(new WriteEv(opts))
 
-      ret.aligned := DontCare
-      ret.be := DontCare
-      ret.sdata := DontCare
+      ret.aligned := 0.U
+      ret.be := 0.U
+      ret.sdata := 0.U
       ret.valid := false.B
       ret.isAMO := false.B
       ret.isCond := false.B

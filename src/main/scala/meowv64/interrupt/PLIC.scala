@@ -133,7 +133,7 @@ class PLIC(val pdef: PLICDef) extends Module {
   // MMIO interface
   val req = toL2.req.deq()
   toL2.resp.valid := toL2.req.fire
-  toL2.resp.bits := DontCare
+  toL2.resp.bits := 0.U
   val offset =
     (req.addr -% PLIC.PLIC_REGION_START.U)(PLIC.PLIC_ADDR_WIDTH - 1, 0)
   switch(PLICAddrSpace.fromOffset(offset)) {
@@ -161,7 +161,6 @@ class PLIC(val pdef: PLICDef) extends Module {
 
     is(PLICAddrSpace.context) {
       val ctx = (offset - 0x200000.U) >> 12
-      toL2.resp.bits := DontCare
 
       switch(offset(11, 2)) {
         is(0.U) { // Priority threshold
