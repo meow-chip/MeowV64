@@ -409,6 +409,9 @@ class L2Cache(val opts: L2Opts) extends Module {
     target := nextEventful
   }
 
+  // For debugging
+  val rememberedHitData = Reg(UInt((opts.LINE_BYTES * 8).W))
+
   switch(state) {
     is(L2MainState.reset) {
       writeDirAll(0.U(TAG_LENGTH.W) ## rstCnt ## 0.U(OFFSET_LENGTH.W), rstDir)
@@ -518,6 +521,9 @@ class L2Cache(val opts: L2Opts) extends Module {
     is(L2MainState.hit) {
       val data = datas(pipeHitIdx)
       val isDC = target < opts.CORE_COUNT.U
+
+      // For debugging
+      rememberedHitData := data
 
       val dirtyMap = VecInit(
         lookups(pipeHitIdx).states.map(_ === L2DirState.modified)
@@ -873,6 +879,11 @@ class L2Cache(val opts: L2Opts) extends Module {
             targetAddr,
             writtenDir
           )
+
+          val data = datas(pipeHitIdx)
+          assert(data === rememberedHitData)
+          rdatas(target) := data
+          stalls(target) := false.B
         }
 
         nstate := L2MainState.idle
