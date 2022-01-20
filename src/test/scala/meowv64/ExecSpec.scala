@@ -22,7 +22,7 @@ object ExecDef extends SystemDef(coreCount = 1) {
   override val INIT_VEC = BigInt(0x80000000L)
 }
 
-class ExecTest(dut: system.System, file: String) {
+class ExecTest(dut: system.RiscVSystem, file: String) {
   def doTest(bound: Int): Unit = {
     val beginTime = System.nanoTime
 
@@ -311,7 +311,7 @@ class ExecSpec extends AnyFlatSpec with Matchers with ChiselScalatestTester {
 
   it should s"run successfully" in {
     test(
-      new system.System()(ExecDef)
+      new system.RiscVSystem()(ExecDef)
     ).withAnnotations(Simulator.getAnnotations()) { dut =>
       for ((desc, file) <- ExecSpec.cases) {
         println("------------")

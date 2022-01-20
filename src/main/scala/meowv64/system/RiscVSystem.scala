@@ -9,7 +9,7 @@ import meowv64.data._
 import meowv64.interrupt.CLINT
 import meowv64.interrupt.PLIC
 
-class System(implicit val sDef: SystemDef = new DefaultSystemDef) extends Module {
+class RiscVSystem(implicit val sDef: SystemDef = new DefaultSystemDef) extends Module {
   val io = IO(new Bundle {
     val axi = new AXI(sDef.XLEN, sDef.PADDR_WIDTH)
     val eints = Input(Vec(sDef.INTERRUPT_CNT + 1, Bool()))

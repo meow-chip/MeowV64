@@ -3,7 +3,7 @@ package meowv64
 import chisel3.stage.ChiselGeneratorAnnotation
 import firrtl.options.Dependency
 import firrtl.stage.RunFirrtlTransformAnnotation
-import meowv64.system.System
+import meowv64.system.RiscVSystem
 import meowv64.system.SystemDef
 
 object Main extends App {
@@ -22,7 +22,7 @@ object Main extends App {
   (new chisel3.stage.ChiselStage()).execute(
     Array("-X", "mverilog") ++ rest,
     Seq(
-      ChiselGeneratorAnnotation(() => new System()(conf)),
+      ChiselGeneratorAnnotation(() => new RiscVSystem()(conf)),
       RunFirrtlTransformAnnotation(Dependency(ZeroInit))
     )
   )
