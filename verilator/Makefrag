@@ -1,5 +1,5 @@
 VERILATOR = verilator
-VERILATOR_FLAGS = -Wno-fatal --trace-fst
+VERILATOR_FLAGS = -Wno-fatal --trace-fst --timescale-override 1ns/1ns
 CURRENT_DIR = $(shell pwd)
 VERILOG_SRCS = RiscVSystem.v
 
