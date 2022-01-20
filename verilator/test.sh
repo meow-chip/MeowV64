@@ -2,6 +2,6 @@
 set -e
 
 make
-for filename in ../testcases/meow/bin/*.bin ../testcases/riscv-tests/build/isa/*.bin; do
-	./VMulticore $filename
+for filename in ../../testcases/meow/bin/*.bin ../../testcases/riscv-tests/build/isa/*.bin; do
+	./VSystem $filename
 done

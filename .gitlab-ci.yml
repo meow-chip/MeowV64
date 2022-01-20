@@ -31,15 +31,24 @@ scala_test:
   script:
     - mill $MILL_CLI meowv64.test.test
 
-verilator_test:
+verilator_single_core_test:
   stage: test
   dependencies: 
     - build
   image: jiegec/meowv64
   script:
-    - mill $MILL_CLI meowv64.runMain meowv64.Main
-    - cd verilator
+    - cd verilator/SingleCoreDef
     - make
-    - ./test.sh
-    - ./benchmark.sh
-    - cd ..
+    - ../test.sh
+    - ../benchmark.sh
+
+verilator_double_core_test:
+  stage: test
+  dependencies: 
+    - build
+  image: jiegec/meowv64
+  script:
+    - cd verilator/DoubleCoreDef
+    - make
+    - ../test.sh
+    - ../benchmark.sh
