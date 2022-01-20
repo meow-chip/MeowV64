@@ -2,7 +2,7 @@
 
   // probe number of cores from CLINT
   li t1, 0x02000000 // CLINT address
-  li t2, 0 // core count
+  li t2, -1 // core count
   li t3, 1 // msip
 clint_loop:
   sw t3, 0(t1)
@@ -10,6 +10,10 @@ clint_loop:
   addi t2, t2, 1
   addi t1, t1, 4
   bnez t3, clint_loop
+
+  // skip this test if core count is one
+  addi t1, t2, -1
+  beqz t1, done
 
   // a1 stores core count
   mv a1, t2
@@ -68,6 +72,7 @@ acquire_again:
   mul t1, a1, t3
   bne t0, t1, die
 
+done:
   li s0, 0x60000000
   li t0, 1
   sd t0, 0(s0)
