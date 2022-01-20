@@ -803,6 +803,7 @@ class L2Cache(val opts: L2Opts) extends Module {
           refilled(target) := false.B
 
           // TODO: This probably can be constructed from an empty directory
+          // M -> S, I -> S
           val editedState = lookups(pipeHitIdx)
             .editState(justWritten, L2DirState.shared)
             .editState(target, L2DirState.shared)
@@ -812,6 +813,7 @@ class L2Cache(val opts: L2Opts) extends Module {
           nstate := L2MainState.idle
           step()
         }.otherwise {
+          // S -> I
           for ((s, p) <- ent.states.zip(pendings)) {
             when(s =/= L2DirState.vacant) { // FIXME: && target != s
               p := L1DCPort.L2Req.invalidate
@@ -917,7 +919,7 @@ class L2Cache(val opts: L2Opts) extends Module {
           )
 
           val data = datas(pipeHitIdx)
-          assert(data === rememberedHitData)
+          // assert(data === rememberedHitData)
           rdatas(target) := data
           stalls(target) := false.B
         }
