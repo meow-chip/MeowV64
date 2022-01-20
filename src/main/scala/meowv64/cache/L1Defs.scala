@@ -183,11 +183,11 @@ object L1DCPort {
     val idle, read, modify, writeback = Value
   }
 
-  /** Downlink requests
+  /** Downlink (L2 -> L1) requests
     *
     *   - flush: request to write-back one cache line. This should generate a
     *     writeback event, overriding the pending event on the port
-    *   - invalidate: request to invalidate one cache line If the invalidated
+    *   - invalidate: request to invalidate one cache line. If the invalidated
     *     cache line is also a target of a pending write in write queue,
     *     especially the head of the write queue, L1 should fetch
     *     (write-allocate) the line again before sending an modify request

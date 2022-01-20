@@ -488,12 +488,19 @@ class L2Cache(val opts: L2Opts) extends Module {
           assert(lookups(hitIdx).hit(targetAddr), "Target core hits")
           for (core <- (0 until opts.CORE_COUNT)) {
             when(core.U === target) {
-              assert(lookups(hitIdx).states(core) === L2DirState.modified, "Target core is in M")
+              assert(
+                lookups(hitIdx).states(core) === L2DirState.modified,
+                "Target core is in M"
+              )
             }.otherwise {
-              assert(lookups(hitIdx).states(core) === L2DirState.vacant, "Other cores are in I")
+              assert(
+                lookups(hitIdx).states(core) === L2DirState.vacant,
+                "Other cores are in I"
+              )
             }
           }
 
+          // M -> I
           val writtenDir = L2DirEntry
             .withAddr(opts, targetAddr)
             .editState(target, L2DirState.vacant)
@@ -529,15 +536,18 @@ class L2Cache(val opts: L2Opts) extends Module {
       // For debugging
       rememberedHitData := data
 
+      // M
       val dirtyMap = VecInit(
         lookups(pipeHitIdx).states.map(_ === L2DirState.modified)
       ).asUInt
+      val hasDirty = (dirtyMap & ~UIntToOH(target)).asUInt.orR
+      // M or S
       val sharedMap =
         VecInit(lookups(pipeHitIdx).states.map(_ =/= L2DirState.vacant)).asUInt
-      val hasDirty = (dirtyMap & ~UIntToOH(target)).asUInt.orR
       val hasShared = (sharedMap & ~UIntToOH(target)).asUInt.orR
 
       when(!hasShared) {
+        // all cores are in I
         assert(!misses(target))
 
         rdatas(target) := data
@@ -547,8 +557,10 @@ class L2Cache(val opts: L2Opts) extends Module {
         val newState = Wire(L2DirState())
 
         when(targetOps === L1DCPort.L1Req.read) {
+          // I -> S
           newState := L2DirState.shared
         }.otherwise {
+          // I -> M
           newState := L2DirState.modified
         }
 
@@ -563,14 +575,16 @@ class L2Cache(val opts: L2Opts) extends Module {
         nstate := L2MainState.idle
         step()
       }.elsewhen(!hasDirty) {
-        // If modifying, we need to invalidate them first
+        // Some cores are in S
         when(targetOps === L1DCPort.L1Req.read) {
+          // Op is read
           assert(!misses(target))
 
           rdatas(target) := data
           stalls(target) := false.B
           // collided(target) := false.B
 
+          // I -> S
           when(isDC) {
             writeDir(
               pipeHitIdx,
@@ -581,6 +595,7 @@ class L2Cache(val opts: L2Opts) extends Module {
 
           nstate := L2MainState.idle
         }.otherwise {
+          // If modifying, we need to invalidate the cores in S state
           pendingVictim := false.B
           nstate := L2MainState.waitInval
 
@@ -595,6 +610,8 @@ class L2Cache(val opts: L2Opts) extends Module {
           }
         }
       }.otherwise {
+        // one core is in M
+        // flush it
         pendingVictim := false.B
         nstate := L2MainState.waitFlush
 
@@ -625,8 +642,10 @@ class L2Cache(val opts: L2Opts) extends Module {
 
         val newState = Wire(L2DirState())
         when(targetOps === L1DCPort.L1Req.read) {
+          // I -> S
           newState := L2DirState.shared
         }.otherwise {
+          // I -> M
           newState := L2DirState.modified
         }
 
@@ -657,16 +676,21 @@ class L2Cache(val opts: L2Opts) extends Module {
       when(!lookups(victim).valid) {
         commit()
       }.otherwise {
+        // if victim is valid, evict it
+        // M
         val hasDirty = VecInit(
           lookups(victim).states.map(_ === L2DirState.modified)
         ).asUInt().orR
+        // M or S
         val hasShared = VecInit(
           lookups(victim).states.map(_ =/= L2DirState.vacant)
         ).asUInt().orR
 
         when(hasDirty) {
+          // the core is in M
           pendingVictim := true.B
 
+          // flush it
           for ((s, p) <- lookups(victim).states.zip(pendings)) {
             when(s === L2DirState.modified) {
               p := L1DCPort.L2Req.flush
@@ -675,8 +699,10 @@ class L2Cache(val opts: L2Opts) extends Module {
 
           nstate := L2MainState.waitFlush
         }.elsewhen(hasShared) {
+          // some cores are in S
           pendingVictim := true.B
 
+          // invalidate them
           for ((s, p) <- lookups(victim).states.zip(pendings)) {
             assert(s =/= L2DirState.modified)
             when(s === L2DirState.shared) {
@@ -688,7 +714,7 @@ class L2Cache(val opts: L2Opts) extends Module {
         }.elsewhen(lookups(victim).dirty) {
           // Is an dirty entry, place into wb fifo
 
-          // Wait until not full
+          // Wait until wb fifo not full
           when(!wbFifoFull) {
             wbFifo(wbFifoTail).lineaddr := lookups(victim).tag ## targetAddr(
               INDEX_OFFSET_LENGTH - 1,
@@ -710,10 +736,11 @@ class L2Cache(val opts: L2Opts) extends Module {
     }
 
     is(L2MainState.waitFlush) {
+      // flushing(M -> I) core, wait for completion
       val ent = Wire(new L2DirEntry(opts))
       val writtenTowards = Wire(UInt(ASSOC_IDX_WIDTH.W))
 
-      // TODO: can we merge victim and pipeHitIdx? their use case are mutually exculsive
+      // TODO: can we merge victim and pipeHitIdx? their use case are mutually exclusive
       when(pendingVictim) {
         ent := pipeLookups(victim)
         writtenTowards := victim
@@ -731,6 +758,7 @@ class L2Cache(val opts: L2Opts) extends Module {
 
       val justWritten = Reg(UInt())
 
+      // flush operation done
       for (((d, p), idx) <- dc.zip(pendings).zipWithIndex) {
         when(p =/= L1DCPort.L2Req.idle && !d.l2stall) {
           p := L1DCPort.L2Req.idle
@@ -801,6 +829,7 @@ class L2Cache(val opts: L2Opts) extends Module {
     }
 
     is(L2MainState.waitInval) {
+      // wait for invalidation(S -> I)
       for ((d, p) <- dc.zip(pendings)) {
         when(p =/= L1DCPort.L2Req.idle && !d.l2stall) {
           p := L1DCPort.L2Req.idle
@@ -826,8 +855,10 @@ class L2Cache(val opts: L2Opts) extends Module {
             when(!isDC) {
               sinit := L2DirState.vacant
             }.elsewhen(targetOps === L1DCPort.L1Req.read) {
+              // I -> S
               sinit := L2DirState.shared
             }.otherwise {
+              // I -> M
               sinit := L2DirState.modified
             }
 
@@ -874,6 +905,7 @@ class L2Cache(val opts: L2Opts) extends Module {
           val coreWidth = if (opts.CORE_COUNT != 1) {
             log2Ceil(opts.CORE_COUNT)
           } else { 1 }
+          // I -> M
           val writtenDir = L2DirEntry
             .withAddr(opts, targetAddr)
             .editState(target(coreWidth - 1, 0), L2DirState.modified)
