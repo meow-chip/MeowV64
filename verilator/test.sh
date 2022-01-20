@@ -3,5 +3,5 @@ set -e
 
 make
 for filename in ../../testcases/meow/bin/*.bin ../../testcases/riscv-tests/build/isa/*.bin; do
-	./VSystem $filename
+	./VRiscVSystem $filename
 done
