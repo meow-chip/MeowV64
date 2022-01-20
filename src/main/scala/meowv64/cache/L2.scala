@@ -505,7 +505,7 @@ class L2Cache(val opts: L2Opts) extends Module {
             .withAddr(opts, targetAddr)
             .editState(target, L2DirState.vacant)
             .withDirty()
-          val writtenData = dc(target).wdata
+          val writtenData = dc(target).l1data
 
           writeDir(
             hitIdx,
@@ -763,7 +763,7 @@ class L2Cache(val opts: L2Opts) extends Module {
         when(p =/= L1DCPort.L2Req.idle && !d.l2stall) {
           p := L1DCPort.L2Req.idle
 
-          writtenData := d.wdata
+          writtenData := d.l1data
           commit := true.B
           justWritten := idx.U
         }

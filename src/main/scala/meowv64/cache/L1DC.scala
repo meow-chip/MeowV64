@@ -221,7 +221,7 @@ class L1DC(val opts: L1DOpts)(implicit coredef: CoreDef) extends Module {
   // assert((!w.write) || w.addr(IGNORED_WIDTH-1, 0) === 0.U)
   //   The check for write is no longer true, because of AMO
 
-  toL2.wdata := 0.U
+  toL2.l1data := 0.U
   toL2.l1addr := 0.U
   toL2.l1req := L1Req.idle
 
@@ -510,7 +510,7 @@ class L1DC(val opts: L1DOpts)(implicit coredef: CoreDef) extends Module {
           OFFSET_WIDTH.W
         )
         toL2.l1req := L1DCPort.L1Req.writeback
-        toL2.wdata := wlookups(victim).data.asUInt()
+        toL2.l1data := wlookups(victim).data.asUInt()
 
         val invalid = Wire(new DLine(opts))
         invalid := DontCare
@@ -535,7 +535,7 @@ class L1DC(val opts: L1DOpts)(implicit coredef: CoreDef) extends Module {
           OFFSET_WIDTH.W
         )
         toL2.l1req := L1DCPort.L1Req.writeback
-        toL2.wdata := wlookups(victim).data.asUInt()
+        toL2.l1data := wlookups(victim).data.asUInt()
 
         val invalid = Wire(new DLine(opts))
         invalid := DontCare
@@ -567,17 +567,17 @@ class L1DC(val opts: L1DOpts)(implicit coredef: CoreDef) extends Module {
       written.valid := true.B
       written.dirty := state === MainState.wallocRefill
       written.tag := getTag(writtenAddr)
-      written.data := toL2.rdata.asTypeOf(written.data)
+      written.data := toL2.l2data.asTypeOf(written.data)
 
       when(state === MainState.wallocRefill) {
         written.data(getSublineIdx(waddr)) := muxBE(
           wbuf(wbufHead).be,
           wbuf(wbufHead).sdata,
-          toL2.rdata.asTypeOf(written.data)(getSublineIdx(waddr))
+          toL2.l2data.asTypeOf(written.data)(getSublineIdx(waddr))
         )
 
         when(wbuf(wbufHead).isAMO) {
-          amoalu.io.rdata := toL2.rdata.asTypeOf(written.data)(
+          amoalu.io.rdata := toL2.l2data.asTypeOf(written.data)(
             getSublineIdx(waddr)
           )
           written.data(getSublineIdx(waddr)) := amoalu.io.muxed
@@ -811,7 +811,7 @@ class L1DC(val opts: L1DOpts)(implicit coredef: CoreDef) extends Module {
       // For flushes, hit is asserted
       // For invals, wdata is ignored
       // So we should be safe to just use l2Rdata here without checking
-      toL2.wdata := l2Rdata
+      toL2.l1data := l2Rdata
 
       val written = Wire(new DLine(opts))
       written.data := l2Rdata.asTypeOf(written.data)

@@ -151,32 +151,30 @@ class L1DCPort(val opts: L1Opts) extends Bundle with L1Port {
   val l1req = Output(L1DCPort.L1Req())
   val l1addr = Output(UInt(opts.ADDR_WIDTH.W))
   val l1stall = Input(Bool())
+  val l1data = Output(UInt((opts.LINE_BYTES * 8).W))
 
   // L1 <- L2 request
   val l2req = Input(L1DCPort.L2Req())
   val l2addr = Input(UInt(opts.ADDR_WIDTH.W))
   val l2stall = Output(Bool())
+  val l2data = Input(UInt((opts.LINE_BYTES * 8).W))
   // TODO: add a debug signal to show if L1 really has the entry
-
-  // Data bus
-  val wdata = Output(UInt((opts.LINE_BYTES * 8).W))
-  val rdata = Input(UInt((opts.LINE_BYTES * 8).W))
 
   override def getAddr: UInt = l1addr
   override def getReq = l1req
   override def getStall: Bool = l1stall
-  override def getRdata: UInt = rdata
-  override def getWdata: UInt = wdata
+  override def getRdata: UInt = l2data
+  override def getWdata: UInt = l1data
 }
 
 object L1DCPort {
 
-  /** Uplink requests
+  /** Uplink (L1 -> L2) requests
     *
     *   - read: request to read one cache line
-    *   - readWrite: request to write allocate one cache line
-    *   - modify: request to invalidate all other out-standing cache duplicates
-    *   - writeback: request to writeback a line
+    *   - modify: request to invalidate all other out-standing cache duplicates,
+    *     and write one cache line
+    *   - writeback: request to writeback a line (dirty -> non-dirty)
     */
   object L1Req extends ChiselEnum {
     // TODO: do we include inval here? is it worth it?
