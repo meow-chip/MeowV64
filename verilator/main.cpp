@@ -1,4 +1,4 @@
-#include "VSystem.h"
+#include "VRiscVSystem.h"
 #include <elf.h>
 #include <iostream>
 #include <map>
@@ -16,7 +16,7 @@ std::map<uint64_t, uint64_t> memory;
 // align to 8 byte boundary
 uint64_t align(uint64_t addr) { return (addr >> 3) << 3; }
 
-VSystem *top;
+VRiscVSystem *top;
 
 vluint64_t main_time = 0;
 
@@ -369,7 +369,7 @@ int main(int argc, char **argv) {
   assert(optind < argc);
   load_file(argv[optind]);
 
-  top = new VSystem;
+  top = new VRiscVSystem;
 
   VerilatedFstC *tfp = nullptr;
   if (trace) {
