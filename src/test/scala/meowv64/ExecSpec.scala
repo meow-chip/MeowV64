@@ -3,7 +3,6 @@ package meowv64
 import chisel3._
 import chiseltest._
 import chiseltest.simulator.IcarusBackendAnnotation
-import meowv64.system.System
 import meowv64.system.SystemDef
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
@@ -23,7 +22,7 @@ object ExecDef extends SystemDef(coreCount = 1) {
   override val INIT_VEC = BigInt(0x80000000L)
 }
 
-class ExecTest(dut: System, file: String) {
+class ExecTest(dut: system.System, file: String) {
   def doTest(bound: Int): Unit = {
     val beginTime = System.nanoTime
 
@@ -312,7 +311,7 @@ class ExecSpec extends AnyFlatSpec with Matchers with ChiselScalatestTester {
 
   it should s"run successfully" in {
     test(
-      new System()(ExecDef)
+      new system.System()(ExecDef)
     ).withAnnotations(Simulator.getAnnotations()) { dut =>
       for ((desc, file) <- ExecSpec.cases) {
         println("------------")

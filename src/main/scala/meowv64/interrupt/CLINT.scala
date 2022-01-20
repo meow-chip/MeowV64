@@ -78,6 +78,8 @@ class CLINT(implicit sDef: SystemDef) extends Module {
   val idx = Reg(UInt(log2Ceil(sDef.CORE_COUNT).W))
   val wdata = RegInit(0.U(64.W))
   val write = RegInit(false.B)
+  // check out of bounds
+  val invalid = RegInit(false.B)
 
   switch(state) {
     is(State.idle) {
@@ -87,12 +89,17 @@ class CLINT(implicit sDef: SystemDef) extends Module {
 
       when(cur.addr < 0x4000.U) {
         seg := Seg.msip
-        idx := cur.addr(11, 0) >> 2
+        val index = cur.addr(11, 0) >> 2
+        idx := index
+        invalid := index >= sDef.CORE_COUNT.U
       }.elsewhen(cur.addr =/= 0xbff8.U) {
         seg := Seg.mtimecmp
-        idx := cur.addr(11, 0) >> 3
+        val index = cur.addr(11, 0) >> 3
+        idx := index
+        invalid := index >= sDef.CORE_COUNT.U
       }.otherwise {
         seg := Seg.mtime
+        invalid := false.B
       }
 
       when(toL2.req.fire) {
@@ -119,7 +126,12 @@ class CLINT(implicit sDef: SystemDef) extends Module {
         }
       }
 
-      when(write) {
+      // out of bounds
+      when(invalid) {
+        toL2.resp.bits := 0.U
+      }
+
+      when(write && ~invalid) {
         switch(seg) {
           is(Seg.msip) {
             msip(idx) := wdata(0)

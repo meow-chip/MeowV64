@@ -14,4 +14,4 @@ VSystem: ../main.cpp $(VERILOG_SRCS)
 	cp obj_dir/VSystem .
 
 clean:
-	rm $(VERILOG_SRCS)
+	rm -rf $(VERILOG_SRCS)

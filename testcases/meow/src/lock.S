@@ -1,6 +1,18 @@
-#define CORE_COUNT 2 
 #define ITERATION 0x200
-#define EXPECTED_RESULT (ITERATION*CORE_COUNT)
+
+  // probe number of cores from CLINT
+  li t1, 0x02000000 // CLINT address
+  li t2, 0 // core count
+  li t3, 1 // msip
+clint_loop:
+  sw t3, 0(t1)
+  lw t3, 0(t1)
+  addi t2, t2, 1
+  addi t1, t1, 4
+  bnez t3, clint_loop
+
+  // a1 stores core count
+  mv a1, t2
  
   csrr a0, mhartid
   slli sp, a0, 12
@@ -39,7 +51,7 @@ acquire:
   amoadd.d t2, t3, 0(s2)
 
 // Only check on the last core that completes the test
-  li t3, (CORE_COUNT-1)
+  addi t3, a1, -1
   bne t2, t3, wait
 
 // Acquire again to flush all writes
@@ -50,7 +62,10 @@ acquire_again:
   bnez t2, acquire_again
 
   lw t0, 0(s1)
-  li t1, EXPECTED_RESULT
+
+  // Expected result = core count * ITERATION
+  li t3, ITERATION
+  mul t1, a1, t3
   bne t0, t1, die
 
   li s0, 0x60000000
