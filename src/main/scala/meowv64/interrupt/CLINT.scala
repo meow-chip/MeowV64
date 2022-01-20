@@ -75,7 +75,7 @@ class CLINT(implicit mcdef: MulticoreDef) extends Module {
 
   val state = RegInit(State.idle)
   val seg = RegInit(Seg.msip)
-  val idx = RegInit(0.U(log2Ceil(mcdef.CORE_COUNT).W))
+  val idx = Reg(UInt(log2Ceil(mcdef.CORE_COUNT).W))
   val wdata = RegInit(0.U(64.W))
   val write = RegInit(false.B)
 
