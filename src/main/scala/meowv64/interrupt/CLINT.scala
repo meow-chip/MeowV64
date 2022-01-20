@@ -3,7 +3,7 @@ package meowv64.interrupt
 import chisel3._
 import chisel3.experimental._
 import chisel3.util._
-import meowv64.multicore.MulticoreDef
+import meowv64.system.SystemDef
 
 object CLINT {
   val CLINT_REGION_START = BigInt("02000000", 16)
@@ -40,9 +40,9 @@ class LocalInt extends Bundle {
   *
   * Implements msip, mtimecmp and mtime
   */
-class CLINT(implicit mcdef: MulticoreDef) extends Module {
+class CLINT(implicit sDef: SystemDef) extends Module {
   val toL2 = IO(new MMIOAccess(CLINTMMIODef))
-  val ints = IO(Output(Vec(mcdef.CORE_COUNT, new LocalInt)))
+  val ints = IO(Output(Vec(sDef.CORE_COUNT, new LocalInt)))
   val time = IO(Output(UInt(64.W)))
 
   toL2.req.nodeq()
@@ -55,12 +55,12 @@ class CLINT(implicit mcdef: MulticoreDef) extends Module {
 
   time := mtime
 
-  val mtimecmp = RegInit(VecInit(Seq.fill(mcdef.CORE_COUNT)(0.U(64.W))))
+  val mtimecmp = RegInit(VecInit(Seq.fill(sDef.CORE_COUNT)(0.U(64.W))))
   for ((c, m) <- ints.zip(mtimecmp)) {
     c.mtip := m < mtime
   }
 
-  val msip = RegInit(VecInit(Seq.fill(mcdef.CORE_COUNT)(false.B)))
+  val msip = RegInit(VecInit(Seq.fill(sDef.CORE_COUNT)(false.B)))
   for ((c, s) <- ints.zip(msip)) {
     c.msip := s
   }
@@ -75,7 +75,7 @@ class CLINT(implicit mcdef: MulticoreDef) extends Module {
 
   val state = RegInit(State.idle)
   val seg = RegInit(Seg.msip)
-  val idx = Reg(UInt(log2Ceil(mcdef.CORE_COUNT).W))
+  val idx = Reg(UInt(log2Ceil(sDef.CORE_COUNT).W))
   val wdata = RegInit(0.U(64.W))
   val write = RegInit(false.B)
 

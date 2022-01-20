@@ -1,10 +1,11 @@
-package meowv64.multicore
+package meowv64.system
+
 import meowv64.cache.L2Opts
 import meowv64.interrupt.CLINTMapping
 import meowv64.interrupt.PLICDef
 import meowv64.interrupt.PLICMapping
 
-abstract class MulticoreDef(val coreCount: Int) {
+abstract class SystemDef(val coreCount: Int) {
   outer =>
   val CORE_COUNT = coreCount
 
@@ -46,4 +47,7 @@ abstract class MulticoreDef(val coreCount: Int) {
       with PLICDef
 }
 
-object DefaultDef extends MulticoreDef(coreCount = 2)
+class DefaultSystemDef extends SystemDef(coreCount = 2)
+
+class SingleCoreSystemDef extends SystemDef(coreCount = 1)
+class DoubleCoreSystemDef extends SystemDef(coreCount = 2)

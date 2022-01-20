@@ -1,7 +1,7 @@
 package meowv64
 
 import chiseltest.ChiselScalatestTester
-import meowv64.multicore.Multicore
+import meowv64.system.System
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
@@ -43,7 +43,7 @@ class RiscvTestsSpec
   ) {
     it should s"run ${prefix} testcases successfully" in {
       test(
-        new Multicore()(ExecDef)
+        new System()(ExecDef)
       ).withAnnotations(annotations) { dut =>
         for (file <- RiscvTestsSpec.cases) {
           if (file.contains(prefix)) {

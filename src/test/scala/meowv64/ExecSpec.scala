@@ -3,8 +3,8 @@ package meowv64
 import chisel3._
 import chiseltest._
 import chiseltest.simulator.IcarusBackendAnnotation
-import meowv64.multicore.Multicore
-import meowv64.multicore.MulticoreDef
+import meowv64.system.System
+import meowv64.system.SystemDef
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers
 
@@ -19,11 +19,11 @@ import firrtl.stage.RunFirrtlTransformAnnotation
 import firrtl.options.Dependency
 import chiseltest.internal.CachingAnnotation
 
-object ExecDef extends MulticoreDef(coreCount = 1) {
+object ExecDef extends SystemDef(coreCount = 1) {
   override val INIT_VEC = BigInt(0x80000000L)
 }
 
-class ExecTest(dut: Multicore, file: String) {
+class ExecTest(dut: System, file: String) {
   def doTest(bound: Int): Unit = {
     val beginTime = System.nanoTime
 
@@ -87,7 +87,7 @@ class ExecTest(dut: Multicore, file: String) {
       }
       dut.clock.step(1)
 
-      // TODO: handles multicore
+      // TODO: handles system
       if (dut.io.debug(0).pc.peek.litValue == 0x100000 || finished) {
         println(s"> Process ended at cycle ${i}")
 
@@ -312,7 +312,7 @@ class ExecSpec extends AnyFlatSpec with Matchers with ChiselScalatestTester {
 
   it should s"run successfully" in {
     test(
-      new Multicore()(ExecDef)
+      new System()(ExecDef)
     ).withAnnotations(Simulator.getAnnotations()) { dut =>
       for ((desc, file) <- ExecSpec.cases) {
         println("------------")

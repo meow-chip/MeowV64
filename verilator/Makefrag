@@ -1,0 +1,17 @@
+VERILATOR = verilator
+VERILATOR_FLAGS = -Wno-fatal --trace-fst
+CURRENT_DIR = $(shell pwd)
+VERILOG_SRCS = System.v
+
+all: VSystem
+
+$(VERILOG_SRCS):
+	cd ../../ && mill meowv64.runMain meowv64.Main $(CONFIG) -td $(CURRENT_DIR)
+
+VSystem: ../main.cpp $(VERILOG_SRCS)
+	$(VERILATOR) $(VERILATOR_FLAGS) --cc $(VERILOG_SRCS) --exe $<
+	make -j8 -C obj_dir -f VSystem.mk VSystem
+	cp obj_dir/VSystem .
+
+clean:
+	rm $(VERILOG_SRCS)

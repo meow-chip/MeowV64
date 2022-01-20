@@ -1,6 +1,9 @@
 obj_dir
-VMulticore
+VSystem
 *.vcd
 *.fst
 *.sig
+*.v
+*.anno.json
+*.fir
 !benchmark.log
