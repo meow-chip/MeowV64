@@ -129,6 +129,9 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
   // Actual fetch PC, affected by branch, etc.
   val s1FPc = WireDefault(s1Pc)
   val s1AlignedFPc = s1FPc(coredef.XLEN - 1, ICAlign) ## 0.U(ICAlign.W)
+  // fetch packet is successive
+  val s1Successive = RegInit(true.B)
+  val s2Successive = RegInit(true.B)
 
   // compute stage 1 fpc from stage 2 BPU result
   // find first taken slot
@@ -139,6 +142,7 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
     when(i.U >= s2PcOffset) {
       when(res.valid && res.prediction === BHTPrediction.taken) {
         s1FPc := res.targetAddress
+        s1Successive := false.B
       }
     }
   }
@@ -156,10 +160,12 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
   when(!readStalled) {
     s2Pc := s1FPc
     s2Fault := tlb.query.resp.fault
+    s2Successive := s1Successive
 
     when(toIC.read) {
       // If We send an request to IC, step forward PC counter
       s1Pc := s1AlignedFPc + (coredef.L1I.TRANSFER_WIDTH / 8).U
+      s1Successive := true.B
     }
   }
 
@@ -189,6 +195,11 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
     /** Address of this fetch packet, might be unaligned
       */
     val addr = UInt(coredef.XLEN.W)
+
+    /** Whether this fetch packet is successive, i.e. the next packet of
+      * previous one
+      */
+    val successive = Bool()
 
     /** BPU prediction result
       */
@@ -224,6 +235,7 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
   ICQueue.io.enq.bits.addr := s2Pc
   ICQueue.io.enq.bits.pred := toBPU.results
   ICQueue.io.enq.bits.fault := s2Fault
+  ICQueue.io.enq.bits.successive := s2Successive
   ICQueue.io.enq.valid := (!toIC.stall && toIC.data.valid) || s2Fault
 
   /** In the previous cycle, if there is any instruction causing a late-predict
@@ -301,7 +313,9 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
     }
 
     decoded(i).instr := instr
-    val addr = ICHead.io.deq.bits.addr + (decodePtr(i) << log2Ceil(
+    val alignedAddr =
+      ICHead.io.deq.bits.addr(coredef.XLEN - 1, ICAlign) ## 0.U(ICAlign.W)
+    val addr = alignedAddr + (decodePtr(i) << log2Ceil(
       (Const.INSTR_MIN_WIDTH / 8)
     ))
     val acrossPage =
@@ -359,6 +373,10 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
 
     decodedRASPop(i) := false.B
     decodedRASPush(i) := false.B
+
+    when(pred.valid && instr.op =/= Decoder.Op("BRANCH").ident) {
+      // TODO predicted as a branch, but actually not
+    }
 
     when(instr.op === Decoder.Op("JAL").ident) {
       // force predict branch to be taken
@@ -424,6 +442,7 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
       true.B
     )
     if (i > 0) {
+      // instruction flow interrupts
       when(decoded(i - 1).taken) {
         brokens(i + 1) := true.B
       }
@@ -445,7 +464,13 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
   assume(nHeadPtr.getWidth == headPtr.getWidth + 1)
   assert(stepping <= issueFifo.writer.accept)
   when(nHeadPtr.head(1)(0)) {
+    // ICQueue head is finished, go to next fetch packet
     ICHead.io.deq.deq()
+    // if not successive, reset head ptr from address offset
+    when(!ICQueue.io.deq.bits.successive) {
+      headPtr := ICQueue.io.deq.bits
+        .addr(ICAlign - 1, log2Ceil(Const.INSTR_MIN_WIDTH / 8))
+    }
   }
 
   toExec <> issueFifo.reader
