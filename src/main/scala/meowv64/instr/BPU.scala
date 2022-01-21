@@ -28,7 +28,7 @@ class BHTSlot(implicit val coredef: CoreDef) extends Bundle {
     *
     * If necessary, store offset instead of target address.
     */
-  val targetAddress = UInt(coredef.VADDR_WIDTH.W)
+  val targetAddress = UInt(coredef.XLEN.W)
 
   /** Compute BPUResult
     */
@@ -48,7 +48,13 @@ class BPUResult(implicit val coredef: CoreDef) extends Bundle {
 
   val valid = Bool()
   val history = UInt(coredef.BHT_WIDTH.W)
-  val targetAddress = UInt(coredef.VADDR_WIDTH.W)
+
+  /** Predicted target address.
+    *
+    * For BRANCH/JAL instructions, this is pc + imm. For JALR(RET) instruction,
+    * this comes from RAS.
+    */
+  val targetAddress = UInt(coredef.XLEN.W)
 
   // predict by msb: <1/2 not taken, >1/2 taken
   def prediction = Mux(

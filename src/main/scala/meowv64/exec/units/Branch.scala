@@ -179,7 +179,7 @@ class Branch(override implicit val coredef: CoreDef)
       val dest =
         (((pipe.rs1val.asSInt + pipe.instr.instr.imm) >> 1) << 1).asUInt
 
-      when(pipe.instr.taken && dest === pipe.instr.predTarget) {
+      when(pipe.instr.taken && dest === pipe.instr.pred.targetAddress) {
         // predicted to be taken and destination is correctly predicted
         info.branch.nofire
       }.otherwise {

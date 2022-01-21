@@ -38,13 +38,6 @@ class InstrExt(implicit val coredef: CoreDef) extends Bundle {
     */
   val forcePred = Bool()
 
-  /** Predicted target address.
-    *
-    * For BRANCH instructions, this is pc + imm. For JALR(RET) instruction, this
-    * comes from RAS.
-    */
-  val predTarget = UInt(coredef.XLEN.W)
-
   override def toPrintable: Printable = {
     p"Address: 0x${Hexadecimal(addr)}\n" +
       p"Valid: ${valid}\n" +
@@ -76,7 +69,6 @@ object InstrExt {
     ret.fetchEx := DontCare
     ret.acrossPageEx := DontCare
     ret.forcePred := DontCare
-    ret.predTarget := DontCare
 
     ret
   }
@@ -332,7 +324,6 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
     val pred = joinedPred(decodePtr(i + 1) - 1.U)
     decoded(i).pred := pred
     decoded(i).forcePred := false.B
-    decoded(i).predTarget := 0.U
 
     decodedRASPop(i) := false.B
     decodedRASPush(i) := false.B
@@ -341,6 +332,10 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
       // force predict branch to be taken
       decoded(i).forcePred := true.B
       decodedRASPush(i) := instr.rd === 1.U || instr.rd === 5.U
+
+      // compute target address for BRANCH instructions
+      decoded(i).pred.targetAddress := (decoded(i).instr.imm
+        +% decoded(i).addr.asSInt()).asUInt()
     }.elsewhen(instr.op === Decoder.Op("JALR").ident) {
       decodedRASPush(i) := instr.rd === 1.U || instr.rd === 5.U
       val doPop =
@@ -351,7 +346,7 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
         // force predict branch to be taken
         decoded(i).forcePred := toRAS.pop.valid
       }
-      decoded(i).predTarget := toRAS.pop.bits
+      decoded(i).pred.targetAddress := toRAS.pop.bits
     }.elsewhen(instr.op === Decoder.Op("BRANCH").ident) {
       when(instr.imm < 0.S && pred.prediction === BHTPrediction.missed) {
         // for backward branches
@@ -363,8 +358,6 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
       // will be written to BPU later
       decoded(i).pred.targetAddress := (decoded(i).instr.imm
         +% decoded(i).addr.asSInt()).asUInt()
-
-      decoded(i).predTarget := decoded(i).pred.targetAddress
     }.otherwise {
       decoded(i).pred.valid := false.B
     }
@@ -441,7 +434,7 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
     */
   val pipeStepping = RegNext(stepping)
   val pipeTaken = RegNext(VecInit(decoded.map(_.taken)))
-  val pipeSpecBrTargets = RegNext(VecInit(decoded.map(_.predTarget)))
+  val pipeSpecBrTargets = RegNext(VecInit(decoded.map(_.pred.targetAddress)))
   val pipeSpecBrMask = pipeTaken.zipWithIndex.map({ case (taken, idx) =>
     idx.U < pipeStepping && taken
   })
