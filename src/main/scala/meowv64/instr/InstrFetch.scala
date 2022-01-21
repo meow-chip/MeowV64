@@ -130,22 +130,10 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
   val s1FPc = WireDefault(s1Pc)
   val s1AlignedFPc = s1FPc(coredef.XLEN - 1, ICAlign) ## 0.U(ICAlign.W)
   // fetch packet is successive
-  val s1Successive = RegInit(true.B)
-  val s2Successive = RegInit(true.B)
-
-  // compute stage 1 fpc from stage 2 BPU result
-  // find first taken slot
-  for (
-    i <- (0 until coredef.L1I.TRANSFER_WIDTH / Const.INSTR_MIN_WIDTH).reverse
-  ) {
-    val res = toBPU.results(i)
-    when(i.U >= s2PcOffset) {
-      when(res.valid && res.prediction === BHTPrediction.taken) {
-        s1FPc := res.targetAddress
-        s1Successive := false.B
-      }
-    }
-  }
+  val s1Successive = WireInit(true.B)
+  val s1PipeSuccessive = RegInit(true.B)
+  val s2Successive = RegInit(false.B)
+  s1PipeSuccessive := s1Successive
 
   s1Pc := s1FPc
 
@@ -165,7 +153,22 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
     when(toIC.read) {
       // If We send an request to IC, step forward PC counter
       s1Pc := s1AlignedFPc + (coredef.L1I.TRANSFER_WIDTH / 8).U
-      s1Successive := true.B
+      s1PipeSuccessive := true.B
+    }
+  }
+
+  // compute stage 1 fpc from stage 2 BPU result
+  // find first taken slot
+  s1Successive := s1PipeSuccessive
+  for (
+    i <- (0 until coredef.L1I.TRANSFER_WIDTH / Const.INSTR_MIN_WIDTH).reverse
+  ) {
+    val res = toBPU.results(i)
+    when(i.U >= s2PcOffset) {
+      when(res.valid && res.prediction === BHTPrediction.taken) {
+        s1FPc := res.targetAddress
+        s1Successive := false.B
+      }
     }
   }
 
