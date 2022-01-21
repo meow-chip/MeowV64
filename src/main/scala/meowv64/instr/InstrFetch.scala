@@ -332,6 +332,7 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
     val pred = joinedPred(decodePtr(i + 1) - 1.U)
     decoded(i).pred := pred
     decoded(i).forcePred := false.B
+    decoded(i).predTarget := 0.U
 
     decodedRASPop(i) := false.B
     decodedRASPush(i) := false.B
@@ -350,6 +351,7 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
         // force predict branch to be taken
         decoded(i).forcePred := toRAS.pop.valid
       }
+      decoded(i).predTarget := toRAS.pop.bits
     }.elsewhen(instr.op === Decoder.Op("BRANCH").ident) {
       when(instr.imm < 0.S && pred.prediction === BHTPrediction.missed) {
         // for backward branches
@@ -357,14 +359,14 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
         // force predict branch to be taken
         decoded(i).forcePred := true.B
       }
+      // compute target address for BRANCH instructions
+      // will be written to BPU later
+      decoded(i).pred.targetAddress := (decoded(i).instr.imm
+        +% decoded(i).addr.asSInt()).asUInt()
+
+      decoded(i).predTarget := decoded(i).pred.targetAddress
     }.otherwise {
       decoded(i).pred.valid := false.B
-    }
-
-    decoded(i).predTarget := (decoded(i).instr.imm +% decoded(i).addr.asSInt())
-      .asUInt()
-    when(instr.op === Decoder.Op("JALR").ident) {
-      decoded(i).predTarget := toRAS.pop.bits
     }
   }
 

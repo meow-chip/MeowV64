@@ -20,12 +20,23 @@ class BHTSlot(implicit val coredef: CoreDef) extends Bundle {
   val tag = UInt(TAG_WIDTH.W)
   val valid = Bool()
 
+  /** BHT history counter
+    */
   val history = UInt(coredef.BHT_WIDTH.W)
 
+  /** Target address if branch is taken.
+    *
+    * If necessary, store offset instead of target address.
+    */
+  val targetAddress = UInt(coredef.VADDR_WIDTH.W)
+
+  /** Compute BPUResult
+    */
   def taken(tag: UInt) = {
     val ret = Wire(new BPUResult())
     ret.valid := valid && this.tag === tag
     ret.history := history
+    ret.targetAddress := targetAddress
     ret
   }
 }
@@ -37,6 +48,7 @@ class BPUResult(implicit val coredef: CoreDef) extends Bundle {
 
   val valid = Bool()
   val history = UInt(coredef.BHT_WIDTH.W)
+  val targetAddress = UInt(coredef.VADDR_WIDTH.W)
 
   // predict by msb: <1/2 not taken, >1/2 taken
   def prediction = Mux(
@@ -54,6 +66,7 @@ class BPUResult(implicit val coredef: CoreDef) extends Bundle {
 
     ret.valid := true.B
     ret.tag := tag
+    ret.targetAddress := targetAddress
 
     when(this.valid) {
       // saturating add
@@ -74,6 +87,7 @@ class BPUResult(implicit val coredef: CoreDef) extends Bundle {
 
     ret.valid := true.B
     ret.tag := tag
+    ret.targetAddress := targetAddress
 
     when(this.valid) {
       // saturating sub
@@ -85,7 +99,7 @@ class BPUResult(implicit val coredef: CoreDef) extends Bundle {
     ret
   }
 
-  /** Update BPU prediction history
+  /** Update BHT prediction history
     *
     * @param taken
     * @param tag
@@ -94,18 +108,26 @@ class BPUResult(implicit val coredef: CoreDef) extends Bundle {
   def update(taken: Bool, tag: UInt) = Mux(taken, this.up(tag), this.down(tag))
 }
 
+/** Branch prediction unit. It only considers branch instructions.
+  */
 class BPU(implicit val coredef: CoreDef) extends Module {
   val toFetch = IO(new Bundle {
+
+    /** the address (pc) of the query branch */
     val pc =
-      Input(UInt(coredef.VADDR_WIDTH.W)) // the address (pc) of the query branch
+      Input(UInt(coredef.VADDR_WIDTH.W))
     // for each possible branch instruction
     // return a BPUResult
+    // it has one cycle delay
     val results = Output(
       Vec(coredef.L1I.TRANSFER_WIDTH / Const.INSTR_MIN_WIDTH, new BPUResult)
     )
   })
 
   val toExec = IO(new Bundle {
+
+    /** Update BPU based on execution result
+      */
     val valid = Input(Bool())
     val lpc = Input(UInt(coredef.XLEN.W)) // Only register on the last slot
     val hist = Input(new BPUResult)

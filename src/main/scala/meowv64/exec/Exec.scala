@@ -50,6 +50,9 @@ class Exec(implicit val coredef: CoreDef) extends Module {
   })
 
   val toBPU = IO(new Bundle {
+
+    /** Update BPU based on execution result
+      */
     val valid = Output(Bool())
     val lpc = Output(UInt(coredef.XLEN.W))
     val taken = Output(Bool())
