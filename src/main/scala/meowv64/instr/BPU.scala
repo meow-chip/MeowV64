@@ -46,7 +46,12 @@ class BPUResult(implicit val coredef: CoreDef) extends Bundle {
   val INDEX_WIDTH = log2Ceil(coredef.BHT_SIZE)
   val TAG_WIDTH = coredef.VADDR_WIDTH - OFFSET_WIDTH - INDEX_WIDTH
 
+  /** This is a valid prediction
+    */
   val valid = Bool()
+
+  /** BHT Prediction history
+    */
   val history = UInt(coredef.BHT_WIDTH.W)
 
   /** Predicted target address.

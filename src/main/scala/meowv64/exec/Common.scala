@@ -233,9 +233,9 @@ class InflightInstr(implicit val coredef: CoreDef) extends Bundle {
 
   /** Override prediction result to be taken e.g. JAL
     */
-  val forcePred = Bool() // FIXME: change to default pred
+  val overridePred = Bool() // FIXME: change to default pred
 
-  def taken = pred.prediction === BHTPrediction.taken || forcePred
+  def taken = overridePred || pred.prediction === BHTPrediction.taken
   def npc = Mux(isC, 2.U, 4.U) +% addr
 }
 
@@ -247,7 +247,7 @@ object InflightInstr {
     ret.isC := instr.instr.base === InstrType.C
     ret.erd := instr.instr.getRd()
     ret.pred := instr.pred
-    ret.forcePred := instr.forcePred
+    ret.overridePred := instr.overridePred
 
     ret
   }

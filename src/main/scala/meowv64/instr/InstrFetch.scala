@@ -34,9 +34,9 @@ class InstrExt(implicit val coredef: CoreDef) extends Bundle {
     */
   val pred = new BPUResult
 
-  /** Override prediction result to be taken e.g. JAL
+  /** Override prediction result e.g. JAL & JALR
     */
-  val forcePred = Bool()
+  val overridePred = Bool()
 
   override def toPrintable: Printable = {
     p"Address: 0x${Hexadecimal(addr)}\n" +
@@ -48,9 +48,9 @@ class InstrExt(implicit val coredef: CoreDef) extends Bundle {
     */
   def npc: UInt = Mux(instr.base === InstrType.C, addr + 2.U, addr + 4.U)
 
-  /** Whether this instruction is predicted to be taken
+  /** Whether this instruction breaks the instruction flow
     */
-  def taken: Bool = forcePred || pred.prediction === BHTPrediction.taken
+  def taken: Bool = overridePred || pred.prediction === BHTPrediction.taken
 
   /** Illegal instruction
     */
@@ -68,7 +68,7 @@ object InstrExt {
     ret.pred := DontCare
     ret.fetchEx := DontCare
     ret.acrossPageEx := DontCare
-    ret.forcePred := DontCare
+    ret.overridePred := DontCare
 
     ret
   }
@@ -115,14 +115,35 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
     val ptw = new TLBExt
   })
 
-  // Aligned internal PC counter
-  val pc = RegInit(coredef.INIT_VEC.U(coredef.XLEN.W))
-  // Actual fetch PC, affected by branch, etc.
-  val fpc = WireDefault(pc)
-  pc := fpc
+  val ICAlign = log2Ceil(coredef.L1I.TRANSFER_WIDTH / 8)
 
-  val pipePc = RegInit(0.U(coredef.XLEN.W))
-  val pipeFault = RegInit(false.B)
+  // Internal PC counter
+  val s1Pc = RegInit(coredef.INIT_VEC.U(coredef.XLEN.W))
+  val s1AlignedPc = s1Pc(coredef.XLEN - 1, ICAlign) ## 0.U(ICAlign.W)
+
+  // pc of last cycle
+  val s2Pc = RegInit(0.U(coredef.XLEN.W))
+  val s2Fault = RegInit(false.B)
+  val s2PcOffset = s2Pc(ICAlign - 1, log2Ceil(Const.INSTR_MIN_WIDTH / 8))
+
+  // Actual fetch PC, affected by branch, etc.
+  val s1FPc = WireDefault(s1Pc)
+  val s1AlignedFPc = s1FPc(coredef.XLEN - 1, ICAlign) ## 0.U(ICAlign.W)
+
+  // compute stage 1 fpc from stage 2 BPU result
+  // find first taken slot
+  for (
+    i <- (0 until coredef.L1I.TRANSFER_WIDTH / Const.INSTR_MIN_WIDTH).reverse
+  ) {
+    val res = toBPU.results(i)
+    when(i.U >= s2PcOffset) {
+      when(res.valid && res.prediction === BHTPrediction.taken) {
+        s1FPc := res.targetAddress
+      }
+    }
+  }
+
+  s1Pc := s1FPc
 
   val tlb = Module(new TLB)
   val requiresTranslate =
@@ -130,19 +151,21 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
   // TODO: this will cause the flush to be sent one more tick
   val readStalled = toIC.stall || (requiresTranslate && !tlb.query.req.ready)
 
+  // predict fpc from BPU result
+
   when(!readStalled) {
-    pipePc := fpc
-    pipeFault := tlb.query.resp.fault
+    s2Pc := s1FPc
+    s2Fault := tlb.query.resp.fault
 
     when(toIC.read) {
       // If We send an request to IC, step forward PC counter
-      pc := fpc + (coredef.L1I.TRANSFER_WIDTH / 8).U
+      s1Pc := s1AlignedFPc + (coredef.L1I.TRANSFER_WIDTH / 8).U
     }
   }
 
   tlb.ptw <> toCore.ptw
   tlb.satp := toCore.satp
-  tlb.query.req.bits.vpn := fpc(47, 12)
+  tlb.query.req.bits.vpn := s1FPc(47, 12)
   tlb.query.req.valid := requiresTranslate && !toCtrl.ctrl.flush
   tlb.query.req.bits.isModify := false.B
   tlb.query.req.bits.mode := Mux(
@@ -155,16 +178,25 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
   toBPU.pc := Mux(
     toIC.stall,
     RegNext(toBPU.pc),
-    fpc
+    s1FPc
   ) // Predict by virtual memory
   // TODO: flush BPU on context switch
 
   // First, push all IC readouts into a queue
   class ICData extends Bundle {
     val data = UInt(coredef.L1I.TRANSFER_WIDTH.W)
+
+    /** Address of this fetch packet, might be unaligned
+      */
     val addr = UInt(coredef.XLEN.W)
+
+    /** BPU prediction result
+      */
     val pred =
       Vec(coredef.L1I.TRANSFER_WIDTH / Const.INSTR_MIN_WIDTH, new BPUResult)
+
+    /** Instruction fetch fault
+      */
     val fault = Bool()
   }
 
@@ -189,10 +221,10 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
   val ICQueueLen = 4;
   val ICQueue = Module(new FlushableQueue(new ICData, ICQueueLen, false, false))
   ICQueue.io.enq.bits.data := toIC.data.bits
-  ICQueue.io.enq.bits.addr := pipePc
+  ICQueue.io.enq.bits.addr := s2Pc
   ICQueue.io.enq.bits.pred := toBPU.results
-  ICQueue.io.enq.bits.fault := pipeFault
-  ICQueue.io.enq.valid := (!toIC.stall && toIC.data.valid) || pipeFault
+  ICQueue.io.enq.bits.fault := s2Fault
+  ICQueue.io.enq.valid := (!toIC.stall && toIC.data.valid) || s2Fault
 
   /** In the previous cycle, if there is any instruction causing a late-predict
     * jump. Currently, this is also responsible for handling next-line
@@ -207,10 +239,10 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
   val haltIC =
     (ICQueue.io.count >= (ICQueueLen - 1).U) && !toCtrl.ctrl.flush && !pipeSpecBr
   // I$ Fetch address
-  val icAddr = WireDefault(fpc)
+  val icAddr = WireDefault(s1FPc)
   val icRead = WireDefault(!haltIC)
   when(requiresTranslate) {
-    icAddr := tlb.query.resp.ppn ## fpc(11, 0)
+    icAddr := tlb.query.resp.ppn ## s1AlignedFPc(11, 0)
     icRead := (!haltIC && tlb.query.req.ready) && !tlb.query.resp.fault
   }
   toIC.read := icRead && !toCtrl.ctrl.flush
@@ -323,17 +355,17 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
     decoded(i).valid := true.B
     val pred = joinedPred(decodePtr(i + 1) - 1.U)
     decoded(i).pred := pred
-    decoded(i).forcePred := false.B
+    decoded(i).overridePred := false.B
 
     decodedRASPop(i) := false.B
     decodedRASPush(i) := false.B
 
     when(instr.op === Decoder.Op("JAL").ident) {
       // force predict branch to be taken
-      decoded(i).forcePred := true.B
+      decoded(i).overridePred := true.B
       decodedRASPush(i) := instr.rd === 1.U || instr.rd === 5.U
 
-      // compute target address for BRANCH instructions
+      // compute target address for JAL instruction
       decoded(i).pred.targetAddress := (decoded(i).instr.imm
         +% decoded(i).addr.asSInt()).asUInt()
     }.elsewhen(instr.op === Decoder.Op("JALR").ident) {
@@ -344,7 +376,7 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
 
       when(doPop) {
         // force predict branch to be taken
-        decoded(i).forcePred := toRAS.pop.valid
+        decoded(i).overridePred := toRAS.pop.valid
       }
       decoded(i).pred.targetAddress := toRAS.pop.bits
     }.elsewhen(instr.op === Decoder.Op("BRANCH").ident) {
@@ -352,7 +384,7 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
         // for backward branches
         // when BHT missed,
         // force predict branch to be taken
-        decoded(i).forcePred := true.B
+        decoded(i).overridePred := true.B
       }
       // compute target address for BRANCH instructions
       // will be written to BPU later
@@ -433,7 +465,7 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
   /** Speculative branch FIXME(meow): move BHT to early predict
     */
   val pipeStepping = RegNext(stepping)
-  val pipeTaken = RegNext(VecInit(decoded.map(_.taken)))
+  val pipeTaken = RegNext(VecInit(decoded.map(_.overridePred)))
   val pipeSpecBrTargets = RegNext(VecInit(decoded.map(_.pred.targetAddress)))
   val pipeSpecBrMask = pipeTaken.zipWithIndex.map({ case (taken, idx) =>
     idx.U < pipeStepping && taken
@@ -457,9 +489,8 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
     toRAS.push.valid := false.B
     toRAS.pop.ready := false.B
 
-    val ICAlign = log2Ceil(coredef.L1I.TRANSFER_WIDTH / 8)
-    fpc := pipeSpecBrTarget(coredef.XLEN - 1, ICAlign) ## 0.U(ICAlign.W)
-    pipeFault := false.B
+    s1FPc := pipeSpecBrTarget(coredef.XLEN - 1, ICAlign) ## 0.U(ICAlign.W)
+    s2Fault := false.B
     headPtr := pipeSpecBrTarget(
       ICAlign - 1,
       log2Ceil(Const.INSTR_MIN_WIDTH / 8)
@@ -486,8 +517,8 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
 
     val ICAlign = log2Ceil(coredef.L1I.TRANSFER_WIDTH / 8)
     // Set pc directly, because we are waiting for one tick
-    pc := toCtrl.pc(coredef.XLEN - 1, ICAlign) ## 0.U(ICAlign.W)
-    pipeFault := false.B
+    s1Pc := toCtrl.pc(coredef.XLEN - 1, ICAlign) ## 0.U(ICAlign.W)
+    s2Fault := false.B
     headPtr := toCtrl.pc(ICAlign - 1, log2Ceil(Const.INSTR_MIN_WIDTH / 8))
 
     pendingIRst := toCtrl.iRst
@@ -511,5 +542,5 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
 
   // TODO: asserts that decodable is shaped like [true, ..., true, false, ..., false] when there is no BPU
 
-  debug.pc := fpc
+  debug.pc := s1FPc
 }
