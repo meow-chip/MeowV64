@@ -26,7 +26,7 @@ abstract class CoreDef {
   /** This is one larger than the actual maximum number, because we are
     * reserving name 0 for reg 0
     */
-  val INFLIGHT_INSTR_LIMIT = 8
+  val INFLIGHT_INSTR_LIMIT = 16
 
   /** Execution units
     */
