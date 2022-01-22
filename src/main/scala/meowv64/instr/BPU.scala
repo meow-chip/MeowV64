@@ -126,7 +126,7 @@ class BPU(implicit val coredef: CoreDef) extends Module {
 
     /** the address (pc) of the query branch */
     val pc =
-      Input(UInt(coredef.VADDR_WIDTH.W))
+      Input(Valid(UInt(coredef.VADDR_WIDTH.W)))
     // for each possible branch instruction
     // return a BPUResult
     // it has one cycle delay
@@ -165,11 +165,15 @@ class BPU(implicit val coredef: CoreDef) extends Module {
   val resetCnt = RegInit(0.U(log2Ceil(coredef.BHT_SIZE).W))
 
   // Prediction part
-  val readout = store.read(getIndex(toFetch.pc))
-  val tag = getTag(toFetch.pc)
+  val readout = store.read(getIndex(toFetch.pc.bits))
+  val tag = getTag(toFetch.pc.bits)
   val pipeReadout = RegNext(readout)
   val pipeTag = RegNext(tag)
-  toFetch.results := VecInit(pipeReadout.map(_.taken(pipeTag)))
+  when(RegNext(toFetch.pc.valid)) {
+    toFetch.results := VecInit(pipeReadout.map(_.taken(pipeTag)))
+  }.otherwise {
+    toFetch.results := 0.U.asTypeOf(toFetch.results)
+  }
 
   // valid is stale when in reset state
   when(reseting) {

@@ -95,7 +95,7 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
   val toExec = IO(Flipped(new MultiQueueIO(new InstrExt, coredef.ISSUE_NUM)))
 
   val toBPU = IO(new Bundle {
-    val pc = Output(UInt(coredef.XLEN.W))
+    val pc = Output(Valid(UInt(coredef.XLEN.W)))
     val results = Input(
       Vec(coredef.L1I.TRANSFER_WIDTH / Const.INSTR_MIN_WIDTH, new BPUResult)
     )
@@ -152,19 +152,18 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
     toCore.satp.mode =/= SatpMode.bare && toCtrl.priv <= PrivLevel.S
   // TODO: this will cause the flush to be sent one more tick
   val readStalled = toIC.stall || (requiresTranslate && !tlb.query.req.ready)
+  val readFire = !readStalled && toIC.read
 
   // predict fpc from BPU result
 
-  when(!readStalled) {
+  when(readFire) {
     s2Pc := s1FPc
     s2Fault := tlb.query.resp.fault
     s2Successive := s1Successive
 
-    when(toIC.read) {
-      // If We send an request to IC, step forward PC counter
-      s1Pc := s1AlignedFPc + (coredef.L1I.TRANSFER_WIDTH / 8).U
-      s1PipeSuccessive := true.B
-    }
+    // If We send an request to IC, step forward PC counter
+    s1Pc := s1AlignedFPc + (coredef.L1I.TRANSFER_WIDTH / 8).U
+    s1PipeSuccessive := true.B
   }
 
   // compute stage 1 fpc from stage 2 BPU result
@@ -198,11 +197,13 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
   )
   tlb.flush := toCtrl.tlbRst
 
-  toBPU.pc := Mux(
-    toIC.stall || ~toIC.read,
-    RegNext(toBPU.pc),
-    s1FPc
-  ) // Predict by virtual memory
+  // Predict by virtual memory
+  toBPU.pc.bits := Mux(
+    readFire,
+    s1FPc,
+    RegNext(toBPU.pc.bits)
+  )
+  toBPU.pc.valid := readFire
   // TODO: flush BPU on context switch
 
   // First, push all IC readouts into a queue
