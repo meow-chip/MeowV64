@@ -156,14 +156,16 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
 
   // predict fpc from BPU result
 
-  when(readFire) {
+  when(!readStalled) {
     s2Pc := s1FPc
     s2Fault := tlb.query.resp.fault
     s2Successive := s1Successive
 
-    // If We send an request to IC, step forward PC counter
-    s1Pc := s1AlignedFPc + (coredef.L1I.TRANSFER_WIDTH / 8).U
-    s1PipeSuccessive := true.B
+    when(toIC.read) {
+      // If We send an request to IC, step forward PC counter
+      s1Pc := s1AlignedFPc + (coredef.L1I.TRANSFER_WIDTH / 8).U
+      s1PipeSuccessive := true.B
+    }
   }
 
   // compute stage 1 fpc from stage 2 BPU result
