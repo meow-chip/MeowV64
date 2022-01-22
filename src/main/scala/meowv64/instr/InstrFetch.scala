@@ -325,31 +325,23 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
   decodePtr(0) := headPtr
 
   for (i <- 0 until coredef.FETCH_NUM) {
-    def ptrDecodable(ptr: UInt) = {
-      val res = WireInit(true.B)
-      // this instruction might span ICHead and ICQueue
-      val overflowed = ptr >= (coredef.L1I.TRANSFER_WIDTH / 16).U
-      when(!overflowed) {
-        res := ICHead.io.deq.valid && joinedMask(ptr)
-      }.otherwise {
-        res := ICHead.io.deq.valid &&
-          ICQueue.io.deq.valid && ICQueue.io.deq.bits.successive &&
-          joinedMask(ptr)
-      }
-      res
+    // this instruction spans ICHead and ICQueue
+    val overflowed = decodePtr(i) >= (coredef.L1I.TRANSFER_WIDTH / 16 - 1).U
+
+    when(!overflowed) {
+      decodable(i) := ICHead.io.deq.valid
+    }.otherwise {
+      decodable(i) := ICHead.io.deq.valid &&
+        ICQueue.io.deq.valid && ICHead.io.count =/= 0.U
     }
 
     val raw = joinedVec(decodePtr(i))
     val (instr, isInstr16) = raw.parseInstr(toCtrl.allowFloat)
-    decodable(i) := ptrDecodable(decodePtr(i))
 
     when(isInstr16) {
       decodePtr(i + 1) := decodePtr(i) + 1.U
     } otherwise {
       decodePtr(i + 1) := decodePtr(i) + 2.U
-      decodable(i) := ptrDecodable(decodePtr(i)) && ptrDecodable(
-        decodePtr(i) + 1.U
-      )
     }
 
     decoded(i).instr := instr
@@ -389,9 +381,6 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
         }
       }
     }
-
-    // this instruction spans ICHead and ICQueue
-    val overflowed = decodePtr(i) >= (coredef.L1I.TRANSFER_WIDTH / 16 - 1).U
 
     when(ICHead.io.deq.bits.fault) {
       decoded(i).fetchEx := FetchEx.pageFault
@@ -488,6 +477,10 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
         brokens(i + 1) := true.B
       }
     }
+    // masked instruction
+    when(~joinedMask(decodePtr(i))) {
+      brokens(i + 1) := true.B
+    }
     steppings(i + 1) := Mux(brokens(i + 1), steppings(i), (i + 1).U)
   }
 
@@ -506,7 +499,7 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
   assert(stepping <= issueFifo.writer.accept)
 
   // TODO: finished ICHead, or encountered a taken branch
-  when(nHeadPtr.head(1)(0) || ~ICHead.io.deq.bits.mask(nHeadPtr)) {
+  when(nHeadPtr.head(1)(0) || ~ICHead.io.deq.bits.mask(headPtr)) {
     // ICQueue head is finished, go to next fetch packet
     ICHead.io.deq.deq()
   }
