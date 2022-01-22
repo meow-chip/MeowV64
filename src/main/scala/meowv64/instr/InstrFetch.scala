@@ -331,19 +331,17 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
       res
     }
 
-    decodable(i) := ptrDecodable(decodePtr(i)) && ptrDecodable(
-      decodePtr(i) + 1.U
-    )
-
-    // this instruction spans ICHead and ICQueue
-    val overflowed = decodePtr(i) >= (coredef.L1I.TRANSFER_WIDTH / 16 - 1).U
-
     val raw = joinedVec(decodePtr(i))
     val (instr, isInstr16) = raw.parseInstr(toCtrl.allowFloat)
+    decodable(i) := ptrDecodable(decodePtr(i))
+
     when(isInstr16) {
       decodePtr(i + 1) := decodePtr(i) + 1.U
     } otherwise {
       decodePtr(i + 1) := decodePtr(i) + 2.U
+      decodable(i) := ptrDecodable(decodePtr(i)) && ptrDecodable(
+        decodePtr(i) + 1.U
+      )
     }
 
     decoded(i).instr := instr
@@ -383,6 +381,9 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
         }
       }
     }
+
+    // this instruction spans ICHead and ICQueue
+    val overflowed = decodePtr(i) >= (coredef.L1I.TRANSFER_WIDTH / 16 - 1).U
 
     when(ICHead.io.deq.bits.fault) {
       decoded(i).fetchEx := FetchEx.pageFault
