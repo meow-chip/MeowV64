@@ -502,7 +502,11 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
   assert(stepping <= issueFifo.writer.accept)
 
   // TODO: finished ICHead, or encountered a taken branch
-  when(nHeadPtr.head(1)(0) || ~ICHead.io.deq.bits.mask(headPtr)) {
+  when(
+    nHeadPtr.head(1)(0) ||
+      ~ICHead.io.deq.bits.mask(headPtr) ||
+      ~ICHead.io.deq.bits.mask(nHeadPtr)
+  ) {
     // ICQueue head is finished, go to next fetch packet
     ICHead.io.deq.deq()
   }
