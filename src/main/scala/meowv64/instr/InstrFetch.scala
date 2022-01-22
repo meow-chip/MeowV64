@@ -121,10 +121,19 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
   val s1Pc = RegInit(coredef.INIT_VEC.U(coredef.XLEN.W))
   val s1AlignedPc = s1Pc(coredef.XLEN - 1, ICAlign) ## 0.U(ICAlign.W)
 
+  val instPerFetchPacket = coredef.L1I.TRANSFER_WIDTH / Const.INSTR_MIN_WIDTH
+
   // pc of last cycle
   val s2Pc = RegInit(0.U(coredef.XLEN.W))
   val s2Fault = RegInit(false.B)
   val s2PcOffset = s2Pc(ICAlign - 1, log2Ceil(Const.INSTR_MIN_WIDTH / 8))
+  val s2AlignedPc = s2Pc(coredef.XLEN - 1, ICAlign) ## 0.U(ICAlign.W)
+  val s2FullMask = WireInit(
+    ((1 << instPerFetchPacket) - 1).U(instPerFetchPacket.W)
+  )
+  val s2OffsetMask = WireInit(s2FullMask << s2PcOffset)
+  val s2BrMask = WireInit(s2FullMask)
+  val s2Mask = s2OffsetMask & s2BrMask
 
   // Actual fetch PC, affected by branch, etc.
   val s1FPc = WireDefault(s1Pc)
@@ -168,6 +177,9 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
       when(res.valid && res.prediction === BHTPrediction.taken) {
         s1FPc := res.targetAddress
         s1Successive := false.B
+
+        // branch mask
+        s2BrMask := ((1 << (i + 1)) - 1).U
       }
     }
   }
@@ -195,9 +207,13 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
   class ICData extends Bundle {
     val data = UInt(coredef.L1I.TRANSFER_WIDTH.W)
 
-    /** Address of this fetch packet, might be unaligned
+    /** Aligned address of this fetch packet.
       */
     val addr = UInt(coredef.XLEN.W)
+
+    /** Mask of valid 16-bit parts
+      */
+    val mask = UInt((coredef.L1I.TRANSFER_WIDTH / Const.INSTR_MIN_WIDTH).W)
 
     /** Whether this fetch packet is successive, i.e. the next packet of
       * previous one
@@ -235,11 +251,17 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
   val ICQueueLen = 4;
   val ICQueue = Module(new FlushableQueue(new ICData, ICQueueLen, false, false))
   ICQueue.io.enq.bits.data := toIC.data.bits
-  ICQueue.io.enq.bits.addr := s2Pc
+  ICQueue.io.enq.bits.addr := s2AlignedPc
+  ICQueue.io.enq.bits.mask := s2Mask
   ICQueue.io.enq.bits.pred := toBPU.results
   ICQueue.io.enq.bits.fault := s2Fault
   ICQueue.io.enq.bits.successive := s2Successive
   ICQueue.io.enq.valid := (!toIC.stall && toIC.data.valid) || s2Fault
+
+  // when successive, first instruction must be decodable
+  when(ICQueue.io.enq.bits.successive && ICQueue.io.enq.fire) {
+    assert(ICQueue.io.enq.bits.mask(0))
+  }
 
   /** In the previous cycle, if there is any instruction causing a late-predict
     * jump. Currently, this is also responsible for handling next-line
@@ -264,7 +286,7 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
   toIC.addr := icAddr
   toIC.rst := toCtrl.ctrl.flush && toCtrl.iRst
 
-  val ICHead = Module(new FlushableSlot(new ICData, true, true))
+  val ICHead = Module(new FlushableSlot(new ICData, true, false))
   ICHead.io.enq <> ICQueue.io.deq
   ICHead.io.deq.nodeq() // Default
 
@@ -277,7 +299,7 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
   for ((v, i) <- joinedVec.zipWithIndex) {
     v := decodeVec(i + 1) ## decodeVec(i)
   }
-  // Scala ++ works in reverse order (lttle endian you may say?)
+  // Scala ++ works in reverse order (little endian you may say?)
   val joinedPred = VecInit(ICHead.io.deq.bits.pred ++ ICQueue.io.deq.bits.pred)
 
   val decodable = Wire(Vec(coredef.FETCH_NUM, Bool()))
@@ -294,18 +316,27 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
   decodePtr(0) := headPtr
 
   for (i <- 0 until coredef.FETCH_NUM) {
-    // this instruction spans ICHead and ICQueue
-    val overflowed = decodePtr(
-      i
-    ) >= (coredef.L1I.TRANSFER_WIDTH / 16 - 1).U
-
-    when(!overflowed) {
-      decodable(i) := ICHead.io.deq.valid
-    }.otherwise {
-      decodable(
-        i
-      ) := ICHead.io.deq.valid && ICQueue.io.deq.valid && ICHead.io.count =/= 0.U
+    def ptrDecodable(ptr: UInt) = {
+      val res = WireInit(true.B)
+      // this instruction might span ICHead and ICQueue
+      val overflowed = ptr >= (coredef.L1I.TRANSFER_WIDTH / 16).U
+      when(!overflowed) {
+        res := ICHead.io.deq.valid && ICHead.io.deq.bits.mask(ptr)
+      }.otherwise {
+        res := ICHead.io.deq.valid &&
+          ICQueue.io.deq.valid && ICHead.io.count =/= 0.U &&
+          ICQueue.io.deq.bits.successive && ICQueue.io.deq.bits
+            .mask(ptr - (coredef.L1I.TRANSFER_WIDTH / 16).U)
+      }
+      res
     }
+
+    decodable(i) := ptrDecodable(decodePtr(i)) && ptrDecodable(
+      decodePtr(i) + 1.U
+    )
+
+    // this instruction spans ICHead and ICQueue
+    val overflowed = decodePtr(i) >= (coredef.L1I.TRANSFER_WIDTH / 16 - 1).U
 
     val raw = joinedVec(decodePtr(i))
     val (instr, isInstr16) = raw.parseInstr(toCtrl.allowFloat)
@@ -316,9 +347,7 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
     }
 
     decoded(i).instr := instr
-    val alignedAddr =
-      ICHead.io.deq.bits.addr(coredef.XLEN - 1, ICAlign) ## 0.U(ICAlign.W)
-    val addr = alignedAddr + (decodePtr(i) << log2Ceil(
+    val addr = ICHead.io.deq.bits.addr + (decodePtr(i) << log2Ceil(
       (Const.INSTR_MIN_WIDTH / 8)
     ))
     val acrossPage =
@@ -466,14 +495,16 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
 
   assume(nHeadPtr.getWidth == headPtr.getWidth + 1)
   assert(stepping <= issueFifo.writer.accept)
-  when(nHeadPtr.head(1)(0)) {
+
+  // TODO: finished ICHead, or encountered a taken branch
+  when(nHeadPtr.head(1)(0) || ~ICHead.io.deq.bits.mask(nHeadPtr)) {
     // ICQueue head is finished, go to next fetch packet
     ICHead.io.deq.deq()
-    // if not successive, reset head ptr from address offset
-    when(!ICQueue.io.deq.bits.successive) {
-      headPtr := ICQueue.io.deq.bits
-        .addr(ICAlign - 1, log2Ceil(Const.INSTR_MIN_WIDTH / 8))
-    }
+  }
+
+  // if not successive, reset head ptr from mask
+  when(!ICQueue.io.deq.bits.successive && ICQueue.io.deq.fire) {
+    headPtr := PriorityEncoder(ICQueue.io.deq.bits.mask)
   }
 
   toExec <> issueFifo.reader
@@ -545,7 +576,8 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
 
     val ICAlign = log2Ceil(coredef.L1I.TRANSFER_WIDTH / 8)
     // Set pc directly, because we are waiting for one tick
-    s1Pc := toCtrl.pc(coredef.XLEN - 1, ICAlign) ## 0.U(ICAlign.W)
+    s1Pc := toCtrl.pc
+    s1FPc := toCtrl.pc
     s2Fault := false.B
     headPtr := toCtrl.pc(ICAlign - 1, log2Ceil(Const.INSTR_MIN_WIDTH / 8))
 
