@@ -134,6 +134,7 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
   val s2OffsetMask = WireInit(s2FullMask << s2PcOffset)
   val s2BrMask = WireInit(s2FullMask)
   val s2Mask = s2OffsetMask & s2BrMask
+  val s2LastMask = WireInit(0.U(instPerFetchPacket.W))
 
   // Actual fetch PC, affected by branch, etc.
   val s1FPc = WireDefault(s1Pc)
@@ -180,6 +181,7 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
 
         // branch mask
         s2BrMask := ((1 << (i + 1)) - 1).U
+        s2LastMask := (1 << i).U
       }
     }
   }
@@ -214,6 +216,10 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
     /** Mask of valid 16-bit parts
       */
     val mask = UInt((coredef.L1I.TRANSFER_WIDTH / Const.INSTR_MIN_WIDTH).W)
+
+    /** Last bit of valid 16-bit parts, for BTB predictions
+      */
+    val last = UInt((coredef.L1I.TRANSFER_WIDTH / Const.INSTR_MIN_WIDTH).W)
 
     /** Whether this fetch packet is successive, i.e. the next packet of
       * previous one
@@ -253,6 +259,7 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
   ICQueue.io.enq.bits.data := toIC.data.bits
   ICQueue.io.enq.bits.addr := s2AlignedPc
   ICQueue.io.enq.bits.mask := s2Mask
+  ICQueue.io.enq.bits.last := s2LastMask
   ICQueue.io.enq.bits.pred := toBPU.results
   ICQueue.io.enq.bits.fault := s2Fault
   ICQueue.io.enq.bits.successive := s2Successive
@@ -301,6 +308,8 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
   }
   // Scala ++ works in reverse order (little endian you may say?)
   val joinedPred = VecInit(ICHead.io.deq.bits.pred ++ ICQueue.io.deq.bits.pred)
+  val joinedMask = ICQueue.io.deq.bits.mask ## ICHead.io.deq.bits.mask
+  val joinedLast = ICQueue.io.deq.bits.last ## ICHead.io.deq.bits.last
 
   val decodable = Wire(Vec(coredef.FETCH_NUM, Bool()))
   val decodePtr = Wire(
@@ -321,12 +330,11 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
       // this instruction might span ICHead and ICQueue
       val overflowed = ptr >= (coredef.L1I.TRANSFER_WIDTH / 16).U
       when(!overflowed) {
-        res := ICHead.io.deq.valid && ICHead.io.deq.bits.mask(ptr)
+        res := ICHead.io.deq.valid && joinedMask(ptr)
       }.otherwise {
         res := ICHead.io.deq.valid &&
-          ICQueue.io.deq.valid && ICHead.io.count =/= 0.U &&
-          ICQueue.io.deq.bits.successive && ICQueue.io.deq.bits
-            .mask(ptr - (coredef.L1I.TRANSFER_WIDTH / 16).U)
+          ICQueue.io.deq.valid && ICQueue.io.deq.bits.successive &&
+          joinedMask(ptr)
       }
       res
     }
