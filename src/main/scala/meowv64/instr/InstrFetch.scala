@@ -548,7 +548,8 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
     toRAS.push.valid := false.B
     toRAS.pop.ready := false.B
 
-    s1FPc := pipeSpecBrTarget(coredef.XLEN - 1, ICAlign) ## 0.U(ICAlign.W)
+    s1FPc := pipeSpecBrTarget
+    s1Successive := false.B
     s2Fault := false.B
     headPtr := pipeSpecBrTarget(
       ICAlign - 1,
@@ -578,6 +579,7 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
     // Set pc directly, because we are waiting for one tick
     s1Pc := toCtrl.pc
     s1FPc := toCtrl.pc
+    s1Successive := false.B
     s2Fault := false.B
     headPtr := toCtrl.pc(ICAlign - 1, log2Ceil(Const.INSTR_MIN_WIDTH / 8))
 
