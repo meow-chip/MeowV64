@@ -312,7 +312,7 @@ class ExecSpec extends AnyFlatSpec with Matchers with ChiselScalatestTester {
   it should s"run successfully" in {
     test(
       new system.RiscVSystem()(ExecDef)
-    ).withAnnotations(Simulator.getAnnotations()) { dut =>
+    ).withAnnotations(Simulator.getAnnotations(useIcarus = true)) { dut =>
       for ((desc, file) <- ExecSpec.cases) {
         println("------------")
         println(s"Running file $file")

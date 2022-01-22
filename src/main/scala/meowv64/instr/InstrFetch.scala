@@ -199,7 +199,7 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
   tlb.flush := toCtrl.tlbRst
 
   toBPU.pc := Mux(
-    toIC.stall,
+    toIC.stall || ~toIC.read,
     RegNext(toBPU.pc),
     s1FPc
   ) // Predict by virtual memory
@@ -332,7 +332,7 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
       decodable(i) := ICHead.io.deq.valid
     }.otherwise {
       decodable(i) := ICHead.io.deq.valid &&
-        ICQueue.io.deq.valid && ICHead.io.count =/= 0.U
+        ICQueue.io.deq.valid
     }
 
     val raw = joinedVec(decodePtr(i))
