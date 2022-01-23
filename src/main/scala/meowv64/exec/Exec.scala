@@ -570,7 +570,7 @@ class Exec(implicit val coredef: CoreDef) extends Module {
           toBPU.valid := true.B
           toBPU.lpc := inflight.npc - 1.U
           //toBPU.taken := pendingBr && pendingBrTag === tag
-          toBPU.taken := inflight.taken
+          toBPU.taken := info.taken
           toBPU.hist := inflight.pred
         }
 
