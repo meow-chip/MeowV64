@@ -562,7 +562,8 @@ class Exec(implicit val coredef: CoreDef) extends Module {
 
         // Update BPU accordingly
         when(
-          inflight.op === Decoder.Op("BRANCH").ident
+          inflight.op === Decoder.Op("BRANCH").ident ||
+            inflight.op === Decoder.Op("JAL").ident
           // && info.info.branch.ex === ExReq.none
           // Update: BRANCH never exceptions
         ) {

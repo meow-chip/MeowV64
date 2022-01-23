@@ -119,7 +119,7 @@ class BPUResult(implicit val coredef: CoreDef) extends Bundle {
   def update(taken: Bool, tag: UInt) = Mux(taken, this.up(tag), this.down(tag))
 }
 
-/** Branch prediction unit. It only considers branch instructions.
+/** Branch prediction unit. It only considers branch instructions and jal.
   */
 class BPU(implicit val coredef: CoreDef) extends Module {
   val toFetch = IO(new Bundle {

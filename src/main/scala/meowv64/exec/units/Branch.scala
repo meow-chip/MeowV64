@@ -150,17 +150,19 @@ class Branch(override implicit val coredef: CoreDef)
     }.elsewhen(pipe.instr.instr.op === Decoder.Op("BRANCH").ident) {
       // info.regWaddr := 0.U
       info.branchTaken := ext.branchTaken
+      // expected branch target
+      val target = Wire(UInt(coredef.XLEN.W))
+      when(ext.branchTaken) {
+        // addr + imm
+        target := (pipe.instr.instr.imm + pipe.instr.addr.asSInt).asUInt
+      } otherwise {
+        // next pc
+        target := pipe.instr.npc
+      }
+
       when(ext.branchTaken =/= pipe.instr.taken) {
         // mis-predict
         // branch to actual address
-        val target = Wire(UInt(coredef.XLEN.W))
-        when(ext.branchTaken) {
-          // addr + imm
-          target := (pipe.instr.instr.imm + pipe.instr.addr.asSInt).asUInt
-        } otherwise {
-          // next pc
-          target := pipe.instr.npc
-        }
         info.branch.fire(target)
       }.otherwise {
         info.branch.nofire

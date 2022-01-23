@@ -68,7 +68,8 @@ class Bypass(override implicit val coredef: CoreDef)
 
       info.wb := linked
 
-      info.branch.fire((pipe.instr.addr.asSInt + pipe.instr.instr.imm).asUInt)
+      // JAL mispredict is handled in InstrFetch
+      info.branch.nofire
     }.otherwise {
       info.wb := ext.acc
     }

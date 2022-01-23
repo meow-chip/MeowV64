@@ -411,14 +411,20 @@ class InstrFetch(implicit val coredef: CoreDef) extends Module {
       // TODO predicted as a branch, but actually not
     }
 
+    val targetAddress = (decoded(i).instr.imm
+      +% decoded(i).addr.asSInt()).asUInt()
     when(instr.op === Decoder.Op("JAL").ident) {
-      // force predict branch to be taken
-      decoded(i).overridePred := true.B
+      // force predict branch to be taken if it was not predicted in BPU
+      when(
+        pred.prediction =/= BHTPrediction.taken || pred.targetAddress =/= targetAddress
+      ) {
+        decoded(i).overridePred := true.B
+        // compute target address for JAL instruction
+        // will be written to BPU later
+        decoded(i).pred.targetAddress := targetAddress
+      }
       decodedRASPush(i) := instr.rd === 1.U || instr.rd === 5.U
 
-      // compute target address for JAL instruction
-      decoded(i).pred.targetAddress := (decoded(i).instr.imm
-        +% decoded(i).addr.asSInt()).asUInt()
     }.elsewhen(instr.op === Decoder.Op("JALR").ident) {
       decodedRASPush(i) := instr.rd === 1.U || instr.rd === 5.U
       val doPop =
