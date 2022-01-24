@@ -21,6 +21,8 @@ abstract class CoreDef {
   val BHT_WIDTH: Int = 2
   // branch history register
   val BHR_WIDTH: Int = 2
+  // write bypass entries in BPU
+  val BPU_WRITE_BYPASS_COUNT: Int = 8
 
   val TLB_SIZE: Int = 32
 

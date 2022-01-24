@@ -140,6 +140,21 @@ class BPUResult(implicit val coredef: CoreDef) extends Bundle {
   def update(taken: Bool, tag: UInt) = Mux(taken, this.up(tag), this.down(tag))
 }
 
+object BPUResult {
+  def empty(implicit coredef: CoreDef) = {
+    val res = Wire(new BPUResult)
+    res.valid := false.B
+    res.bhr := 0.U
+    for (i <- 0 until (1 << coredef.BHR_WIDTH)) {
+      res.history(i) := 0.U
+    }
+    res.targetAddress := 0.U
+
+    res
+  }
+
+}
+
 /** Branch prediction unit. It only considers branch instructions and jal.
   */
 class BPU(implicit val coredef: CoreDef) extends Module {
@@ -204,6 +219,26 @@ class BPU(implicit val coredef: CoreDef) extends Module {
   }
 
   // Update part
+
+  // Write bypass: if two updates to the same entry is close,
+  // the state might be stale and the first update is silently overridden.
+  // Record the history of recent writes, and bypass the state if available.
+  val wrBypassPc = RegInit(
+    VecInit.fill(coredef.BPU_WRITE_BYPASS_COUNT)(0.U(coredef.XLEN.W))
+  )
+  val wrBypassState = RegInit(
+    VecInit.fill(coredef.BPU_WRITE_BYPASS_COUNT)(BPUResult.empty)
+  )
+  val wrBypassWriteIdx = RegInit(
+    0.U(log2Ceil(coredef.BPU_WRITE_BYPASS_COUNT).W)
+  )
+
+  val wrBypassHitVec = wrBypassPc
+    .zip(wrBypassState)
+    .map({ case (pc, state) => pc === toExec.lpc && state.valid })
+  val wrBypassHit = wrBypassHitVec.reduce(_ || _)
+  val wrBypassHitIdx = PriorityEncoder(wrBypassHitVec)
+
   val updateTag = getTag(toExec.lpc)
   val updateOffset = getOffset(toExec.lpc)
   assert(
@@ -211,7 +246,16 @@ class BPU(implicit val coredef: CoreDef) extends Module {
       coredef.L1I.TRANSFER_WIDTH / Const.INSTR_MIN_WIDTH
     )
   )
-  val updated = toExec.hist.update(toExec.taken, updateTag)
+
+  // Consider write bypass
+  val history = WireInit(toExec.hist)
+  when(wrBypassHit) {
+    val bypass = wrBypassState(wrBypassHitIdx)
+    history.bhr := bypass.bhr
+    history.history := bypass.history
+  }
+
+  val updated = history.update(toExec.taken, updateTag)
   val updateMask = UIntToOH(updateOffset).asBools()
 
   val we = updateMask.map(bit => {
@@ -244,6 +288,23 @@ class BPU(implicit val coredef: CoreDef) extends Module {
   )
 
   store.write(waddr, data, we)
+
+  // Save to write bypass buffer
+  when(toExec.valid) {
+    when(wrBypassHit) {
+      // update in-place
+      wrBypassState(wrBypassHitIdx) := updated
+    }.otherwise {
+      wrBypassPc(wrBypassWriteIdx) := toExec.lpc
+      wrBypassState(wrBypassWriteIdx) := updated
+
+      when(wrBypassWriteIdx === (coredef.BPU_WRITE_BYPASS_COUNT - 1).U) {
+        wrBypassWriteIdx := 0.U
+      }.otherwise {
+        wrBypassWriteIdx := wrBypassWriteIdx + 1.U
+      }
+    }
+  }
 
   when(reseting) {
     resetCnt := resetCnt +% 1.U

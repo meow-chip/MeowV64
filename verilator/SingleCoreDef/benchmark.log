@@ -1,37 +1,37 @@
 > Loaded 22128 bytes from ELF ../../testcases/riscv-tests/build/benchmarks/dhrystone.riscv
-Microseconds for one run through Dhrystone: 411
-Dhrystones per Second:                      2431
-mcycle = 205695
+Microseconds for one run through Dhrystone: 406
+Dhrystones per Second:                      2462
+mcycle = 203094
 minstret = 196029
 > Loaded 20840 bytes from ELF ../../testcases/riscv-tests/build/benchmarks/median.riscv
-mcycle = 7665
+mcycle = 7680
 minstret = 4159
 > Loaded 28400 bytes from ELF ../../testcases/riscv-tests/build/benchmarks/mm.riscv
 C0: reg block 4x5x6, cache block 24x25x24
 C0: 24793 instructions
-C0: 31688 cycles
+C0: 31724 cycles
 C0: 28800 flops
-C0: 908 Mflops @ 1 GHz
+C0: 907 Mflops @ 1 GHz
 > Loaded 21648 bytes from ELF ../../testcases/riscv-tests/build/benchmarks/mt-matmul.riscv
 
-matmul(cid, nc, 16, input1_data, input2_data, results_data); barrier(nc): 18284 cycles, 4.4 cycles/iter, 0.7 CPI
+matmul(cid, nc, 16, input1_data, input2_data, results_data); barrier(nc): 17732 cycles, 4.3 cycles/iter, 0.6 CPI
 > Loaded 42552 bytes from ELF ../../testcases/riscv-tests/build/benchmarks/mt-vvadd.riscv
 
 vvadd(cid, nc, 1000, input1_data, input2_data, results_data); barrier(nc): 22958 cycles, 22.9 cycles/iter, 2.2 CPI
 
 vvadd(cid, nc, 1000, results_data, input2_data, results_data); barrier(nc): 18408 cycles, 18.4 cycles/iter, 1.8 CPI
 > Loaded 18888 bytes from ELF ../../testcases/riscv-tests/build/benchmarks/multiply.riscv
-mcycle = 20589
+mcycle = 20577
 minstret = 24104
 > Loaded 18824 bytes from ELF ../../testcases/riscv-tests/build/benchmarks/pmp.riscv
 > Loaded 34296 bytes from ELF ../../testcases/riscv-tests/build/benchmarks/qsort.riscv
-mcycle = 229288
+mcycle = 220136
 minstret = 123803
 > Loaded 34640 bytes from ELF ../../testcases/riscv-tests/build/benchmarks/rsort.riscv
 mcycle = 231440
 minstret = 171157
 > Loaded 56816 bytes from ELF ../../testcases/riscv-tests/build/benchmarks/spmv.riscv
-mcycle = 59195
+mcycle = 57590
 minstret = 34852
 > Loaded 18584 bytes from ELF ../../testcases/riscv-tests/build/benchmarks/towers.riscv
 mcycle = 6596
