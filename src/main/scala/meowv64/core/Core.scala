@@ -24,6 +24,7 @@ class CoreDebug(implicit val coredef: CoreDef) extends Bundle {
   val pc = UInt(coredef.XLEN.W)
   val minstret = UInt(coredef.XLEN.W)
   val mcycle = UInt(coredef.XLEN.W)
+  val rsFreeMask = UInt(coredef.UNIT_COUNT.W)
 }
 
 class Core(implicit val coredef: CoreDef) extends Module {
@@ -163,4 +164,5 @@ class Core(implicit val coredef: CoreDef) extends Module {
 
   io.debug.mcycle := ctrl.csr.mcycle.rdata
   io.debug.minstret := ctrl.csr.minstret.rdata
+  io.debug.rsFreeMask := exec.toCore.rsFreeMask
 }

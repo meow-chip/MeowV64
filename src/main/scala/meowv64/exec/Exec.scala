@@ -62,6 +62,9 @@ class Exec(implicit val coredef: CoreDef) extends Module {
   val toCore = IO(new Bundle {
     val satp = Input(new Satp)
     val ptw = new TLBExt
+
+    // debug
+    val rsFreeMask = Output(UInt(coredef.UNIT_COUNT.W))
   })
 
   val csrWriter = IO(new CSRWriter(coredef.XLEN))
@@ -197,6 +200,9 @@ class Exec(implicit val coredef: CoreDef) extends Module {
       rs
     }
   })
+
+  // collect rs free mask to find bottleneck
+  toCore.rsFreeMask := Cat(stations.map(_.ingress.free))
 
   for (s <- stations) {
     s.cdb := cdb

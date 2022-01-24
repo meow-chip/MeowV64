@@ -384,6 +384,10 @@ int main(int argc, char **argv) {
   top->clock = 0;
   init();
 
+  const size_t MAX_RS_COUNT = 8;
+  size_t rs_free_cycle_count[MAX_RS_COUNT] = {};
+  size_t cycles = 0;
+
   fprintf(stderr, "> Simulation started\n");
   uint64_t begin = get_time_us();
   while (!Verilated::gotFinish() && !finished) {
@@ -411,6 +415,15 @@ int main(int argc, char **argv) {
         finished = true;
         res = 1;
       }
+
+      // accumulate rs free cycles
+      for (int i = 0; i < MAX_RS_COUNT; i++) {
+        if ((top->io_debug_0_rsFreeMask >> i) & 1) {
+          rs_free_cycle_count[i]++;
+        }
+      }
+
+      cycles++;
     }
     if ((main_time % 10) == 5) {
       top->clock = 0;
@@ -429,11 +442,19 @@ int main(int argc, char **argv) {
           (double)top->io_debug_0_minstret / top->io_debug_0_mcycle);
   fprintf(stderr, "> Simulation speed: %.2lf mcycle/s\n",
           (double)top->io_debug_0_mcycle * 1000000 / elapsed_us);
+  fprintf(stderr, "> RS free cycle:");
+  for (int i = 0; i < MAX_RS_COUNT; i++) {
+    if (rs_free_cycle_count[i]) {
+      fprintf(stderr, " %.2lf%%", rs_free_cycle_count[i] * 100.0 / cycles);
+    }
+  }
+  fprintf(stderr, "\n");
 
   if (begin_signature && end_signature) {
     if (begin_signature_override) {
       // signature is copied
-      end_signature = end_signature - begin_signature + begin_signature_override;
+      end_signature =
+          end_signature - begin_signature + begin_signature_override;
       begin_signature = begin_signature_override;
     }
     fprintf(stderr, "> Dumping signature(%lx:%lx) to dump.sig\n",
