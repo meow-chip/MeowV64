@@ -445,8 +445,6 @@ class Exec(implicit val coredef: CoreDef) extends Module {
   toCtrl.fflags.valid := false.B
   toCtrl.fflags.bits := 0.U
 
-  // TODO: send memory request one tick before its turn
-
   val retireNext = rob(retirePtr)
 
   when(!retireNext.valid) {
@@ -470,14 +468,14 @@ class Exec(implicit val coredef: CoreDef) extends Module {
       }
     }
 
-    releaseMem.ready := !RegNext(releaseMem.fire)
-    val memResult = RegNext(releaseMem.bits)
-    val memFired = RegNext(releaseMem.fire)
+    // NOTE: previously, for some reason,
+    // a one tick delay is added here
+    val memResult = releaseMem.deq()
 
-    // For BPU mispredict on previous instructions
+    // For BPU mis-predict on previous instructions
     toCtrl.branch := BranchResult.empty
 
-    when(memFired) {
+    when(releaseMem.fire) {
       retireNum := 1.U
       rob(retirePtr).valid := false.B
       retirePtr := retirePtr +% 1.U
