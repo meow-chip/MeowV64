@@ -59,7 +59,7 @@ abstract class CoreDef {
     4,
     2,
     4,
-    4
+    16
   )
 
   /** L1 line with in bytes
