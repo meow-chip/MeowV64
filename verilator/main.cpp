@@ -387,6 +387,7 @@ int main(int argc, char **argv) {
   const size_t MAX_RS_COUNT = 8;
   size_t rs_free_cycle_count[MAX_RS_COUNT] = {};
   size_t cycles = 0;
+  size_t issue_num_bounded_by_rob_size = 0;
 
   fprintf(stderr, "> Simulation started\n");
   uint64_t begin = get_time_us();
@@ -423,6 +424,10 @@ int main(int argc, char **argv) {
         }
       }
 
+      if (top->io_debug_0_issueNumBoundedByROBSize) {
+        issue_num_bounded_by_rob_size++;
+      }
+
       cycles++;
     }
     if ((main_time % 10) == 5) {
@@ -449,6 +454,8 @@ int main(int argc, char **argv) {
     }
   }
   fprintf(stderr, "\n");
+  fprintf(stderr, "> Cycles when issue num is bounded by ROB size: %.2lf%%\n",
+          issue_num_bounded_by_rob_size * 100.0 / cycles);
 
   if (begin_signature && end_signature) {
     if (begin_signature_override) {

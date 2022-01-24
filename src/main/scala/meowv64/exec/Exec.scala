@@ -65,6 +65,7 @@ class Exec(implicit val coredef: CoreDef) extends Module {
 
     // debug
     val rsFreeMask = Output(UInt(coredef.UNIT_COUNT.W))
+    val issueNumBoundedByROBSize = Output(Bool())
   })
 
   val csrWriter = IO(new CSRWriter(coredef.XLEN))
@@ -247,6 +248,7 @@ class Exec(implicit val coredef: CoreDef) extends Module {
   val maxIssueNum =
     retirePtr -% issuePtr -% 1.U // issuePtr cannot reach retirePtr
   assert(issueNum <= maxIssueNum)
+  toCore.issueNumBoundedByROBSize := issueNum === maxIssueNum
 
   val wasGFence = RegInit(false.B)
   val canIssue = Wire(Vec(coredef.ISSUE_NUM, Bool()))
