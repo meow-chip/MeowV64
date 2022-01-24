@@ -207,7 +207,9 @@ class BPU(implicit val coredef: CoreDef) extends Module {
   })
 
   val init = Wire(new BHTSlot)
-  init := DontCare
+  init.history := 0.U
+  init.tag := 0.U
+  init.targetAddress := 0.U
   init.valid := false.B
 
   val waddr = Mux(reseting, resetCnt, getIndex(toExec.lpc))

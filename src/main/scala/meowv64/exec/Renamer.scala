@@ -98,7 +98,7 @@ class Renamer(implicit coredef: CoreDef) extends Module {
 
       // check if this instruction relies on previous instructions
       for (i <- (0 until idx)) {
-        when(toExec.input(i).instr.info.writeRd) {
+        when(toExec.input(i).instr.writeRdEffective) {
           val rd = toExec.input(i).instr.getRd
           when(rs1.ty === rd.ty && rs1.index === rd.index) {
             ret := false.B
