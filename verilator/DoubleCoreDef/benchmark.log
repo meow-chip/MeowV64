@@ -27,3 +27,15 @@ minstret = 24104
 > Loaded 34296 bytes from ELF ../../testcases/riscv-tests/build/benchmarks/qsort.riscv
 mcycle = 368812
 minstret = 239240
+> Loaded 34640 bytes from ELF ../../testcases/riscv-tests/build/benchmarks/rsort.riscv
+mcycle = 235616
+minstret = 171157
+> Loaded 56816 bytes from ELF ../../testcases/riscv-tests/build/benchmarks/spmv.riscv
+mcycle = 60039
+(null) = 70213
+> Loaded 18584 bytes from ELF ../../testcases/riscv-tests/build/benchmarks/towers.riscv
+mcycle = 132
+minstret = 61
+> Loaded 21256 bytes from ELF ../../testcases/riscv-tests/build/benchmarks/vvadd.riscv
+mcycle = 3077
+minstret = 2420
