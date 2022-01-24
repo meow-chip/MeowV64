@@ -538,9 +538,11 @@ class Exec(implicit val coredef: CoreDef) extends Module {
       val tag = retirePtr +% idx.U
       val info = rob(tag)
 
+      // NOTE: it's okay to fire two beq at the same time.
+      // If the first beq mis-predicted, it will be used to train BPU.
+      // Otherwise, the BPU will get the result of the second beq.
       isBranch(idx) := (
         pendingBr && pendingBrTag === tag
-          || inflight.op === Decoder.Op("BRANCH").ident
       )
 
       if (idx == 0) {
