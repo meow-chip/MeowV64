@@ -58,8 +58,12 @@ class OoOResStation(val idx: Int)(implicit val coredef: CoreDef)
     val flush = Input(Bool())
   })
 
+  val count = RegInit(0.U(log2Ceil(DEPTH + 1).W))
   val store = RegInit(VecInit(Seq.fill(DEPTH)(ReservedInstr.empty)))
-  val occupied = RegInit(VecInit(Seq.fill(DEPTH)(false.B)))
+  val occupied = VecInit(Seq.fill(DEPTH)(false.B))
+  for (i <- 0 until DEPTH) {
+    occupied(i) := i.U < count
+  }
 
   val defIdx = Wire(UInt(log2Ceil(DEPTH).W))
   defIdx := DontCare
@@ -87,9 +91,6 @@ class OoOResStation(val idx: Int)(implicit val coredef: CoreDef)
 
   egSlot.io.enq.bits := maskedStore(egIdx)
   egSlot.io.enq.valid := egMask.asUInt().orR
-  when(egSlot.io.enq.fire) {
-    occupied(egIdx) := false.B
-  }
 
   // CDB data fetch
   for ((instr, idx) <- store.zipWithIndex) {
@@ -104,8 +105,7 @@ class OoOResStation(val idx: Int)(implicit val coredef: CoreDef)
 
         // assert(!instr.rs1ready)
         when(!instr.rs1ready) {
-          instr.rs1ready := true.B
-          instr.rs1val := ent.data
+          maskedStore(idx).rs1ready := true.B
           maskedStore(idx).rs1val := ent.data
         }
 
@@ -115,8 +115,7 @@ class OoOResStation(val idx: Int)(implicit val coredef: CoreDef)
       when(ent.name === instr.rs2name && ent.valid) {
         // assert(!instr.rs2ready)
         when(!instr.rs2ready) {
-          instr.rs2ready := true.B
-          instr.rs2val := ent.data
+          maskedStore(idx).rs2ready := true.B
           maskedStore(idx).rs2val := ent.data
         }
 
@@ -126,8 +125,7 @@ class OoOResStation(val idx: Int)(implicit val coredef: CoreDef)
       when(ent.name === instr.rs3name && ent.valid) {
         // assert(!instr.rs3ready)
         when(!instr.rs3ready) {
-          instr.rs3ready := true.B
-          instr.rs3val := ent.data
+          maskedStore(idx).rs3ready := true.B
           maskedStore(idx).rs3val := ent.data
         }
 
@@ -140,15 +138,44 @@ class OoOResStation(val idx: Int)(implicit val coredef: CoreDef)
   //
   // Placed after CDB fetch to avoid being overwritten after a flush,
   // when a pending instruction may lies in the store
-  val freeMask = occupied.map(!_)
-  ingress.free := VecInit(freeMask).asUInt().orR
-  val ingIdx = PriorityEncoder(freeMask)
+  ingress.free := count < DEPTH.U
 
-  when(ingress.push) {
-    occupied(ingIdx) := true.B
-    store(ingIdx) := ingress.instr
+  val pop = egSlot.io.enq.fire
+  val push = ingress.push
+
+  // compress
+  when(pop) {
+    for (i <- 0 until DEPTH) {
+      when(i.U < egIdx) {
+        store(i) := maskedStore(i)
+      }.otherwise {
+        if (i < DEPTH - 1) {
+          store(i) := maskedStore(i + 1)
+        }
+      }
+    }
+  }.otherwise {
+    for (i <- 0 until DEPTH) {
+      store(i) := maskedStore(i)
+    }
   }
 
+  when(push) {
+    when(pop) {
+      store(count - 1.U) := ingress.instr
+    }.otherwise {
+      store(count) := ingress.instr
+    }
+  }
+
+  // maintain count
+  when(push && ~pop) {
+    count := count + 1.U
+  }.elsewhen(~push && pop) {
+    count := count - 1.U
+  }
+
+  /*
   assert(
     !(
       ingress.push &&
@@ -156,6 +183,7 @@ class OoOResStation(val idx: Int)(implicit val coredef: CoreDef)
         ingIdx === egIdx
     )
   )
+   */
 
   assert(
     !(
@@ -168,7 +196,7 @@ class OoOResStation(val idx: Int)(implicit val coredef: CoreDef)
   when(ctrl.flush) {
     // We don't need to reset store
     // store := VecInit(Seq.fill(DEPTH)(ReservedInstr.empty))
-    occupied := VecInit(Seq.fill(DEPTH)(false.B))
+    count := 0.U
   }
 }
 

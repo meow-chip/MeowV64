@@ -56,8 +56,8 @@ abstract class CoreDef {
 
   val UNIT_COUNT: Int = EXECUTION_UNITS.length
   val RESERVATION_STATION_DEPTHS = Seq(
+    8,
     4,
-    2,
     4,
     16
   )
