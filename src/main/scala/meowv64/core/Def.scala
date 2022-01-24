@@ -16,8 +16,11 @@ abstract class CoreDef {
   val ISSUE_FIFO_DEPTH: Int = FETCH_NUM * 4
   val INIT_VEC: BigInt = BigInt("FFFF20000000", 16)
 
+  // branch history table
   val BHT_SIZE: Int = 256
   val BHT_WIDTH: Int = 2
+  // branch history register
+  val BHR_WIDTH: Int = 2
 
   val TLB_SIZE: Int = 32
 

@@ -20,9 +20,13 @@ class BHTSlot(implicit val coredef: CoreDef) extends Bundle {
   val tag = UInt(TAG_WIDTH.W)
   val valid = Bool()
 
+  /** Branch history register
+    */
+  val bhr = UInt(coredef.BHR_WIDTH.W)
+
   /** BHT history counter
     */
-  val history = UInt(coredef.BHT_WIDTH.W)
+  val history = Vec(1 << coredef.BHR_WIDTH, UInt(coredef.BHT_WIDTH.W))
 
   /** Target address if branch is taken.
     *
@@ -35,6 +39,7 @@ class BHTSlot(implicit val coredef: CoreDef) extends Bundle {
   def taken(tag: UInt) = {
     val ret = Wire(new BPUResult())
     ret.valid := valid && this.tag === tag
+    ret.bhr := bhr
     ret.history := history
     ret.targetAddress := targetAddress
     ret
@@ -50,9 +55,13 @@ class BPUResult(implicit val coredef: CoreDef) extends Bundle {
     */
   val valid = Bool()
 
-  /** BHT Prediction history
+  /** Branch history register
     */
-  val history = UInt(coredef.BHT_WIDTH.W)
+  val bhr = UInt(coredef.BHR_WIDTH.W)
+
+  /** BHT history counter
+    */
+  val history = Vec(1 << coredef.BHR_WIDTH, UInt(coredef.BHT_WIDTH.W))
 
   /** Predicted target address.
     *
@@ -65,7 +74,7 @@ class BPUResult(implicit val coredef: CoreDef) extends Bundle {
   def prediction = Mux(
     valid,
     Mux(
-      history(coredef.BHT_WIDTH - 1),
+      history(bhr)(coredef.BHT_WIDTH - 1),
       BHTPrediction.taken,
       BHTPrediction.notTaken
     ),
@@ -78,16 +87,20 @@ class BPUResult(implicit val coredef: CoreDef) extends Bundle {
     ret.valid := true.B
     ret.tag := tag
     ret.targetAddress := targetAddress
+    ret.history := this.history
+    ret.bhr := this.bhr ## true.B
 
     when(this.valid) {
       // saturating add
-      ret.history := Mux(
-        this.history.andR(),
+      ret.history(this.bhr) := Mux(
+        this.history(this.bhr).andR(),
         (-1).S(coredef.BHT_WIDTH.W).asUInt,
-        this.history + 1.U
+        this.history(this.bhr) + 1.U
       )
     }.otherwise {
-      ret.history := 1.U(1.W) ## 0.U((coredef.BHT_WIDTH - 1).W)
+      for (i <- 0 until (1 << coredef.BHR_WIDTH)) {
+        ret.history(i) := 1.U(1.W) ## 0.U((coredef.BHT_WIDTH - 1).W)
+      }
     }
 
     ret
@@ -99,12 +112,20 @@ class BPUResult(implicit val coredef: CoreDef) extends Bundle {
     ret.valid := true.B
     ret.tag := tag
     ret.targetAddress := targetAddress
+    ret.history := this.history
+    ret.bhr := this.bhr ## false.B
 
     when(this.valid) {
       // saturating sub
-      ret.history := Mux(this.history.orR(), this.history - 1.U, 0.U)
+      ret.history(this.bhr) := Mux(
+        this.history(this.bhr).orR(),
+        this.history(this.bhr) - 1.U,
+        0.U
+      )
     }.otherwise {
-      ret.history := 0.U(1.W) ## (-1).S((coredef.BHT_WIDTH - 1).W).asUInt
+      for (i <- 0 until (1 << coredef.BHR_WIDTH)) {
+        ret.history(i) := 0.U(1.W) ## (-1).S((coredef.BHT_WIDTH - 1).W).asUInt
+      }
     }
 
     ret
@@ -207,7 +228,10 @@ class BPU(implicit val coredef: CoreDef) extends Module {
   })
 
   val init = Wire(new BHTSlot)
-  init.history := 0.U
+  for (i <- 0 until (1 << coredef.BHR_WIDTH)) {
+    init.history(i) := 0.U
+  }
+  init.bhr := 0.U
   init.tag := 0.U
   init.targetAddress := 0.U
   init.valid := false.B
