@@ -312,8 +312,10 @@ class Exec(implicit val coredef: CoreDef) extends Module {
         val mask = applicable & avails & ~taken
         mask.suggestName(s"mask_$idx")
 
-        // Find lowest set
-        sending := MuxCase(
+        // Find lowest/highest set randomly
+        // To load balance instruction that can fire to multiple stations
+        // e.g. ALU
+        val lowSending = MuxCase(
           0.U,
           (0 until coredef.UNIT_COUNT).map(idx =>
             (
@@ -322,6 +324,20 @@ class Exec(implicit val coredef: CoreDef) extends Module {
             )
           )
         )
+
+        val highSending = MuxCase(
+          0.U,
+          (0 until coredef.UNIT_COUNT).reverse.map(idx =>
+            (
+              mask(idx),
+              (1 << idx).U
+            )
+          )
+        )
+
+        val seed = RegInit(false.B)
+        seed := ~seed
+        sending := Mux(seed, lowSending, highSending)
 
         selfCanIssue := mask.orR()
 
