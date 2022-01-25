@@ -69,6 +69,7 @@ object Decoder {
     "NMSUB" -> spec("10010", InstrType.R4),
     "NMADD" -> spec("10011", InstrType.R4),
     "OP-FP" -> spec("10100", InstrType.R),
+    "OP-V" -> spec("10101", InstrType.R),
     "BRANCH" -> spec("11000", InstrType.B),
     "JALR" -> spec("11001", InstrType.I),
     "JAL" -> spec("11011", InstrType.J),

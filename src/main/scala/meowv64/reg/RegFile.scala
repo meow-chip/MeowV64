@@ -6,7 +6,7 @@ import chisel3.util.BitPat
 import chisel3.util.log2Ceil
 
 object RegType extends ChiselEnum {
-  val integer, float = Value
+  val integer, float, vector = Value
 
   implicit def bitpat(op: RegType.Type): BitPat =
     BitPat(op.litValue.U(getWidth.W))

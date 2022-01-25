@@ -8,6 +8,7 @@ import meowv64.reg.RegType
 abstract class CoreDef {
   outer =>
   val XLEN: Int = 64
+  val VLEN: Int = 256
   val VADDR_WIDTH: Int = 48
   val PADDR_WIDTH: Int = 56
   val FETCH_NUM: Int = 2
@@ -78,7 +79,7 @@ abstract class CoreDef {
   /** List of (register type, width)
     */
   def REGISTER_TYPES: Seq[(RegType.Type, Int)] =
-    Seq((RegType.integer, XLEN), (RegType.float, XLEN));
+    Seq((RegType.integer, XLEN), (RegType.float, XLEN), (RegType.vector, VLEN));
 
   /** List of supported float types
     */
