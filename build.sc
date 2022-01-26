@@ -6,11 +6,11 @@ import coursier.maven.MavenRepository
 import $ivy.`com.goyeau::mill-scalafix:0.2.6`
 import com.goyeau.mill.scalafix.ScalafixModule
 
-// learned from https://github.com/OpenXiangShan/fudian/blob/main/build.sc
+val spinalVer = "1.6.0"
 val defaultVersions = Map(
-  "chisel3" -> ("edu.berkeley.cs", "3.5.0", false),
-  "chisel3-plugin" -> ("edu.berkeley.cs", "3.5.0", true),
-  "chiseltest" -> ("edu.berkeley.cs", "0.5.0", false),
+  "spinalhdl-core" -> ("com.github.spinalhdl", spinalVer, false),
+  "spinalhdl-lib" -> ("com.github.spinalhdl", spinalVer, false),
+  "spinalhdl-idsl-plugin" -> ("com.github.spinalhdl", spinalVer, false),
   "scalatest" -> ("org.scalatest", "3.2.10", false)
 )
 
@@ -25,33 +25,19 @@ def getVersion(dep: String) = {
     ivy"$org::$dep:$version"
 }
 
-object hardfloat extends ScalaModule {
-  override def scalaVersion = commonScalaVersion
-
-  override def millSourcePath = os.pwd / "berkeley-hardfloat"
-
-  override def ivyDeps = super.ivyDeps() ++ Agg(
-    getVersion("chisel3"),
-    getVersion("scalatest")
-  )
-
-  override def scalacPluginIvyDeps = super.scalacPluginIvyDeps() ++ Agg(
-    getVersion("chisel3-plugin")
-  )
-}
-
 object meowv64 extends SbtModule with ScalafmtModule with ScalafixModule {
   override def scalaVersion = commonScalaVersion
 
   override def millSourcePath = os.pwd
 
   override def ivyDeps = super.ivyDeps() ++ Agg(
-    getVersion("chisel3"),
+    getVersion("spinalhdl-core"),
+    getVersion("spinalhdl-lib"),
     getVersion("scalatest")
   )
 
   override def scalacPluginIvyDeps = super.scalacPluginIvyDeps() ++ Agg(
-    getVersion("chisel3-plugin")
+    getVersion("spinalhdl-idsl-plugin")
   )
 
   override def scalacOptions = super.scalacOptions() ++
@@ -62,16 +48,15 @@ object meowv64 extends SbtModule with ScalafmtModule with ScalafixModule {
     ivy"com.github.liancheng::organize-imports:0.5.0"
   )
 
-  override def moduleDeps = super.moduleDeps ++ Seq(hardfloat)
-
   object test
       extends Tests
       with TestModule.ScalaTest
       with ScalafmtModule
       with ScalafixModule {
     override def ivyDeps = super.ivyDeps() ++ Agg(
+      getVersion("spinalhdl-core"),
+      getVersion("spinalhdl-lib"),
       getVersion("scalatest"),
-      getVersion("chiseltest")
     )
 
     override def scalafixIvyDeps = Agg(
@@ -79,7 +64,7 @@ object meowv64 extends SbtModule with ScalafmtModule with ScalafixModule {
     )
 
     override def scalacPluginIvyDeps = super.scalacPluginIvyDeps() ++ Agg(
-      getVersion("chisel3-plugin")
+      getVersion("spinalhdl-idsl-plugin")
     )
   }
 }
