@@ -3,8 +3,6 @@ import mill.scalalib.publish._
 import scalalib._
 import scalafmt._
 import coursier.maven.MavenRepository
-import $ivy.`com.goyeau::mill-scalafix:0.2.6`
-import com.goyeau.mill.scalafix.ScalafixModule
 
 val spinalVer = "1.6.0"
 val defaultVersions = Map(
@@ -25,7 +23,7 @@ def getVersion(dep: String) = {
     ivy"$org::$dep:$version"
 }
 
-object meowv64 extends SbtModule with ScalafmtModule with ScalafixModule {
+object meowv64 extends SbtModule with ScalafmtModule {
   override def scalaVersion = commonScalaVersion
 
   override def millSourcePath = os.pwd
@@ -40,27 +38,14 @@ object meowv64 extends SbtModule with ScalafmtModule with ScalafixModule {
     getVersion("spinalhdl-idsl-plugin")
   )
 
-  override def scalacOptions = super.scalacOptions() ++
-    Seq("-deprecation", "-unchecked", "-Xsource:2.11") ++ // for chisel3
-    Seq("-Ywarn-unused", "-Ywarn-adapted-args", "-deprecation") // for scalafix
-
-  override def scalafixIvyDeps = Agg(
-    ivy"com.github.liancheng::organize-imports:0.5.0"
-  )
-
   object test
       extends Tests
       with TestModule.ScalaTest
-      with ScalafmtModule
-      with ScalafixModule {
+      with ScalafmtModule {
     override def ivyDeps = super.ivyDeps() ++ Agg(
       getVersion("spinalhdl-core"),
       getVersion("spinalhdl-lib"),
-      getVersion("scalatest"),
-    )
-
-    override def scalafixIvyDeps = Agg(
-      ivy"com.github.liancheng::organize-imports:0.5.0"
+      getVersion("scalatest")
     )
 
     override def scalacPluginIvyDeps = super.scalacPluginIvyDeps() ++ Agg(
