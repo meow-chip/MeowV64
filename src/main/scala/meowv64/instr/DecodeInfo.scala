@@ -12,6 +12,7 @@ object ExecUnitType extends ChiselEnum {
   val alu, branch, bypass, csr = Value
   val div, mul                 = Value
   val fma, floatMisc, fDivSqrt = Value
+  val vAlu                     = Value
   val lsu                      = Value
 
   implicit def bitpat(op: ExecUnitType.Type): BitPat =
@@ -260,7 +261,16 @@ object DecodeInfo {
       // Vector
       VSETVLI  -> List(Y, Y, integer, Y, integer, N, XX, N, XX, csr),
       VSETIVLI -> List(Y, Y, integer, N, XX, N, XX, N, XX, csr),
-      VSETVL   -> List(Y, Y, integer, Y, integer, Y, integer, N, XX, csr)
+      VSETVL   -> List(Y, Y, integer, Y, integer, Y, integer, N, XX, csr),
+
+      // Vector Integer
+      VADD_VV -> List(Y, Y, vector, Y, vector, N, XX, Y, vector, vAlu),
+      VADD_VI -> List(Y, Y, vector, N, XX, N, XX, Y, vector, vAlu),
+      VADD_VX -> List(Y, Y, vector, Y, integer, N, XX, Y, vector, vAlu),
+      VMV_X_S -> List(Y, Y, vector, N, XX, N, XX, Y, integer, vAlu),
+      VMV_S_X -> List(Y, Y, integer, N, XX, N, XX, Y, vector, vAlu),
+      VMV_V_I -> List(Y, N, XX, N, XX, N, XX, Y, vector, vAlu),
+      VMV_V_X -> List(Y, Y, integer, N, XX, N, XX, Y, vector, vAlu)
     )
 
   def assign(inst: BitPat) = {
@@ -525,4 +535,13 @@ object Instructions {
 
   // Vector Store
   val VSE32_V = BitPat("b000000?00000?????110?????0100111")
+
+  // Vector Integer
+  val VADD_VV = BitPat("b000000???????????000?????1010111")
+  val VADD_VI = BitPat("b000000???????????011?????1010111")
+  val VADD_VX = BitPat("b000000???????????100?????1010111")
+  val VMV_X_S = BitPat("b0100001?????00000010?????1010111")
+  val VMV_S_X = BitPat("b010000100000?????110?????1010111")
+  val VMV_V_I = BitPat("b010111100000?????011?????1010111")
+  val VMV_V_X = BitPat("b010111100000?????100?????1010111")
 }
