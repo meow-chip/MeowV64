@@ -16,7 +16,7 @@ all: $(BINS) $(HEXS) $(DUMPS)
 
 bin/%.assembled: src/%.S Makefile
 	mkdir -p bin
-	$(PREFIX)cpp $< | $(PREFIX)as -march=rv64imac -o $@ -
+	$(PREFIX)cpp $< | $(PREFIX)as -march=rv64imac_zicsr_zifencei -o $@ -
 
 bin/%.linked: bin/%.assembled
 	$(PREFIX)ld $< -T linker.lds -o $@
