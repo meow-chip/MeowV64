@@ -143,7 +143,10 @@ class CSR(implicit val coredef: CoreDef)
 
   val fault = WireDefault(false.B)
   val rdata = Wire(UInt(coredef.XLEN.W))
-  when((ro && written) || priv < minPriv) {
+  when(isVSETVL) {
+    fault := false.B
+    rdata := newVState.vl
+  }.elsewhen((ro && written) || priv < minPriv) {
     fault := true.B
     rdata := DontCare
   }.elsewhen((addr === 0x180.U) && status.tvm) { // SATP trap
@@ -152,10 +155,6 @@ class CSR(implicit val coredef: CoreDef)
   }.otherwise {
     fault := false.B
     rdata := writer.rdata
-  }
-
-  when(isVSETVL) {
-    rdata := newVState.vl
   }
 
   when(!fault && io.next.instr.valid) {
