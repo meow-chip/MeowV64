@@ -1,26 +1,41 @@
-> Loaded 22128 bytes from ELF ../../testcases/riscv-tests/build/benchmarks/dhrystone.riscv
-Microseconds for one run through Dhrystone: 403
-Dhrystones per Second:                      2480
-mcycle = 201697
-minstret = 196029
-> Loaded 20792 bytes from ELF ../../testcases/riscv-tests/build/benchmarks/median.riscv
-mcycle = 7776
-minstret = 4156
-> Loaded 28024 bytes from ELF ../../testcases/riscv-tests/build/benchmarks/mm.riscv
+> Loaded 22232 bytes from ELF ../../testcases/riscv-tests/build/benchmarks/dhrystone.riscv
+Microseconds for one run through Dhrystone: 385
+Dhrystones per Second:                      2596
+mcycle = 192635
+minstret = 187026
+> Loaded 21024 bytes from ELF ../../testcases/riscv-tests/build/benchmarks/median.riscv
+mcycle = 8278
+minstret = 4658
+> Loaded 27976 bytes from ELF ../../testcases/riscv-tests/build/benchmarks/mm.riscv
 C0: reg block 4x5x6, cache block 24x25x24
-C0: 24680 instructions
-C0: 31242 cycles
+C0: 24704 instructions
+C0: 31350 cycles
 C0: 28800 flops
-C0: 921 Mflops @ 1 GHz
-> Loaded 21552 bytes from ELF ../../testcases/riscv-tests/build/benchmarks/mt-matmul.riscv
+C0: 918 Mflops @ 1 GHz
+> Loaded 21864 bytes from ELF ../../testcases/riscv-tests/build/benchmarks/mt-matmul.riscv
 
-matmul(cid, nc, 16, input1_data, input2_data, results_data); barrier(nc): 18885 cycles, 4.6 cycles/iter, 0.7 CPI
-> Loaded 42488 bytes from ELF ../../testcases/riscv-tests/build/benchmarks/mt-vvadd.riscv
+matmul(cid, nc, 16, input1_data, input2_data, results_data); barrier(nc): 20489 cycles, 5.0 cycles/iter, 0.7 CPI
+> Loaded 42696 bytes from ELF ../../testcases/riscv-tests/build/benchmarks/mt-vvadd.riscv
 
-vvadd(cid, nc, 1000, input1_data, input2_data, results_data); barrier(nc): 25389 cycles, 25.3 cycles/iter, 2.5 CPI
+vvadd(cid, nc, 1000, input1_data, input2_data, results_data); barrier(nc): 25927 cycles, 25.9 cycles/iter, 2.5 CPI
 
-vvadd(cid, nc, 1000, results_data, input2_data, results_data); barrier(nc): 19652 cycles, 19.6 cycles/iter, 1.9 CPI
-> Loaded 18832 bytes from ELF ../../testcases/riscv-tests/build/benchmarks/multiply.riscv
-mcycle = 20778
-minstret = 24101
-> Loaded 18680 bytes from ELF ../../testcases/riscv-tests/build/benchmarks/pmp.riscv
+vvadd(cid, nc, 1000, results_data, input2_data, results_data); barrier(nc): 20007 cycles, 20.0 cycles/iter, 1.9 CPI
+> Loaded 19056 bytes from ELF ../../testcases/riscv-tests/build/benchmarks/multiply.riscv
+mcycle = 20757
+minstret = 24099
+> Loaded 18904 bytes from ELF ../../testcases/riscv-tests/build/benchmarks/pmp.riscv
+> Loaded 34440 bytes from ELF ../../testcases/riscv-tests/build/benchmarks/qsort.riscv
+mcycle = 194887
+minstret = 123504
+> Loaded 34808 bytes from ELF ../../testcases/riscv-tests/build/benchmarks/rsort.riscv
+mcycle = 246740
+minstret = 171153
+> Loaded 56856 bytes from ELF ../../testcases/riscv-tests/build/benchmarks/spmv.riscv
+mcycle = 59416
+minstret = 34466
+> Loaded 18976 bytes from ELF ../../testcases/riscv-tests/build/benchmarks/towers.riscv
+mcycle = 5654
+minstret = 4226
+> Loaded 21408 bytes from ELF ../../testcases/riscv-tests/build/benchmarks/vvadd.riscv
+mcycle = 3046
+minstret = 2415
