@@ -55,7 +55,7 @@ class UnitSel(
   for (u <- units) {
     if (u.isInstanceOf[WithCSRWriter]) {
       println("Found extra port: CSR")
-      val csr = IO(new CSRWriter(coredef.XLEN))
+      val csr = IO(new CSRWriter())
       u.asInstanceOf[WithCSRWriter].writer <> csr
       extras.put("CSR", csr)
     }

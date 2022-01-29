@@ -1,10 +1,8 @@
 package meowv64.exec.units
 
 import chisel3._
-import chisel3.util._
 import meowv64.core.CoreDef
 import meowv64.exec._
-import meowv64.instr.Decoder
 
 class VALUExt(implicit val coredef: CoreDef) extends Bundle {
   val acc = UInt(coredef.VLEN.W)

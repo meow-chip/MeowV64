@@ -68,7 +68,7 @@ class Exec(implicit val coredef: CoreDef) extends Module {
     val issueNumBoundedByROBSize = Output(Bool())
   })
 
-  val csrWriter = IO(new CSRWriter(coredef.XLEN))
+  val csrWriter = IO(new CSRWriter())
 
   // We don't stall now
   toCtrl.ctrl.stall := false.B

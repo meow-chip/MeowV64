@@ -28,7 +28,7 @@ class CSR(implicit val coredef: CoreDef)
   val io = IO(new ExecUnitPort)
   val priv = IO(Input(PrivLevel()))
   val status = IO(Input(new Status))
-  val writer = IO(new CSRWriter(coredef.XLEN))
+  val writer = IO(new CSRWriter())
 
   val state = RegInit(CSRState.read)
   val nstate = WireDefault(state)
@@ -42,6 +42,8 @@ class CSR(implicit val coredef: CoreDef)
   val addr = instr.instr.funct7 ## instr.instr.rs2
   writer.addr := addr
 
+  val isVSETVL = instr.instr.op === Decoder.Op("OP-V").ident
+
   // Check privileges
   val ro = addr(11, 10) === 3.U
   val minPriv = addr(9, 8).asTypeOf(PrivLevel())
@@ -52,6 +54,8 @@ class CSR(implicit val coredef: CoreDef)
 
   writer.write := false.B
   writer.wdata := wdata
+  writer.updateVState.valid := false.B
+  writer.updateVState.bits := 0.U.asTypeOf(new VState)
 
   switch(instr.instr.funct3) {
     is(

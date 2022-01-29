@@ -88,11 +88,21 @@ class CSR(val XLEN: Int) {
   }
 }
 
-class CSRWriter(val XLEN: Int) extends Bundle {
+class VState(implicit coredef: CoreDef) extends Bundle {
+  val vl = UInt(coredef.XLEN.W)
+  val vtype = new VType
+}
+
+class CSRWriter(implicit coredef: CoreDef) extends Bundle {
+  // csr instructions
   val addr = Output(UInt(12.W))
-  val rdata = Input(UInt(XLEN.W))
-  val wdata = Output(UInt(XLEN.W))
+  val rdata = Input(UInt(coredef.XLEN.W))
+  val wdata = Output(UInt(coredef.XLEN.W))
   val write = Output(Bool())
+
+  // vsetvl
+  val currentVState = Input(new VState)
+  val updateVState = Valid(new VState)
 }
 
 object CSR {
@@ -159,9 +169,11 @@ object CSR {
   )
    */
 
-  def gen(XLEN: Int, HART_ID: Int): (CSRWriter, CSR) = {
+  def gen(XLEN: Int, HART_ID: Int)(implicit
+      coredef: CoreDef
+  ): (CSRWriter, CSR) = {
     val csr = new CSR(XLEN)
-    val endpoint = Wire(Flipped(new CSRWriter(csr.XLEN)))
+    val endpoint = Wire(Flipped(new CSRWriter()))
 
     val data = Mux1H(
       addrMap
