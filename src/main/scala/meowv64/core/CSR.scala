@@ -103,6 +103,11 @@ object CSR {
     0x002 -> (("frm", true)),
     0x003 -> (("fcsr", true)),
 
+    // Vector
+    0xc20 -> (("vl", false)),
+    0xc21 -> (("vtype", false)),
+    0xc22 -> (("vlenb", false)),
+
     // Machine
     0xf11 -> (("mvendorid", false)),
     0xf12 -> (("marchid", false)),

@@ -149,6 +149,10 @@ class Core(implicit val coredef: CoreDef) extends Module {
   csr.attach("frm").connect(ctrl.csr.frm)
   csr.attach("fcsr").connect(ctrl.csr.fcsr)
 
+  csr.attach("vl").connect(ctrl.csr.vl)
+  csr.attach("vtype").connect(ctrl.csr.vtype)
+  csr.attach("vlenb").connect(ctrl.csr.vlenb)
+
   val mscratch = RegInit(0.U(coredef.XLEN.W))
   csr.attach("mscratch").connect(CSRPort.fromReg(coredef.XLEN, mscratch))
   val sscratch = RegInit(0.U(coredef.XLEN.W))
