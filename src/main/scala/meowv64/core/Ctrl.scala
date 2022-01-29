@@ -53,7 +53,7 @@ class VType(implicit coredef: CoreDef) extends Bundle {
   val reserved = UInt((coredef.XLEN - 9).W)
   val vma = Bool()
   val vta = Bool()
-  val sew = UInt(3.W)
+  val vsew = UInt(3.W)
   val vlmul = UInt(3.W)
 }
 
