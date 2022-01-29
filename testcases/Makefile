@@ -4,7 +4,7 @@
 # @file
 # @version 0.1
 
-PREFIX ?= "riscv64-linux-gnu-"
+PREFIX ?= "riscv64-unknown-elf-"
 
 .PHONY: all clean meow riscv-tests
 
