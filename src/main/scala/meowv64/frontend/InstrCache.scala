@@ -2,10 +2,8 @@ package meowv64.frontend
 
 import spinal.core._
 import spinal.lib._
-import meowv64.config.CoreConfig
-import meowv64.config.Consts
-import meowv64.MemBus
-import meowv64.MemBusParams
+import meowv64._
+import meowv64.config._
 
 // TODO: we are presumably giving ICache a 3 cycle delay:
 // Input -> Stage 0 | Stage 1 | Stage 2 -> Output
@@ -35,17 +33,13 @@ class InstrCache(implicit cfg: CoreConfig) extends Component {
   // FIXME: impls kill s2
   assert(!kills.s2)
 
-  val membus = master (new MemBus(MemBusParams(
-    addr_width = cfg.xlen,
-    data_width = cfg.xlen,
-    id_width = 4,
-  ), true))
+  val membus = master (new MemBus(cfg.frontend_membus_params, true))
 
   ////////////////////
   // States
   ////////////////////
   def FetchVec = Vec(Consts.ibits, cfg.fetch_width)
-  val fetch_per_line = cfg.ic.line_width * 8 / cfg.fetch_width
+  val fetch_per_line = cfg.ic.line_width / cfg.fetch_width
 
   // Valid matrix
   val valids = RegInit(Vec(

@@ -1,14 +1,14 @@
 package meowv64.config
 
 import spinal.core._
+import meowv64._
 
 // In bytes
-trait CacheConfig {
-  val assoc_size: Int
-  val assoc_cnt: Int
-  val line_width: Int
-
-
+case class CacheConfig(
+  val assoc_size: Int,
+  val assoc_cnt: Int,
+  val line_width: Int,
+) {
   require(isPow2(assoc_size))
   require(isPow2(line_width))
   def line_per_assoc: Int = assoc_size / line_width
@@ -21,28 +21,32 @@ trait CacheConfig {
   def tag(addr: UInt): UInt = addr >> (index_width + offset_width)
 }
 
-trait CoreConfig {
-  val xlen: Int
-  val init_vec: BigInt
+case class CoreConfig(
+  val xlen: Int,
+  val init_vec: BigInt,
 
-  val fetch_width: Int
-  val decode_width: Int
+  val fetch_width: Int,
+  val decode_width: Int,
 
-  val ic: CacheConfig
-
+  val ic: CacheConfig,
+) {
   def rint: UInt = UInt(xlen bits)
+  def frontend_membus_params = MemBusParams(
+    addr_width = xlen,
+    data_width = xlen,
+    id_width = 4,
+  )
 }
 
-object DefaultCoreConfig extends CoreConfig {
-  val xlen = 64
-  val init_vec = BigInt("0x80000000")
+object DefaultCoreConfig extends CoreConfig(
+  xlen = 64,
+  init_vec = BigInt("0x80000000"),
+  fetch_width = 8,
+  decode_width = 4,
 
-  val fetch_width: Int = 8
-  val decode_width: Int = 4
-
-  val ic = new CacheConfig {
-    val assoc_size: Int = 4096
-    val assoc_cnt: Int = 2
-    val line_width: Int = 64 // B
-  }
-}
+  ic = CacheConfig(
+    assoc_size = 4096,
+    assoc_cnt = 2,
+    line_width = 64 * 8,
+  )
+)
