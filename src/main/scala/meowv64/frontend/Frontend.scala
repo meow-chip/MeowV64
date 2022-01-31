@@ -14,6 +14,7 @@ class PCGen(implicit cfg: CoreConfig) extends Bundle {
     * - An fetch exception occurred
     * - Interrupts
     * - WFI
+    * - FENCE.I
     */
   val halt = Bool
 }
@@ -36,9 +37,9 @@ class Frontend(implicit cfg: CoreConfig) {
     */
   val pc = RegInit(PCGen.default)
 
-  /////////////////////////////////////
+  ////////////////////
   // NPC Arbitration
-  /////////////////////////////////////
+  ////////////////////
   
   /**
     * NPC arbitration takes from following sources in decreasing priority:
