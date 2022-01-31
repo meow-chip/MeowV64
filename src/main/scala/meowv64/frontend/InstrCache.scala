@@ -18,7 +18,7 @@ class InstrCache(implicit cfg: CoreConfig) extends Component {
     val s1_paddr = in (cfg.rint) // When s1 is invalid, this is ignored
   }
   val output = new Bundle {
-    val fetched = out (FetchVec)
+    val fetched = master Flow (FetchVec)
     // When paused, pipeline is stalled, s0_vaddr is not accepted
     val paused = out Bool()
   }
@@ -32,8 +32,7 @@ class InstrCache(implicit cfg: CoreConfig) extends Component {
     val s1 = in Bool()
     val s2 = in Bool()
   }
-  // FIXME: impls kills
-  assert(!kills.s1)
+  // FIXME: impls kill s2
   assert(!kills.s2)
 
   val membus = master (new MemBus(MemBusParams(
@@ -66,8 +65,10 @@ class InstrCache(implicit cfg: CoreConfig) extends Component {
     cfg.ic.line_per_assoc * fetch_per_line,
   )
 
-  val flow = Bool()
-  val just_flowed = RegNext(flow)
+  val s0_flow = Bool()
+  val s0_just_flowed = RegNext(s0_flow)
+  val s1_flow = Bool()
+  val s2_flow = Bool()
 
   ////////////////
   // Stage 0 + Stage 1
@@ -81,18 +82,19 @@ class InstrCache(implicit cfg: CoreConfig) extends Component {
 
   require(log2Up(cfg.ic.line_per_assoc * fetch_per_line) == s0_data_subidx.getBitsWidth + s0_idx.getBitsWidth)
 
-  val s1_vaddr = RegNextWhen(input.s0_vaddr, flow)
+  val s1_vaddr = RegNextWhen(input.s0_vaddr, s0_flow)
   val s1_tags = Vec(UInt(cfg.ic.tag_width(cfg.xlen) bits), cfg.ic.assoc_cnt)
   val s1_data = Vec(FetchVec, cfg.ic.assoc_cnt)
-  s1_tags := Mux(just_flowed, tags.readSync(s0_idx), RegNext(s1_tags))
-  s1_data := Mux(just_flowed, data.readSync((s0_idx ## s0_data_subidx).as(UInt())), RegNext(s1_data))
-  val s1_valids = RegNextWhen(s0_valids, flow)
+  s1_tags := Mux(s0_just_flowed, tags.readSync(s0_idx), RegNext(s1_tags))
+  s1_data := Mux(s0_just_flowed, data.readSync((s0_idx ## s0_data_subidx).as(UInt())), RegNext(s1_data))
+  val s1_valids = RegNextWhen(s0_valids, s0_flow)
 
-  val s1_data_idx = RegNextWhen((s0_idx ## s0_data_subidx).as(UInt()), flow)
+  val s1_data_idx = RegNextWhen((s0_idx ## s0_data_subidx).as(UInt()), s0_flow)
   // Only for assertion
-  val s1_tag_idx = RegNextWhen(s0_idx, flow)
+  val s1_tag_idx = RegNextWhen(s0_idx, s0_flow)
 
-  val s1_valid = RegNextWhen(input.s0_vaddr.fire, flow)
+  val s1_valid = RegNextWhen(input.s0_vaddr.fire, s0_flow)
+  s0_flow := s1_flow || !s1_valid || kills.s1
 
   val s1_hits = Vec(s1_valids.asBools.zip(s1_tags).map({ case (valid, tag) => valid && (tag === cfg.ic.tag(input.s1_paddr)) }))
   val s1_hit = s1_hits.orR
@@ -100,7 +102,7 @@ class InstrCache(implicit cfg: CoreConfig) extends Component {
 
   // S2 -> S1 forward signals
   val s1_forwarded = Reg(FetchVec)
-  val s1_forwarded_valid = RegNextWhen(False, flow)
+  val s1_forwarded_valid = RegNextWhen(False, s0_flow)
   val s1_forward = Bool()
 
   ////////////////
@@ -108,13 +110,14 @@ class InstrCache(implicit cfg: CoreConfig) extends Component {
   ////////////////
   val uplink_data = membus.uplink.data.as(FetchVec)
 
-  val s2_hit = RegNextWhen(s1_forwarded_valid || s1_forward || s1_hit, flow)
+  val s2_valid = RegNextWhen(s1_valid && !kills.s1, s1_flow)
+  val s2_hit = RegNextWhen(s1_forwarded_valid || s1_forward || s1_hit, s1_flow)
   val s2_data = RegNextWhen(PriorityMux(Seq(
     s1_forwarded_valid -> s1_forwarded,
     s1_forward -> uplink_data,
     True -> s1_muxed,
-  )), flow)
-  val s2_paddr = RegNextWhen(input.s1_paddr, flow)
+  )), s1_flow)
+  val s2_paddr = RegNextWhen(input.s1_paddr, s1_flow)
   // If missed, need to send. Essentially !sent
   val s2_pending = RegInit(True)
 
@@ -122,7 +125,7 @@ class InstrCache(implicit cfg: CoreConfig) extends Component {
 
   membus.cmd.payload.id := 0
   membus.cmd.payload.addr := s2_paddr
-  membus.cmd.valid := !s2_hit && s2_pending
+  membus.cmd.valid := s2_valid && !s2_hit && s2_pending
 
   // TODO: Do we need to make I$ single port?
   require(s0_data_subidx.getBitsWidth == cnt.getBitsWidth)
@@ -148,7 +151,7 @@ class InstrCache(implicit cfg: CoreConfig) extends Component {
     write_assoc_map,
   )
 
-  when(s2_pending && !s2_hit) {
+  when(s2_valid && s2_pending && !s2_hit) {
     valids(write_idx) := valids(write_idx) & ~write_assoc_map
   }
 
@@ -157,19 +160,19 @@ class InstrCache(implicit cfg: CoreConfig) extends Component {
     valids(write_idx) := valids(write_idx) | write_assoc_map
   }
 
-  when(flow) {
+  when(s1_flow) {
     s2_pending := True 
     cnt := 0
   }
 
   when(membus.cmd.ready) {
     assert(s2_pending)
-    assert(!flow)
+    assert(!s1_flow)
     s2_pending := False
   }
 
   when(membus.uplink.valid) {
-    assert(!flow)
+    assert(!s1_flow)
     cnt := cnt + 1
 
     when(cnt === 0) {
@@ -179,14 +182,17 @@ class InstrCache(implicit cfg: CoreConfig) extends Component {
 
   membus.uplink.ready := True
 
-  flow := s2_hit || uplink_last
+  s1_flow := s2_flow || !s2_valid
+  s2_flow := s2_hit || uplink_last
 
-  output.fetched := Mux(s2_hit, s2_data, first_resp)
-  output.paused := !flow
+  output.fetched.payload := Mux(s2_hit, s2_data, first_resp)
+  output.fetched.valid := s2_flow
+  output.paused := !s0_flow
 
   // Refill -> s1 forward
   s1_forward := (
-    write_data_idx === s1_data_idx
+    s1_valid
+      && write_data_idx === s1_data_idx
       && cfg.ic.tag(s2_paddr) === cfg.ic.tag(input.s1_paddr)
       && membus.uplink.valid
   )
