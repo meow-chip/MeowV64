@@ -5,6 +5,7 @@ import meowv64.mem._
 case class L2Config(
   val base: CacheConfig,
   val max_pending_inv: Int = 4,
+  val max_pending_read: Int = 4,
 )
 
 case class MulticoreConfig(
