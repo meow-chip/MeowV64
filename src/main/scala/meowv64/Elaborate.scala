@@ -4,7 +4,7 @@ import spinal.core._
 import meowv64._
 import meowv64.config._
 
-class Wrapper(cfg: MulticoreConfig) extends Component {
+class AXI4Wrapper(cfg: MulticoreConfig) extends Component {
   val eints = in Bits(cfg.eint_cnt bits)
   val mem = new Bundle {
     val awid = out UInt(4 bits)
@@ -85,6 +85,6 @@ object ElaborationConfig extends SpinalConfig()
 
 object Elaborate extends App {
   override def main(args: Array[String]): Unit = {
-    ElaborationConfig.generateSystemVerilog(new Wrapper(DefaultMulticoreConfig))
+    ElaborationConfig.generateSystemVerilog(new AXI4Wrapper(DefaultMulticoreConfig))
   }
 }

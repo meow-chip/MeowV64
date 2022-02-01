@@ -44,12 +44,8 @@ class PendingWrite(implicit cfg: MulticoreConfig) extends Bundle {
 }
 
 class PendingReadHead(implicit cfg: MulticoreConfig) extends Bundle {
-  val valid = Bool()
-
-  val addr = UInt(Consts.MAX_PADDR_WIDTH bits)
-  val idx = UInt(cfg.l2.base.index_width bits)
-  val subidx = UInt(log2Up(cfg.l2.base.line_width / cfg.cores(0).membus_params(Frontend).data_width) bits)
-  val cnt = subidx.clone()
+  // val subidx = UInt(log2Up(cfg.l2.base.line_width / cfg.cores(0).membus_params(Frontend).data_width) bits)
+  val cnt = UInt(log2Up(cfg.l2.base.line_width / cfg.cores(0).membus_params(Frontend).data_width) bits)
 }
 
 class PendingRead(implicit cfg: MulticoreConfig) extends Bundle with MatchedData[UInt] {
@@ -81,7 +77,7 @@ class L2Bank(bank_id: Int)(implicit cfg: MulticoreConfig) extends Component {
   val pending_writes = src.flatMap(bus => if(bus.params.bus_type.with_write) Some(Reg(new PendingWrite)) else None)
   val pending_invs = src.flatMap(bus => if(bus.params.bus_type.with_coherence) Some(Reg(Vec(new PendingInv, cfg.l2.max_pending_inv))) else None)
   val pending_read_heads = src.map(_ => Reg(new PendingReadHead))
-  val pending_read = src.map(_ => new MatchingQueue[UInt, PendingRead](new PendingRead, UInt(Consts.MAX_PADDR_WIDTH bits), cfg.l2.max_pending_read - 1))
+  val pending_reads = src.map(_ => new MatchingQueue[UInt, PendingRead](new PendingRead, UInt(Consts.MAX_PADDR_WIDTH bits), cfg.l2.max_pending_read))
   require(pending_writes.length == cfg.cores.length)
 
   valids.setName(s"L2 Bank_$bank_id / valids")
