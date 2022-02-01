@@ -43,40 +43,41 @@ class AXI4Wrapper(cfg: MulticoreConfig) extends Component {
   }
 
   val impl = new Multicore(cfg)
+  val axi4 = impl.mem.toAxi4
 
-  mem.awvalid <> impl.mem.aw.valid
-  mem.awready <> impl.mem.aw.ready
-  mem.awid <> impl.mem.aw.payload.id
-  mem.awaddr <> impl.mem.aw.payload.addr
-  mem.awlen <> impl.mem.aw.payload.len
-  mem.awburst <> impl.mem.aw.payload.burst
-  mem.awsize <> impl.mem.aw.payload.size
+  mem.awvalid <> axi4.aw.valid
+  mem.awready <> axi4.aw.ready
+  mem.awid <> axi4.aw.payload.id
+  mem.awaddr <> axi4.aw.payload.addr
+  mem.awlen <> axi4.aw.payload.len
+  mem.awburst <> axi4.aw.payload.burst
+  mem.awsize <> axi4.aw.payload.size
 
-  mem.wvalid <> impl.mem.w.valid
-  mem.wready <> impl.mem.w.ready
-  mem.wdata <> impl.mem.w.payload.data
-  mem.wstrb <> impl.mem.w.payload.strb
-  mem.wlast <> impl.mem.w.payload.last
+  mem.wvalid <> axi4.w.valid
+  mem.wready <> axi4.w.ready
+  mem.wdata <> axi4.w.payload.data
+  mem.wstrb <> axi4.w.payload.strb
+  mem.wlast <> axi4.w.payload.last
 
-  mem.bvalid <> impl.mem.b.valid
-  mem.bready <> impl.mem.b.ready
-  mem.bid <> impl.mem.b.payload.id
-  mem.bresp <> impl.mem.b.resp
+  mem.bvalid <> axi4.b.valid
+  mem.bready <> axi4.b.ready
+  mem.bid <> axi4.b.payload.id
+  mem.bresp <> axi4.b.resp
 
-  mem.arvalid <> impl.mem.ar.valid
-  mem.arready <> impl.mem.ar.ready
-  mem.arid <> impl.mem.ar.payload.id
-  mem.araddr <> impl.mem.ar.payload.addr
-  mem.arlen <> impl.mem.ar.payload.len
-  mem.arburst <> impl.mem.ar.payload.burst
-  mem.arsize <> impl.mem.ar.payload.size
+  mem.arvalid <> axi4.ar.valid
+  mem.arready <> axi4.ar.ready
+  mem.arid <> axi4.ar.payload.id
+  mem.araddr <> axi4.ar.payload.addr
+  mem.arlen <> axi4.ar.payload.len
+  mem.arburst <> axi4.ar.payload.burst
+  mem.arsize <> axi4.ar.payload.size
 
-  mem.rvalid <> impl.mem.r.valid
-  mem.rready <> impl.mem.r.ready
-  mem.rid <> impl.mem.r.payload.id
-  mem.rdata <> impl.mem.r.payload.data
-  mem.rresp <> impl.mem.r.payload.resp
-  mem.rlast <> impl.mem.r.payload.last
+  mem.rvalid <> axi4.r.valid
+  mem.rready <> axi4.r.ready
+  mem.rid <> axi4.r.payload.id
+  mem.rdata <> axi4.r.payload.data
+  mem.rresp <> axi4.r.payload.resp
+  mem.rlast <> axi4.r.payload.last
 
   impl.eints <> eints
 }
@@ -85,6 +86,7 @@ object ElaborationConfig extends SpinalConfig()
 
 object Elaborate extends App {
   override def main(args: Array[String]): Unit = {
+    ElaborationConfig.generateSystemVerilog(new Multicore(DefaultMulticoreConfig))
     ElaborationConfig.generateSystemVerilog(new AXI4Wrapper(DefaultMulticoreConfig))
   }
 }

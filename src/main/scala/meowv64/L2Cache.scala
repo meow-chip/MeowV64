@@ -18,7 +18,7 @@ class L2Cache(implicit cfg: MulticoreConfig) extends Component {
     val frontend = slave(new MemBus(core.membus_params(Frontend)))
     val lsu = slave(new MemBus(core.membus_params(Backend)))
   })
-  val external_bus = master(new MemBus(cfg.membus_params))
+  val external_bus = master(new MemBus(cfg.membus_params(L2)))
 
   val banks = for(i <- 0 to cfg.l2.base.bank_cnt) yield new L2Bank(i)
   banks(0).external_bus <> external_bus
@@ -61,7 +61,7 @@ class L2Bank(bank_id: Int)(implicit cfg: MulticoreConfig) extends Component {
     val frontend = slave(new MemBus(core.membus_params(Frontend)))
     val lsu = slave(new MemBus(core.membus_params(Backend)))
   })
-  val external_bus = master(new MemBus(cfg.membus_params))
+  val external_bus = master(new MemBus(cfg.membus_params(L2)))
 
   val src = internal_bus.flatMap(core => Seq(core.frontend, core.lsu))
 

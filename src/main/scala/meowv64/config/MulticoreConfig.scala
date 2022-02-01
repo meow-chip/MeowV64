@@ -15,8 +15,8 @@ case class MulticoreConfig(
   val l2: L2Config,
   val eint_cnt: Int,
 ) {
-  def membus_params = MemBusParams(
-    bus_type = L2,
+  def membus_params(bus_type: MemBusType) = MemBusParams(
+    bus_type = bus_type,
     addr_width = 64,
     data_width = 64,
     id_width = 4,

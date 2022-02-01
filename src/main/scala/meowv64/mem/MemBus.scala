@@ -2,6 +2,8 @@ package meowv64.mem
 
 import spinal.core._
 import spinal.lib._
+import spinal.lib.bus.amba4.axi.Axi4
+import spinal.lib.bus.amba4.axi.Axi4Config
 
 sealed class MemBusType(
   // Can write
@@ -20,7 +22,8 @@ sealed class MemBusType(
 case object Frontend extends MemBusType(false, false, false, false)
 case object Backend extends MemBusType(true, true, true, false)
 case object Uncached extends MemBusType(true, false, false, true)
-case object L2 extends MemBusType(true, true, true, false)
+case object L2 extends MemBusType(true, false, false, false)
+case object External extends MemBusType(true, false, false, true)
 
 case class MemBusParams(
   val bus_type: MemBusType,
@@ -47,6 +50,27 @@ class MemBus(val params: MemBusParams) extends Bundle with IMasterSlave {
     out(ack)
   }
 
+  object ToAxi4Config extends Axi4Config(
+    addressWidth = params.addr_width,
+    dataWidth = params.data_width, // TODO: make this configurable
+    idWidth = params.id_width,
+    useRegion = false,
+    useLock = false,
+    useCache = false,
+    useQos = false,
+    useProt = false,
+  )
+
+  def toAxi4: Axi4 = {
+    require(!params.bus_type.with_subop)
+    require(!params.bus_type.with_coherence)
+    require(params.bus_type.with_write)
+    require(params.bus_type.with_direct)
+    val axi4 = new Axi4(ToAxi4Config)
+
+    // FIXME: Impl
+    ???
+  }
 }
 
 class MemBusOp extends SpinalEnum {
