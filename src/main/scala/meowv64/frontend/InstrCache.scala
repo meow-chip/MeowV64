@@ -3,6 +3,7 @@ package meowv64.frontend
 import spinal.core._
 import spinal.lib._
 import meowv64._
+import meowv64.mem._
 import meowv64.config._
 
 // TODO: we are presumably giving ICache a 3 cycle delay:
@@ -33,7 +34,7 @@ class InstrCache(implicit cfg: CoreConfig) extends Component {
   // FIXME: impls kill s2
   assert(!kills.s2)
 
-  val membus = master (new MemBus(cfg.frontend_membus_params, true))
+  val membus = master (new MemBus(cfg.membus_params(Frontend)))
 
   ////////////////////
   // States
@@ -49,7 +50,7 @@ class InstrCache(implicit cfg: CoreConfig) extends Component {
 
   // Tag memory
   val tags = Mem(
-    Vec(UInt(cfg.ic.tag_width(cfg.fetch_width) bits), cfg.ic.assoc_cnt),
+    Vec(UInt(cfg.ic.tag_width(Consts.MAX_PADDR_WIDTH) bits), cfg.ic.assoc_cnt),
     cfg.ic.line_per_assoc,
   )
 

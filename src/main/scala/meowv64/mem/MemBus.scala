@@ -1,9 +1,29 @@
-package meowv64
+package meowv64.mem
 
 import spinal.core._
 import spinal.lib._
 
+sealed class MemBusType(
+  // Can write
+  val with_write: Boolean,
+
+  // Coherence master
+  val with_coherence: Boolean,
+
+  // LRSC/AMO
+  val with_subop: Boolean,
+
+  // Direct memory port, no burst, has size
+  val with_direct: Boolean,
+);
+
+case object Frontend extends MemBusType(false, false, false, false)
+case object Backend extends MemBusType(true, true, true, false)
+case object Uncached extends MemBusType(true, false, false, true)
+case object L2 extends MemBusType(true, true, true, false)
+
 case class MemBusParams(
+  val bus_type: MemBusType,
   val addr_width: Int,
   val data_width: Int,
   val id_width: Int,
@@ -14,12 +34,12 @@ case class MemBusParams(
   *
   * @param isInstr: If this memory bus's master is an I$
   */
-class MemBus(val params: MemBusParams, val is_instr: Boolean) extends Bundle with IMasterSlave {
-  val cmd = Stream(new MemBusCmd(params, is_instr))
+class MemBus(val params: MemBusParams) extends Bundle with IMasterSlave {
+  val cmd = Stream(new MemBusCmd(params))
   val uplink = Stream(new MemBusUplink(params))
-  val downlink = if(is_instr) null else Stream(new MemBusDownlink(params))
-  val inv = if(is_instr) null else Stream(new MemBusInv(params))
-  val ack = if(is_instr) null else new MemBusInvAck(params)
+  val downlink = if(params.bus_type.with_write) Stream(new MemBusDownlink(params)) else null
+  val inv = if(params.bus_type.with_coherence) Stream(new MemBusInv(params)) else null
+  val ack = if(params.bus_type.with_coherence) new MemBusInvAck(params) else null
 
   override def asMaster(): Unit = {
     master(cmd, downlink)
@@ -42,11 +62,13 @@ class MemBusSubOp extends SpinalEnum {
 }
 
 // Ids are shared between read and writes
-class MemBusCmd(val params: MemBusParams, val is_instr: Boolean) extends Bundle {
+class MemBusCmd(val params: MemBusParams) extends Bundle {
   val id = Bits(params.id_width bits)
 
-  val op = if(is_instr) null else new MemBusOp
-  val subop = if(is_instr) null else Bits(5 bits)
+  val op = if(params.bus_type.with_write) new MemBusOp else null
+  val subop = if(params.bus_type.with_subop) Bits(5 bits) else null
+
+  val size = if(params.bus_type.with_direct) UInt(3 bits) // Supports up to 2^7
 
   // Keyword first sematic, beat count is always determined by cache line width
   val addr = UInt(params.addr_width bits)
@@ -54,7 +76,8 @@ class MemBusCmd(val params: MemBusParams, val is_instr: Boolean) extends Bundle 
 
 // Master -> Slave
 class MemBusDownlink(val params: MemBusParams) extends Bundle {
-  val id = Bits(params.id_width bits)
+  // No write interleaving is allowed. If the master is current writing,
+  // and an invalidation ack with data is present, slave should block the invalidation ack
   val data = Bits(params.data_width bits)
 }
 
