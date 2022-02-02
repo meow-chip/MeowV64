@@ -40,7 +40,9 @@ class PendingWrite(implicit cfg: MulticoreConfig) extends Bundle {
   val valid = Bool()
 
   val addr = UInt(Consts.MAX_PADDR_WIDTH bits)
-  val cnt = UInt()
+  val idx = UInt(cfg.l2.base.index_width bits)
+  val subidx = UInt(log2Up(cfg.l2.base.line_width / cfg.cores(0).membus_params(Frontend).data_width) bits)
+  val cnt = UInt(log2Up(cfg.l2.base.line_width / cfg.cores(0).membus_params(Frontend).data_width) bits)
 
   val associated_inv = UInt(log2Up(cfg.l2.max_pending_inv) bits)
 }
@@ -79,7 +81,17 @@ class L2Inst(inst_id: Int)(implicit cfg: MulticoreConfig) extends Component {
   implicit val banked_mem_cfg = BankedMemConfig(
     total_size = cfg.l2.base.assoc_size,
     access_size = internal_bus(0).frontend.params.data_width / 8,
-    concurrency = 4, subbank_cnt = 1, port_cnt = 4
+    concurrency = 4, subbank_cnt = 1,
+
+    /**
+      * Ports in decreasing priority:
+      * - writeback
+      * - refill
+      * - invresp
+      * - write
+      * - read
+      */
+    port_cnt = 5
   )
   val data = new BankedMem(s"L2 Data")
 
@@ -108,13 +120,20 @@ class L2Inst(inst_id: Int)(implicit cfg: MulticoreConfig) extends Component {
   // Ack channel doesn't need to be arbitered
 
   // Banked memory ports
-  // FIXME: fix priority
+  val writeback_req = Stream(new BankedMemReq)
+  val refill_req = Stream(new BankedMemReq)
+  val invresp_req = Stream(new BankedMemReq)
+  val write_req = Stream(new BankedMemReq)
   val read_req = Stream(new BankedMemReq)
 
-  val banked_req = Seq(read_req)
+  val banked_req = Seq(writeback_req, refill_req, invresp_req, write_req, read_req)
   (data.ports, banked_req).zipped.foreach(_.req <> _)
 
-  val read_resp = data.ports(0)
+  val writeback_resp = data.ports(4)
+  val refill_resp = data.ports(4)
+  val invresp_resp = data.ports(4)
+  val write_resp = data.ports(4)
+  val read_resp = data.ports(4)
 
   ////////////////////
   // cmd channel
@@ -129,9 +148,8 @@ class L2Inst(inst_id: Int)(implicit cfg: MulticoreConfig) extends Component {
     val reflected_stream = Stream(new BankedMemReq)
 
     reflected_stream.payload.write := False
-    // FIXME: How do we write DontCare?
-    // reflected_stream.payload.we := DontCare
-    // reflected_stream.payload.wdata := DontCare
+    reflected_stream.payload.we.assignDontCare()
+    reflected_stream.payload.wdata.assignDontCare()
     require(h.cnt.getWidth == p.pop.payload.subidx.getWidth)
     reflected_stream.idx := (h.cnt + p.pop.payload.subidx) + p.pop.payload.idx
 
