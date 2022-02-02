@@ -23,25 +23,27 @@ class MatchingQueue[M <: Data, T <: MatchedData[M]](t: T, m: M, depth: Int) exte
     matched := False
   } else {
     val storage = Reg(Vec(t, depth))
-    val valids = RegInit(Vec(False, depth))
-    val head = UInt(log2Up(depth) bits)
-    val tail = UInt(log2Up(depth) bits)
+    val valids = RegInit(B(0, depth bits))
+    val ptr = RegInit(U(0, log2Up(depth) bits))
 
-    pop.valid := head =/= tail || valids(0)
-    push.ready := head =/= tail || !valids(0)
+    val nptr = ptr.clone();
+    nptr := ptr
+
+    pop.payload := storage(0)
+    pop.valid := valids(0)
+
+    push.ready := !valids(depth-1)
 
     when(push.fire) {
-      storage(tail) := push.payload
-      valids(tail) := True
-      tail := tail + 1
+      val pptr = Mux(pop.fire, ptr - 1, ptr)
+      storage(pptr) := push.payload
     }
 
-    pop.payload := storage(head)
-    when(pop.fire) {
-      valids(head) := False
-      head := head + 1
+    when(push.fire =/= pop.fire) {
+      ptr := Mux(push.fire, ptr + 1, ptr - 1)
+      valids := Mux(push.fire, valids << 1 | 1, valids >> 1)
     }
 
-    matched := Vec(storage.zip(valids).map({ case (t, v) => v && t.matched(matcher) })).orR
+    matched := Vec(storage.zip(valids.asBools).map({ case (t, v) => v && t.matched(matcher) })).orR
   }
 }

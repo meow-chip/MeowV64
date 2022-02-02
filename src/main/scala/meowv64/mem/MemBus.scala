@@ -34,6 +34,14 @@ case class MemBusParams(
 
 /**
   * Internal memory bus. This is heavely inspired by the BMB(Banana memory bus).
+  * 
+  * To avoid deadlock, all master and slave should handles the channels in the following priority:
+  * - ack: Essentially TL-E
+  * - resp: Essentially TL-C
+  * - uplink: Essentially TL-D
+  * - inv: Essentially TL-B
+  * - downlink: Data part of TL-A
+  * - cmd: Cmd part of TL-A
   *
   * @param isInstr: If this memory bus's master is an I$
   */
@@ -42,13 +50,12 @@ class MemBus(val params: MemBusParams) extends Bundle with IMasterSlave {
   val uplink = Stream(new MemBusUplink(params))
   val downlink = if(params.bus_type.with_write) Stream(new MemBusDownlink(params)) else null
   val inv = if(params.bus_type.with_coherence) Stream(new MemBusInv(params)) else null
-  val ack = if(params.bus_type.with_coherence) new MemBusInvAck(params) else null
   val resp = if(params.bus_type.with_coherence) Stream(new MemBusInvResp(params)) else null
+  val ack = if(params.bus_type.with_coherence) Stream(new MemBusOccupyAck(params)) else null
 
   override def asMaster(): Unit = {
     master(cmd, downlink, resp)
     slave(uplink, inv)
-    out(ack)
   }
 
   object ToAxi4Config extends Axi4Config(
@@ -78,12 +85,9 @@ class MemBusOp extends SpinalEnum {
   val read, write, occupy, amo = newElement()
 }
 
-// TODO figure out encoding
-class MemBusSubOp extends SpinalEnum {
-  val default = newElement()
-
-  // For r, o
-  val lrsc = newElement()
+object MemBusSubOp {
+  // Occupy may contains no data
+  val NO_DATA = B(1)
 }
 
 // Ids are shared between read and writes
@@ -122,10 +126,11 @@ class MemBusInv(val params: MemBusParams) extends Bundle {
   val addr = UInt(params.addr_width bits)
 }
 
-class MemBusInvAck(val params: MemBusParams) extends Bundle {
+class MemBusInvResp(val params: MemBusParams) extends Bundle {
   val with_data = Bool()
+  val data = Bits(params.data_width bits)
 }
 
-class MemBusInvResp(val params: MemBusParams) extends Bundle {
-  val data = Bits(params.data_width bits)
+class MemBusOccupyAck(val params: MemBusParams) extends Bundle {
+  val id = Bits(params.id_width bits)
 }
