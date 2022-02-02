@@ -43,9 +43,10 @@ class MemBus(val params: MemBusParams) extends Bundle with IMasterSlave {
   val downlink = if(params.bus_type.with_write) Stream(new MemBusDownlink(params)) else null
   val inv = if(params.bus_type.with_coherence) Stream(new MemBusInv(params)) else null
   val ack = if(params.bus_type.with_coherence) new MemBusInvAck(params) else null
+  val resp = if(params.bus_type.with_coherence) Stream(new MemBusInvResp(params)) else null
 
   override def asMaster(): Unit = {
-    master(cmd, downlink)
+    master(cmd, downlink, resp)
     slave(uplink, inv)
     out(ack)
   }
@@ -93,6 +94,8 @@ class MemBusCmd(val params: MemBusParams) extends Bundle {
   val subop = if(params.bus_type.with_subop) Bits(5 bits) else null
 
   val size = if(params.bus_type.with_direct) UInt(3 bits) // Supports up to 2^7
+  val burst = if(params.bus_type.with_direct) UInt(8 bits) // Supports up to 255
+  // No write enable for direct writes because we don't need them!
 
   // Keyword first sematic, beat count is always determined by cache line width
   val addr = UInt(params.addr_width bits)
@@ -100,8 +103,7 @@ class MemBusCmd(val params: MemBusParams) extends Bundle {
 
 // Master -> Slave
 class MemBusDownlink(val params: MemBusParams) extends Bundle {
-  // No write interleaving is allowed. If the master is current writing,
-  // and an invalidation ack with data is present, slave should block the invalidation ack
+  // No write interleaving is allowed.
   val data = Bits(params.data_width bits)
 }
 
@@ -122,5 +124,8 @@ class MemBusInv(val params: MemBusParams) extends Bundle {
 
 class MemBusInvAck(val params: MemBusParams) extends Bundle {
   val with_data = Bool()
-  val write_id = Bits(params.id_width bits)
+}
+
+class MemBusInvResp(val params: MemBusParams) extends Bundle {
+  val data = Bits(params.data_width bits)
 }

@@ -23,7 +23,7 @@ class MatchingQueue[M <: Data, T <: MatchedData[M]](t: T, m: M, depth: Int) exte
     matched := False
   } else {
     val storage = Reg(Vec(t, depth))
-    val valids = RegInit(Vec(True, depth))
+    val valids = RegInit(Vec(False, depth))
     val head = UInt(log2Up(depth) bits)
     val tail = UInt(log2Up(depth) bits)
 

@@ -1,4 +1,4 @@
-package meowv64
+package meowv64.l2
 
 import spinal.core._
 import spinal.lib._
@@ -12,7 +12,7 @@ import meowv64.util._
   */
 
 class L2Cache(implicit cfg: MulticoreConfig) extends Component {
-  require(cfg.l2.base.bank_cnt == 1) // TODO: impl banking
+  require(cfg.l2.base.inst_cnt == 1) // TODO: impl banking
 
   val internal_bus = cfg.cores.map(core => new Bundle {
     val frontend = slave(new MemBus(core.membus_params(Frontend)))
@@ -20,7 +20,7 @@ class L2Cache(implicit cfg: MulticoreConfig) extends Component {
   })
   val external_bus = master(new MemBus(cfg.membus_params(L2)))
 
-  val banks = for(i <- 0 to cfg.l2.base.bank_cnt) yield new L2Bank(i)
+  val banks = for(i <- 0 to cfg.l2.base.inst_cnt) yield new L2Inst(i)
   banks(0).external_bus <> external_bus
   for((l, r) <- banks(0).internal_bus.zip(internal_bus)) l <> r
 }
@@ -56,7 +56,7 @@ class PendingRead(implicit cfg: MulticoreConfig) extends Bundle with MatchedData
   def matched(matcher: UInt): Bool = addr === matcher
 }
 
-class L2Bank(bank_id: Int)(implicit cfg: MulticoreConfig) extends Component {
+class L2Inst(inst_id: Int)(implicit cfg: MulticoreConfig) extends Component {
   val internal_bus = cfg.cores.map(core => new Bundle {
     val frontend = slave(new MemBus(core.membus_params(Frontend)))
     val lsu = slave(new MemBus(core.membus_params(Backend)))
@@ -80,10 +80,10 @@ class L2Bank(bank_id: Int)(implicit cfg: MulticoreConfig) extends Component {
   val pending_reads = src.map(_ => new MatchingQueue[UInt, PendingRead](new PendingRead, UInt(Consts.MAX_PADDR_WIDTH bits), cfg.l2.max_pending_read))
   require(pending_writes.length == cfg.cores.length)
 
-  valids.setName(s"L2 Bank_$bank_id / valids")
-  reservations.setName(s"L2 Bank_$bank_id / reservations")
-  occupations.setName(s"L2 Bank_$bank_id / occupations")
-  tags.setName(s"L2 Bank_$bank_id / tags")
+  valids.setName(s"L2Inst_$inst_id / valids")
+  reservations.setName(s"L2Inst_$inst_id / reservations")
+  occupations.setName(s"L2Inst_$inst_id / occupations")
+  tags.setName(s"L2Inst_$inst_id / tags")
 
   val cmd_arb = StreamArbiterFactory.roundRobin.noLock.on(src.map(_.cmd)) // 2 * core_cnt sources, idx >> 1 = core src
   val downlink_arb = StreamArbiterFactory.roundRobin.noLock.on(src.map(_.downlink).filter(_ != null)) // core_cnt sources
