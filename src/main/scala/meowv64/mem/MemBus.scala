@@ -81,7 +81,7 @@ class MemBus(val params: MemBusParams) extends Bundle with IMasterSlave {
   }
 }
 
-class MemBusOp extends SpinalEnum {
+object MemBusOp extends SpinalEnum {
   val read, write, occupy, amo = newElement()
 }
 
@@ -94,11 +94,11 @@ object MemBusSubOp {
 class MemBusCmd(val params: MemBusParams) extends Bundle {
   val id = Bits(params.id_width bits)
 
-  val op = if(params.bus_type.with_write) new MemBusOp else null
+  val op = if(params.bus_type.with_write) MemBusOp() else null
   val subop = if(params.bus_type.with_subop) Bits(5 bits) else null
 
-  val size = if(params.bus_type.with_direct) UInt(3 bits) // Supports up to 2^7
-  val burst = if(params.bus_type.with_direct) UInt(8 bits) // Supports up to 255
+  val size = if(params.bus_type.with_direct) UInt(2 bits) else null // Supports up to 2^3 = 64
+  val burst = if(params.bus_type.with_direct) UInt(8 bits) else null // Supports up to 256
   // No write enable for direct writes because we don't need them!
 
   // Keyword first sematic, beat count is always determined by cache line width
@@ -113,7 +113,7 @@ class MemBusDownlink(val params: MemBusParams) extends Bundle {
 
 // Slave -> Master
 class MemBusUplink(val params: MemBusParams) extends Bundle {
-  val id = Bits(params.id_width bits)
+  val id = UInt(params.id_width bits)
   val data = Bits(params.data_width bits)
 }
 
