@@ -37,9 +37,9 @@ case class BankedMemConfig(
 
 class BankedMemReq(implicit cfg: BankedMemConfig) extends Bundle {
   val idx = UInt(log2Up(cfg.total_size / cfg.access_size) bits)
-  val wdata = UInt(cfg.access_size * 8 bits)
+  val wdata = Bits(cfg.access_size * 8 bits)
   val we = Bool() // Write enable
-  val sbe = Bits((cfg.subbank_cnt / cfg.concurrency) bits) // Subbank enable
+  val sbe = Bits(cfg.subbank_cnt bits) // Subbank enable
 }
 
 class BankedMem(name: String)(implicit cfg: BankedMemConfig) extends Component {
@@ -52,7 +52,7 @@ class BankedMem(name: String)(implicit cfg: BankedMemConfig) extends Component {
   val ports = (0 to cfg.port_cnt).map(idx => {
     val port = new Bundle {
       val req = slave Stream(new BankedMemReq)
-      val readout = out UInt(cfg.access_size * 8 bits)
+      val readout = out Bits(cfg.access_size * 8 bits)
     }
     port.setName(s"$name / Port $idx")
     port
@@ -60,7 +60,7 @@ class BankedMem(name: String)(implicit cfg: BankedMemConfig) extends Component {
 
   val banks = (0 to cfg.concurrency).map(idx => {
     (0 to cfg.subbank_cnt).map(sidx => {
-      val bank = Mem(UInt(cfg.subbank_size * 8 bits), cfg.row_cnt)
+      val bank = Mem(Bits(cfg.subbank_size * 8 bits), cfg.row_cnt)
       bank.setName(s"$name / Bank $idx.$sidx")
       bank
     })

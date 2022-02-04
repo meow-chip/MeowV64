@@ -6,7 +6,8 @@ case class L2Config(
   val base: CacheConfig,
   val max_pending_inv: Int = 4,
   val max_pending_read: Int = 4,
-  val mshr_cnt: Int = 4,
+  val mshr_cnt: Int = 4, // In ASIC profile, change to 64
+  val mshr_related_fifo_depth: Int = 4, // In ASIC profile, change to 16
 )
 
 case class MulticoreConfig(

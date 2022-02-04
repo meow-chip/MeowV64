@@ -67,14 +67,16 @@ class L2MSHR(implicit cfg: MulticoreConfig) extends Bundle {
   val valid = Bool()
 
   // For replying
-  val req = new MemBusCmd(cfg.cores(0).membus_params(Backend))
+  val req_port = UInt(log2Up(cfg.cores.length * 2) bits)
+  val req_id = UInt(cfg.cores(0).membus_params(Frontend).id_width bits)
 
   // Metadata idx can be fetched from req
-  val victim_oh = Bits(cfg.l2.base.assoc_cnt bits)
+  val victim = UInt(log2Up(cfg.l2.base.assoc_cnt) bits)
 
   val idx = UInt(cfg.l2.base.index_width bits)
   val subidx = UInt(log2Up(cfg.l2.base.line_width / cfg.cores(0).membus_params(Frontend).data_width) bits)
 
+  // TODO: only store one idx##offset for addr_r and addr_w
   val addr_r = UInt(addr_width bits) // Keyword first
   val addr_w = UInt(addr_width bits) // Also keyword first
 
@@ -87,6 +89,7 @@ class L2MSHR(implicit cfg: MulticoreConfig) extends Bundle {
   val sent_w = Bool()
 
   val done_w = Bool()
+  val done_r = Bool()
 }
 
 class L2Inst(inst_id: Int)(implicit cfg: MulticoreConfig) extends Component {
@@ -135,6 +138,9 @@ class L2Inst(inst_id: Int)(implicit cfg: MulticoreConfig) extends Component {
   val pending_read_heads = src.map(_ => Reg(new PendingReadHead))
   val pending_reads = src.map(_ => new MatchingQueue(new PendingRead, UInt(Consts.MAX_PADDR_WIDTH bits), cfg.l2.max_pending_read))
   require(pending_writes.length == cfg.cores.length)
+
+  val refill_pending_read_fifo = StreamFifo(new RefillPendingRead, cfg.l2.mshr_related_fifo_depth)
+  // FIXME: consume refill_pending_read_fifo
 
   valids.setName(s"L2Inst $inst_id / valids")
   dirtys.setName(s"L2Inst $inst_id / valids")
@@ -234,7 +240,7 @@ class L2Inst(inst_id: Int)(implicit cfg: MulticoreConfig) extends Component {
 
   // CMD
   
-  val writeMSHRIdxFifo = StreamFifo(UInt(log2Up(mshrs.length) bits), mshrs.length)
+  val writeMSHRIdxFifo = StreamFifo(UInt(log2Up(mshrs.length) bits), cfg.l2.mshr_related_fifo_depth)
 
   // Streams are arranged in (w0, w1, w2, w3, r0, r1, r2, r3),
   // so that we can just trim the selectOH to get a write OH
@@ -260,9 +266,9 @@ class L2Inst(inst_id: Int)(implicit cfg: MulticoreConfig) extends Component {
 
     stream.payload.id := idx
     stream.payload.addr := m.addr_w
-    stream.payload.op := MemBusOp.read
+    stream.payload.burst := cfg.l2.base.line_width / 64
     stream.payload.size := 3 // 64 bit
-    stream.payload.op := MemBusOp.write
+    stream.payload.op := MemBusOp.read
 
     stream.valid := !m.sent_r && m.valid
     when(stream.ready) {
@@ -273,13 +279,12 @@ class L2Inst(inst_id: Int)(implicit cfg: MulticoreConfig) extends Component {
 
   val ext_cmd_arb = new StreamArbiter(new MemBusCmd(cfg.membus_params(L2)), 2 * mshrs.length)(StreamArbiter.Arbitration.lowerFirst, StreamArbiter.Lock.transactionLock)
   (ext_cmd_arb.io.inputs, Seq(wreq_streams, rreq_streams).flatten).zipped.foreach(_ <> _)
-  val w_mshr_idx = ext_cmd_arb.io.chosen(0, mshrs.length bits)
+  val w_mshr_idx = ext_cmd_arb.io.chosen
   writeMSHRIdxFifo.io.push.payload := w_mshr_idx
   writeMSHRIdxFifo.io.push.valid := w_mshr_idx.orR
-  when(writeMSHRIdxFifo.io.push.valid) {
-    assert(writeMSHRIdxFifo.io.push.fire)
-  }
   ext_cmd_arb.io.output <> external_bus.cmd
+  ext_cmd_arb.io.output.ready := external_bus.cmd.ready && writeMSHRIdxFifo.io.push.ready
+  external_bus.cmd.valid := ext_cmd_arb.io.output.valid && writeMSHRIdxFifo.io.push.ready
 
   // Memory width / external bus width
   val transfer_width_ratio = banked_mem_cfg.access_size * 8 / external_bus.params.data_width
@@ -288,16 +293,29 @@ class L2Inst(inst_id: Int)(implicit cfg: MulticoreConfig) extends Component {
 
   // Writeback reader, 2 stage
   val s0_writeback_send = Bool()
-  val s0_writeback_mshr = writeMSHRIdxFifo.io.pop.payload
+  val s0_writeback_mshr_idx = writeMSHRIdxFifo.io.pop.payload
+  val writeback_target_mshr = mshrs(s0_writeback_mshr_idx)
+
+  // Index is more probable to differ, so we are using assoc ## idx as major idx
+  val s0_writeback_idx = (writeback_target_mshr.victim ## writeback_target_mshr.idx).as(UInt())
+  val s0_writeback_subidx = writeback_target_mshr.addr_w(log2Up(cfg.l2.base.line_size) downto log2Up(src(0).params.data_width / 8))
+
   val s0_writeback_cnt = UInt(log2Up(cfg.l2.base.line_size * 8 / external_bus.params.data_width) bits)
-  val s0_writeback_minor = s0_writeback_cnt(0, log2Up(transfer_width_ratio) bits)
-  val s0_writeback_major = s0_writeback_cnt >> log2Up(transfer_width_ratio) // FIXME: do spinal/chisel statically determine these width?
+  val s0_writeback_minor = s0_writeback_cnt(0, log2Up(transfer_width_ratio) bits) // Expand to sbe
+  // TODO: do spinal/chisel statically determine these width?
+  val s0_writeback_major = s0_writeback_cnt >> log2Up(transfer_width_ratio) // Append to subidx
+
   val s0_writeback_bitmask = UIntToOh(s0_writeback_minor, transfer_width_ratio)
+  val s0_writeback_bitmask_expand_ratio = banked_mem_cfg.subbank_cnt / transfer_width_ratio
+  assert(s0_writeback_bitmask_expand_ratio > 0) // TODO: implement wbe and lift this
+  val s0_writeback_sbe = ExpandInterleave(s0_writeback_bitmask, s0_writeback_bitmask_expand_ratio)
 
   writeback_req.valid := s0_writeback_send
-  // FIXME: finish writeback_req
+  writeback_req.payload.sbe := s0_writeback_sbe
+  writeback_req.payload.idx := (s0_writeback_major + s0_writeback_subidx) + s0_writeback_idx
+  writeback_req.payload.we := False
+  writeback_req.payload.wdata.assignDontCare()
 
-  val writeback_target_mshr = mshrs(s0_writeback_mshr)
   assert(!writeback_target_mshr.done_w)
   assert(writeback_target_mshr.cnt_w === s0_writeback_cnt)
 
@@ -337,10 +355,34 @@ class L2Inst(inst_id: Int)(implicit cfg: MulticoreConfig) extends Component {
     !refill_target_mshr.has_w || refill_target_mshr.cnt_w =/= refill_target_mshr.cnt_r || refill_target_mshr.done_w
   )
 
-  val refill_cnt = UInt(log2Up(cfg.l2.base.line_size * 8 / external_bus.params.data_width) bits)
+  class RefillPendingRead extends PendingRead {
+    val port_idx = UInt(log2Up(src.length) bits)
+  }
 
-  refill_req.valid := refill_space_allowed && external_bus.uplink.valid
-  // FIXME: finish refill_req
+  val refill_idx = (refill_target_mshr.victim ## refill_target_mshr.idx).as(UInt())
+  val refill_subidx = refill_target_mshr.addr_w(log2Up(cfg.l2.base.line_size) downto log2Up(src(0).params.data_width / 8))
+
+  val refill_cnt = UInt(log2Up(cfg.l2.base.line_size * 8 / external_bus.params.data_width) bits)
+  val refill_minor = refill_cnt(0, log2Up(transfer_width_ratio) bits) // Expand to sbe
+  val refill_major = refill_cnt >> log2Up(transfer_width_ratio) // Append to subidx
+
+  val refill_bitmask = UIntToOh(refill_minor, transfer_width_ratio)
+  val refill_bitmask_expand_ratio = banked_mem_cfg.subbank_cnt / transfer_width_ratio
+  assert(refill_bitmask_expand_ratio > 0) // TODO: implement wbe and lift this
+  val refill_sbe = ExpandInterleave(refill_bitmask, refill_bitmask_expand_ratio)
+
+  // TODO: refill_req.valid timing probably too bad?
+  refill_req.valid := refill_space_allowed && external_bus.uplink.valid && refill_pending_read_fifo.io.push.ready
+  refill_req.payload.sbe := refill_sbe
+  refill_req.payload.idx := (refill_major + refill_subidx) + refill_idx
+  refill_req.payload.we := True
+  refill_req.payload.wdata := Duplicate(external_bus.uplink.payload.data, transfer_width_ratio)
+
+  refill_pending_read_fifo.io.push.valid := refill_req.fire && refill_cnt.andR
+  refill_pending_read_fifo.io.push.payload.port_idx := refill_id
+  refill_pending_read_fifo.io.push.payload.addr := refill_target_mshr.addr_r
+  refill_pending_read_fifo.io.push.payload.idx := refill_idx // Assoc data included
+  refill_pending_read_fifo.io.push.payload.subidx := refill_subidx
 
   external_bus.uplink.ready := refill_space_allowed && external_bus.uplink.ready
 
@@ -348,6 +390,8 @@ class L2Inst(inst_id: Int)(implicit cfg: MulticoreConfig) extends Component {
   assert(refill_target_mshr.cnt_r === refill_cnt)
 
   when(refill_req.fire) {
+    assert(!refill_target_mshr.done_r)
+
     refill_cnt := refill_cnt + 1
     refill_target_mshr.cnt_w := refill_cnt + 1
     when(refill_cnt.andR) { // Last transfer
@@ -355,6 +399,4 @@ class L2Inst(inst_id: Int)(implicit cfg: MulticoreConfig) extends Component {
       refill_target_mshr.valid := False
     }
   }
-
-  // TODO: finish return request
 }

@@ -85,9 +85,15 @@ object MemBusOp extends SpinalEnum {
   val read, write, occupy, amo = newElement()
 }
 
-object MemBusSubOp {
+object MemBusSubOpIdx {
   // Occupy may contains no data
-  val NO_DATA = B(1)
+  val WITH_DATA = 0
+
+  // Occupy / read maybe LR/SC
+  val LR_SC = 1
+
+  // Write may purge ownership
+  val PURGE = 2
 }
 
 // Ids are shared between read and writes
