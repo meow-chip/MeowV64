@@ -322,11 +322,12 @@ class L2Inst(inst_id: Int)(implicit cfg: MulticoreConfig) extends Component {
   val cmd_s1_blocked_by_victim_s2 = cmd_s2_valid && cmd_s2_has_victim && cmd_s2_victim_tag_idx === cmd_s1_tag ## cmd_s1_idx
   cmd_s1_blocked_by_s2 := cmd_s1_blocked_by_sameline_s2 || cmd_s1_blocked_by_victim_s2
 
-  val cmd_s2_self_mask = UIntToOh(cmd_s2_chosen, src.length)
+  val cmd_s2_self_coherent = cmd_s2_chosen(0)
+  val cmd_s2_self_coherence_mask = Mux(cmd_s2_self_coherent, UIntToOh(cmd_s2_chosen >> 1, src.length / 2), B(0))
   // FIXME: AMO need to invalidate masters
   val cmd_s2_coherence_conflict = (
     cmd_s2_req.op === MemBusOp.read && cmd_s2_metadata.master_dirty
-    || cmd_s2_req.op === MemBusOp.occupy && (cmd_s2_metadata.occupation & ~cmd_s2_self_mask).orR
+    || cmd_s2_req.op === MemBusOp.occupy && (cmd_s2_metadata.occupation & ~cmd_s2_self_coherence_mask).orR
   )
   // TODO: for right now, coherence conflicts will never happen
   assert(!cmd_s2_coherence_conflict)
@@ -337,20 +338,20 @@ class L2Inst(inst_id: Int)(implicit cfg: MulticoreConfig) extends Component {
   val cmd_s2_updated_occupation = PriorityMux(Seq(
     // TODO: assert on release, occupation should be exclusive
     (cmd_s2_req.op === MemBusOp.write && cmd_s2_req.subop(MemBusSubOpIdx.RELEASE)) -> B(0),
-    (cmd_s2_req.op === MemBusOp.read && cmd_s2_metadata.master_dirty) -> cmd_s2_self_mask,
-    (cmd_s2_req.op === MemBusOp.read && !cmd_s2_metadata.master_dirty) -> (cmd_s2_self_mask | cmd_s2_metadata.occupation),
-    (cmd_s2_req.op === MemBusOp.occupy) -> cmd_s2_self_mask,
+    (cmd_s2_req.op === MemBusOp.read) -> (cmd_s2_self_coherence_mask | cmd_s2_metadata.occupation),
+    (cmd_s2_req.op === MemBusOp.occupy) -> cmd_s2_self_coherence_mask,
     True -> cmd_s2_metadata.occupation,
   ))
   val cmd_s2_updated_master_dirty = PriorityMux(Seq(
     (cmd_s2_req.op === MemBusOp.write && cmd_s2_req.subop(MemBusSubOpIdx.RELEASE)) -> False,
+    (cmd_s2_req.op === MemBusOp.write && !cmd_s2_req.subop(MemBusSubOpIdx.RELEASE)) -> True,
     (cmd_s2_req.op === MemBusOp.occupy) -> True,
-    True -> cmd_s2_metadata.master_dirty,
+    (cmd_s2_req.op === MemBusOp.read) -> False,
+    // TODO: AMO
   ))
   val cmd_s2_updated_dirty = PriorityMux(Seq(
-    (cmd_s2_req.op === MemBusOp.write && cmd_s2_req.subop(MemBusSubOpIdx.RELEASE)) -> False,
     (cmd_s2_req.op === MemBusOp.occupy) -> True,
-    True -> cmd_s2_metadata.master_dirty,
+    True -> cmd_s2_metadata.dirty,
   ))
   val cmd_s2_updated_metadata = new L2Metadata
   cmd_s2_updated_metadata.dirty := cmd_s2_updated_dirty
@@ -369,9 +370,9 @@ class L2Inst(inst_id: Int)(implicit cfg: MulticoreConfig) extends Component {
   val cmd_s2_hr_free = cmd_s2_hr_allocation_oh.orR
 
   val cmd_s2_need_coherence = (
-    (cmd_s2_req.op === MemBusOp.occupy && cmd_s2_metadata.occupation =/= cmd_s2_self_mask)
+    (cmd_s2_req.op === MemBusOp.occupy && cmd_s2_metadata.occupation =/= cmd_s2_self_coherence_mask)
     // TODO: Actually, when reading, occupation should never be the same as self_mask. Need to assert this
-    || (cmd_s2_req.op === MemBusOp.read && cmd_s2_metadata.master_dirty && cmd_s2_metadata.occupation =/= cmd_s2_self_mask)
+    || (cmd_s2_req.op === MemBusOp.read && cmd_s2_metadata.master_dirty && cmd_s2_metadata.occupation =/= cmd_s2_self_coherence_mask)
   )
   val cmd_s2_need_inval = cmd_s2_req.op === MemBusOp.occupy
 
@@ -390,7 +391,7 @@ class L2Inst(inst_id: Int)(implicit cfg: MulticoreConfig) extends Component {
       assert(!m.waiting_r)
       assert(!m.waiting_w)
 
-      val mask_i = Mux(cmd_s2_need_coherence, cmd_s2_metadata.occupation & ~cmd_s2_self_mask, B(0))
+      val mask_i = Mux(cmd_s2_need_coherence, cmd_s2_metadata.occupation & ~cmd_s2_self_coherence_mask, B(0))
       m.has_i_data := cmd_s2_need_inval
       m.pending_i := mask_i
       m.waiting_i := mask_i
