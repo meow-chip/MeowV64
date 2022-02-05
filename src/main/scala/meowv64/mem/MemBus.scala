@@ -92,8 +92,8 @@ object MemBusSubOpIdx {
   // Occupy / read maybe LR/SC
   val LR_SC = 1
 
-  // Write may purge ownership
-  val PURGE = 2
+  // Write may release ownership
+  val RELEASE = 2
 }
 
 // Ids are shared between read and writes
