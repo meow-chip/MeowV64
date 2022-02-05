@@ -64,7 +64,7 @@ class PendingRead(implicit cfg: MulticoreConfig) extends Bundle with MatchedData
 
 /**
   * Miss status holding register + Coherence conflict holding register. When an request causes a miss (a read, a occupy with data),
-  * a MSHR is allocated which is in charge of driving writeback and refilling.
+  * or a coherence conflict, a MSCCHR is allocated which is in charge of driving writeback and refilling.
   */
 class L2MSCCHR(implicit cfg: MulticoreConfig) extends Bundle {
   val data_size = cfg.membus_params(L2).data_width / 8
@@ -78,34 +78,38 @@ class L2MSCCHR(implicit cfg: MulticoreConfig) extends Bundle {
 
   // Master is reading/writing victim. Can send writeback / refill request, but cannot accept data yet, nor cannot invalidate master
   // TODO: how to wakeup?
-  val victim_ongoing_rw = Bool()
-
-  // Metadata idx can be fetched from req
-  val assoc = UInt(log2Up(cfg.l2.base.assoc_cnt) bits)
-  val idx = UInt(cfg.l2.base.index_width bits)
-  val subidx = UInt(log2Up(cfg.l2.base.line_width / cfg.cores(0).membus_params(Frontend).data_width) bits)
+  val victim_ongoing_rw = UInt()
 
   // TODO: only store one idx##offset for addr_r and addr_w
   val addr_r = UInt(addr_width bits) // Keyword first
   val addr_w = UInt(addr_width bits) // Also keyword first
 
+  // Metadata idx can be fetched from req
+  val assoc = UInt(log2Up(cfg.l2.base.assoc_cnt) bits)
+  def idx = cfg.l2.base.index(addr_r)
+  def subidx = cfg.l2.base.offset(addr_r) >> log2Up(cfg.cores(0).membus_params(Frontend).data_width) // data_width = access_size
+
+  val mask_i = Bits(cfg.cores.length bits)
+  
+  val has_i_data = Bool()
+
+  val cnt_i = UInt(log2Up(cfg.l2.base.line_size / data_size) bits)
   val cnt_r = UInt(log2Up(cfg.l2.base.line_size / data_size) bits)
   val cnt_w = UInt(log2Up(cfg.l2.base.line_size / data_size) bits)
 
-  val has_w = Bool()
+  // Having to send request to master
+  val pending_r = Bool()
+  val pending_w = Bool()
+  val pending_i = Bits(cfg.cores.length bits)
 
-  val sent_r = Bool()
-  val sent_w = Bool()
+  // Waiting response from master
+  val waiting_w = Bool()
+  val waiting_r = Bool()
+  val waiting_i = Bits(cfg.cores.length bits)
 
-  val done_w = Bool()
-  val done_r = Bool()
-
-  // TODO: coherence part
-  // val needs_inval = Bool()
-  // val target_mask = Bool()
-
-  // valid \implies (ongoing_rw \implies has_w)
-  assert(!valid || (!victim_ongoing_rw || has_w))
+  // valid \implies (ongoing_rw \implies pending_w)
+  // BTW, pending_x is !sent_x && has_x
+  assert(!valid || (!victim_ongoing_rw.orR || pending_w))
 }
 
 class L2Metadata(implicit val cfg: MulticoreConfig) extends Bundle {
@@ -194,6 +198,9 @@ class L2Inst(inst_id: Int)(implicit cfg: MulticoreConfig) extends Component {
   val mscchrs = Reg(Vec(new L2MSCCHR, cfg.l2.mscchr_cnt))
   for(m <- mscchrs) {
     m.valid init(False)
+    m.cnt_i init(0)
+    m.cnt_w init(0)
+    m.cnt_r init(0)
   }
 
   ////////////////////
@@ -258,12 +265,12 @@ class L2Inst(inst_id: Int)(implicit cfg: MulticoreConfig) extends Component {
   val cmd_s1_hr_matching_vec = for(m <- mscchrs) yield (
     cfg.l2.base.index(cmd_pre_s1_addr) === m.idx
     && cfg.l2.base.tag(m.addr_r) === cfg.l2.base.tag(cmd_pre_s1_addr)
-    && !m.done_r
+    && m.waiting_r
     // TODO: impl CCHR side
   )
-  val cmd_s1_victim_unavail = mscchrs.foldLeft(B(0, cfg.l2.base.assoc_cnt bits))((acc, m: L2MSCCHR) => {
-    acc | Mux(m.valid, UIntToOh(m.assoc, cfg.l2.base.assoc_cnt), B(0))
-  })
+  val cmd_s1_victim_unavail = RegNext(mscchrs.foldLeft(B(0, cfg.l2.base.assoc_cnt bits))((acc, m: L2MSCCHR) => {
+    acc | Mux(m.valid && m.idx === cfg.l2.base.index(cmd_pre_s1_addr), UIntToOh(m.assoc, cfg.l2.base.assoc_cnt), B(0))
+  }))
   val cmd_s1_hr_blocked = RegNext(Vec(cmd_s1_hr_matching_vec).orR)
 
   // TODO: select victim and avoid any ongoing same-idx MSHR
@@ -274,16 +281,18 @@ class L2Inst(inst_id: Int)(implicit cfg: MulticoreConfig) extends Component {
     cmd_s1_victim_prio
   )
   val cmd_s1_victim = OHToUInt(cmd_s1_victim_oh)
+  // If there is no available victim, we are either being flushed or being refilled, block s1
+  val cmd_s1_no_avail_victim = cmd_s1_victim_oh.orR
 
   cmd_s1_s2_int.payload.req := cmd_s1_req
   cmd_s1_s2_int.payload.chosen := cmd_s1_chosen
   cmd_s1_s2_int.payload.hit := cmd_s1_hit
   cmd_s1_s2_int.payload.assoc := Mux(cmd_s1_hit, OHToUInt(cmd_s1_hitmask), cmd_s1_victim)
-  cmd_s1_s2_int.payload.metadata := Mux(cmd_s1_hit, cmd_s1_metadata, cmd_s1_metadata_readout(cmd_s1_victim))
+  cmd_s1_s2_int.payload.metadata := Mux(cmd_s1_hit, cmd_s1_metadata, MuxOH(cmd_s1_victim_oh, cmd_s1_metadata_readout))
 
   cmd_s1_s2_int.payload.req := cmd_s1_req
   cmd_s1_s2_int.payload.chosen := cmd_s1_chosen
-  cmd_s1_s2_int.valid := cmd_s1_valid && !cmd_s1_hr_blocked && !cmd_s1_blocked_by_s2
+  cmd_s1_s2_int.valid := cmd_s1_valid && !cmd_s1_hr_blocked && !cmd_s1_blocked_by_s2 && !cmd_s1_no_avail_victim
 
   val cmd_s2_exit = Bool()
   val cmd_s2_valid = RegInit(False)
@@ -307,6 +316,7 @@ class L2Inst(inst_id: Int)(implicit cfg: MulticoreConfig) extends Component {
 
   val cmd_s2_has_victim = cmd_s2_metadata.valid && !cmd_s2_hit
   // Block s1 if s2 is accessing exactly the same line
+  // TODO: is this actually needed? if !cmd_s2_exit, s1 should never be able to move?
   val cmd_s1_blocked_by_sameline_s2 = cmd_s2_valid && !cmd_s2_exit && cmd_s2_tag_idx === cmd_s1_tag ## cmd_s1_idx
   // Even if s2 exit, next cycle victim will be in mshr, so no !cmd_s2_exit here
   val cmd_s1_blocked_by_victim_s2 = cmd_s2_valid && cmd_s2_has_victim && cmd_s2_victim_tag_idx === cmd_s1_tag ## cmd_s1_idx
@@ -322,9 +332,6 @@ class L2Inst(inst_id: Int)(implicit cfg: MulticoreConfig) extends Component {
   assert(!cmd_s2_coherence_conflict)
   // val cmd_s2_coherence_target: Bits
   // val cmd_s2_coherence_inval: Bool
-
-  val cmd_s2_allocate = !cmd_s2_hit || cmd_s2_coherence_conflict
-  val cmd_s2_hr_allocation_oh = OHMasking.first(mscchrs.map(!_.valid))
 
   // State transfers!
   val cmd_s2_updated_occupation = PriorityMux(Seq(
@@ -350,11 +357,51 @@ class L2Inst(inst_id: Int)(implicit cfg: MulticoreConfig) extends Component {
   cmd_s2_updated_metadata.master_dirty := cmd_s2_updated_master_dirty
   cmd_s2_updated_metadata.occupation := cmd_s2_updated_occupation
   cmd_s2_updated_metadata.tag := cfg.l2.base.tag(cmd_s2_req.addr).asBits
+  // We can write this one multiple times, so no need to gate it
   metadata.write(
     cfg.l2.base.index(cmd_s2_req.addr),
     Vec(Seq.fill(cfg.l2.base.assoc_cnt)({ cmd_s2_updated_metadata })),
     mask = UIntToOh(cmd_s2_assoc, cfg.l2.base.assoc_cnt)
   )
+
+  val cmd_s2_hr_allocate = !cmd_s2_hit || cmd_s2_coherence_conflict
+  val cmd_s2_hr_allocation_oh = OHMasking.first(mscchrs.map(!_.valid))
+  val cmd_s2_hr_free = cmd_s2_hr_allocation_oh.orR
+
+  val cmd_s2_need_coherence = (
+    (cmd_s2_req.op === MemBusOp.occupy && cmd_s2_metadata.occupation =/= cmd_s2_self_mask)
+    // TODO: Actually, when reading, occupation should never be the same as self_mask. Need to assert this
+    || (cmd_s2_req.op === MemBusOp.read && cmd_s2_metadata.master_dirty && cmd_s2_metadata.occupation =/= cmd_s2_self_mask)
+  )
+  val cmd_s2_need_inval = cmd_s2_req.op === MemBusOp.occupy
+
+  for((m, en) <- mscchrs.zip(cmd_s2_hr_allocation_oh)) {
+    when(en && cmd_s2_hr_allocate) {
+      m.addr_r := cmd_s2_req.addr
+      m.addr_w := (cmd_s2_metadata.tag ## cfg.l2.base.index(cmd_s2_req.addr) ## cfg.l2.base.offset(cmd_s2_req.addr)).asUInt
+      m.assoc := cmd_s2_assoc
+      assert(m.cnt_i === 0)
+      assert(m.cnt_r === 0)
+      assert(m.cnt_w === 0)
+      assert(!m.pending_i.orR)
+      assert(!m.pending_r)
+      assert(!m.pending_w)
+      assert(!m.waiting_i.orR)
+      assert(!m.waiting_r)
+      assert(!m.waiting_w)
+
+      val mask_i = Mux(cmd_s2_need_coherence, cmd_s2_metadata.occupation & ~cmd_s2_self_mask, B(0))
+      m.has_i_data := cmd_s2_need_inval
+      m.pending_i := mask_i
+      m.waiting_i := mask_i
+
+      m.pending_w := !cmd_s2_hit && cmd_s2_metadata.dirty
+      m.waiting_w := !cmd_s2_hit && cmd_s2_metadata.dirty
+
+      m.pending_r := !cmd_s2_hit
+      m.waiting_r := !cmd_s2_hit
+    }
+  }
 
   ////////////////////
   // Reading (uplink channel)
@@ -427,9 +474,9 @@ class L2Inst(inst_id: Int)(implicit cfg: MulticoreConfig) extends Component {
     stream.payload.size := 3 // 64 bit
     stream.payload.op := MemBusOp.write
 
-    stream.valid := !m.sent_w && m.has_w && m.valid
+    stream.valid := m.pending_w && m.valid
     when(stream.ready) {
-      m.sent_w := True
+      m.pending_w := False
     }
 
     stream
@@ -444,9 +491,9 @@ class L2Inst(inst_id: Int)(implicit cfg: MulticoreConfig) extends Component {
     stream.payload.size := 3 // 64 bit
     stream.payload.op := MemBusOp.read
 
-    stream.valid := !m.sent_r && m.valid
+    stream.valid := m.pending_r && m.valid
     when(stream.ready) {
-      m.sent_r := True
+      m.pending_r := False
     }
     stream
   }
@@ -488,14 +535,14 @@ class L2Inst(inst_id: Int)(implicit cfg: MulticoreConfig) extends Component {
   writeback_req.payload.we := False
   writeback_req.payload.wdata.assignDontCare()
 
-  assert(!writeback_target_mshr.done_w)
+  assert(writeback_target_mshr.waiting_w)
   assert(writeback_target_mshr.cnt_w === writeback_s0_cnt)
 
   when(writeback_req.fire) {
     writeback_s0_cnt := writeback_s0_cnt + 1
     writeback_target_mshr.cnt_w := writeback_s0_cnt + 1
     when(writeback_s0_cnt.andR) { // Last transfer
-      writeback_target_mshr.done_w := True
+      writeback_target_mshr.waiting_w := False
     }
   }
 
@@ -514,7 +561,10 @@ class L2Inst(inst_id: Int)(implicit cfg: MulticoreConfig) extends Component {
     writeback_s1_valid := writeback_req.fire
   }
 
-  writeback_s0_send := writeMSHRIdxFifo.io.pop.valid && (!writeback_s1_valid || writeback_s1_exit) && !writeback_target_mshr.victim_ongoing_rw
+  val writeback_data_avail = (
+    !writeback_target_mshr.has_i_data || writeback_target_mshr.cnt_i =/= writeback_target_mshr.cnt_w || !writeback_target_mshr.pending_i.orR
+  )
+  writeback_s0_send := writeMSHRIdxFifo.io.pop.valid && (!writeback_s1_valid || writeback_s1_exit) && !writeback_target_mshr.victim_ongoing_rw.orR
   writeMSHRIdxFifo.io.pop.ready := writeback_s0_cnt.andR && (!writeback_s1_valid || writeback_s1_exit)
 
   /**
@@ -524,7 +574,7 @@ class L2Inst(inst_id: Int)(implicit cfg: MulticoreConfig) extends Component {
   val refill_target_mshr = mscchrs(refill_id)
 
   val refill_space_allowed = (
-    !refill_target_mshr.has_w || refill_target_mshr.cnt_w =/= refill_target_mshr.cnt_r || refill_target_mshr.done_w
+    !refill_target_mshr.waiting_w || refill_target_mshr.cnt_w =/= refill_target_mshr.cnt_r
   )
 
   val refill_idx = (refill_target_mshr.assoc ## refill_target_mshr.idx).as(UInt())
@@ -546,12 +596,13 @@ class L2Inst(inst_id: Int)(implicit cfg: MulticoreConfig) extends Component {
   refill_req.payload.we := True
   refill_req.payload.wdata := Duplicate(external_bus.uplink.payload.data, transfer_width_ratio)
 
-  refill_pending_read_fifo.io.push.valid := refill_req.fire && refill_cnt.andR
-  refill_pending_read_fifo.io.push.payload.port_idx := refill_id
-  refill_pending_read_fifo.io.push.payload.addr := refill_target_mshr.addr_r
-  refill_pending_read_fifo.io.push.payload.assoc := refill_target_mshr.assoc
-  refill_pending_read_fifo.io.push.payload.idx := refill_target_mshr.idx
-  refill_pending_read_fifo.io.push.payload.subidx := refill_subidx
+  // FIXME: move to GC
+  // refill_pending_read_fifo.io.push.valid := refill_req.fire && refill_cnt.andR
+  // refill_pending_read_fifo.io.push.payload.port_idx := refill_id
+  // refill_pending_read_fifo.io.push.payload.addr := refill_target_mshr.addr_r
+  // refill_pending_read_fifo.io.push.payload.assoc := refill_target_mshr.assoc
+  // refill_pending_read_fifo.io.push.payload.idx := refill_target_mshr.idx
+  // refill_pending_read_fifo.io.push.payload.subidx := refill_subidx
 
   external_bus.uplink.ready := refill_space_allowed && external_bus.uplink.ready
 
@@ -559,13 +610,20 @@ class L2Inst(inst_id: Int)(implicit cfg: MulticoreConfig) extends Component {
   assert(refill_target_mshr.cnt_r === refill_cnt)
 
   when(refill_req.fire) {
-    assert(!refill_target_mshr.done_r)
+    assert(refill_target_mshr.waiting_r)
 
     refill_cnt := refill_cnt + 1
     refill_target_mshr.cnt_w := refill_cnt + 1
     when(refill_cnt.andR) { // Last transfer
-      assert(!refill_target_mshr.has_w || refill_target_mshr.done_w)
-      refill_target_mshr.valid := False
+      assert(!refill_target_mshr.waiting_w)
+      writeback_target_mshr.waiting_r := False
     }
   }
+
+  ////////////////////
+  // MSCCHR Finialize + GC
+  ////////////////////
+
+  val mscchr_finialize_valid = mscchrs.map(e => !e.waiting_i.orR && !e.waiting_r && !e.waiting_w)
+  // FIXME: impl
 }
