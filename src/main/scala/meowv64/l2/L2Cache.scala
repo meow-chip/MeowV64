@@ -263,7 +263,19 @@ class L2Inst(inst_id: Int)(implicit cfg: MulticoreConfig) extends Component {
     cmd_s1_chosen := cmd_s0_s1_int.payload.chosen
   }
 
-  // TODO: multiple requests in MSHR, do not block by MSHR
+  // TODO: multiple requests in MSCCHR, do not block by MSCCHR
+  /** TODO: Also, maybe we can do a retry queue for each MSCCHR. The entire flow should be as followed:
+    * Each request has a retry_cnt. If it sees a non-conflicting MSCCHR, merge into that MSCCHR. If it sees a conflicting MSCCHR and its
+    * retry_cnt hasn't reached the max count, append to the retry queue.
+    * 
+    * After finalizing the MSCCHR, pop all requests from the retry queue and retry in the cmd pipeline.
+    * Need to be careful that the main pipeline may run out of MSCCHR and block, so we need a sufficiently large drain
+    * to consume the retry queue. This buffer will have length mscchr_cnt * retry_queue_depth + 2 (for the 2 requests already in the pipeline)
+    * 
+    * This buffer takes higher precedence over the masters to avoid deadlock
+    * 
+    * The pipeline should only block if the conflicting MSCCHR run out of retry queue space, or the request reaches max retry_cnt
+    */
 
   val cmd_pre_s1_addr = Mux(cmd_s0_s1_int.fire, cmd_s0_s1_int.payload.req.addr, cmd_s1_req.addr) // Next cycle in S1
   val cmd_s1_tag = cfg.l2.base.tag(cmd_s1_req.addr)
