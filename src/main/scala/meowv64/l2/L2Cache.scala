@@ -133,6 +133,14 @@ class L2Inst(inst_id: Int)(implicit cfg: MulticoreConfig) extends Component {
   // Memories
   val metadata = Mem(Vec(new L2Metadata, cfg.l2.base.assoc_cnt), cfg.l2.base.line_per_assoc)
   metadata.setName(s"L2.$inst_id.Metadata")
+  val metadata_write_idx = UInt(cfg.l2.base.index_width bits)
+  val metadata_write_payload = new L2Metadata
+  val metadata_write_mask = Bits(cfg.l2.base.assoc_cnt bits)
+  metadata.write(
+    metadata_write_idx,
+    Vec(Seq.fill(cfg.l2.base.assoc_cnt)({ metadata_write_payload })),
+    mask = metadata_write_mask,
+  )
 
   implicit val banked_mem_cfg = BankedMemConfig(
     total_size = cfg.l2.base.assoc_size,
@@ -279,24 +287,26 @@ class L2Inst(inst_id: Int)(implicit cfg: MulticoreConfig) extends Component {
   val cmd_s1_tag = cfg.l2.base.tag(cmd_s1_req.addr)
   val cmd_s1_idx = cfg.l2.base.index(cmd_s1_req.addr)
 
-  // FIXME: make sure S3 write is visible here
-  val cmd_s1_metadata_readout = metadata.readSync(cfg.l2.base.index(cmd_pre_s1_addr))
+  // S2 writes are visible here
+  val cmd_s1_metadata_readout = for((readout, we) <- metadata.readSync(cfg.l2.base.index(cmd_pre_s1_addr)).zip(metadata_write_mask.asBools)) yield {
+    Mux(RegNext(we && metadata_write_idx === cfg.l2.base.index(cmd_pre_s1_addr)), RegNext(metadata_write_payload), readout)
+  }
   val cmd_s1_hitmask = cmd_s1_metadata_readout.map(m => m.valid && m.tag === cfg.l2.base.tag(cmd_s2_req.addr).asBits)
   assert(CountOne(cmd_s1_hitmask) <= 1)
   val cmd_s1_hit = Vec(cmd_s1_hitmask).orR
   val cmd_s1_metadata = MuxOH(cmd_s1_hitmask, cmd_s1_metadata_readout)
 
-  // FIXME: mux in mshrcc allocation
-  val cmd_s1_hr_matching_vec = for(m <- mscchrs) yield (
+  val cmd_pre_s1_hr_matching_vec = for(m <- mscchrs) yield (
     cfg.l2.base.index(cmd_pre_s1_addr) === m.idx
-    && cfg.l2.base.tag(m.addr_r) === cfg.l2.base.tag(cmd_pre_s1_addr)
+    && (cfg.l2.base.tag(m.addr_r) === cfg.l2.base.tag(cmd_pre_s1_addr) || cfg.l2.base.tag(m.addr_w) === cfg.l2.base.tag(cmd_pre_s1_addr))
     && m.waiting_r
     // TODO: impl CCHR side
   )
+  val cmd_pre_s1_hr_allocting_matched = Bool()
   val cmd_s1_victim_unavail = RegNext(mscchrs.foldLeft(B(0, cfg.l2.base.assoc_cnt bits))((acc, m: L2MSCCHR) => {
     acc | Mux(m.valid && m.idx === cfg.l2.base.index(cmd_pre_s1_addr), UIntToOh(m.assoc, cfg.l2.base.assoc_cnt), B(0))
   }))
-  val cmd_s1_hr_blocked = RegNext(Vec(cmd_s1_hr_matching_vec).orR)
+  val cmd_s1_hr_blocked = RegNext(Vec(cmd_pre_s1_hr_matching_vec).orR || cmd_pre_s1_hr_allocting_matched)
 
   // TODO: select victim and avoid any ongoing same-idx MSHR
   val cmd_s1_victim_prio = RegInit(B(1, cfg.l2.base.assoc_cnt bits))
@@ -340,10 +350,11 @@ class L2Inst(inst_id: Int)(implicit cfg: MulticoreConfig) extends Component {
   val cmd_s2_victim_tag_idx = cmd_s2_metadata.tag ## cfg.l2.base.index(cmd_s2_req.addr)
 
   val cmd_s2_has_victim = cmd_s2_metadata.valid && !cmd_s2_hit
+
+  // In certain cases, even if s2 is exiting, we need to block s1 (to make it read metadata / MSCCHR one more cycle)
   // Block s1 if s2 is accessing exactly the same line
-  // TODO: is this actually needed? if !cmd_s2_exit, s1 should never be able to move?
-  val cmd_s1_blocked_by_sameline_s2 = cmd_s2_valid && !cmd_s2_exit && cmd_s2_tag_idx === cmd_s1_tag ## cmd_s1_idx
-  // Even if s2 exit, next cycle victim will be in mshr, so no !cmd_s2_exit here
+  val cmd_s1_blocked_by_sameline_s2 = cmd_s2_valid && cmd_s2_tag_idx === cmd_s1_tag ## cmd_s1_idx
+  // Even if s2 exit, next cycle victim will be in mshr
   val cmd_s1_blocked_by_victim_s2 = cmd_s2_valid && cmd_s2_has_victim && cmd_s2_victim_tag_idx === cmd_s1_tag ## cmd_s1_idx
   cmd_s1_blocked_by_s2 := cmd_s1_blocked_by_sameline_s2 || cmd_s1_blocked_by_victim_s2
 
@@ -446,6 +457,15 @@ class L2Inst(inst_id: Int)(implicit cfg: MulticoreConfig) extends Component {
       m.waiting_r := !cmd_s2_hit
     }
   }
+
+  // Feed back allocating MSCCHR info
+  cmd_pre_s1_hr_allocting_matched := cmd_s2_hr_allocate && (
+    cfg.l2.base.index(cmd_pre_s1_addr) === cmd_s2_req.addr
+    && (
+      cfg.l2.base.tag(cmd_pre_s1_addr) === cfg.l2.base.tag(cmd_s2_req.addr)
+      || ((cfg.l2.base.tag(cmd_pre_s1_addr) === cmd_s2_metadata.tag.asUInt) && cmd_s2_metadata.valid)
+    )
+  )
 
   ////////////////////
   // Reading (uplink channel)
@@ -649,14 +669,6 @@ class L2Inst(inst_id: Int)(implicit cfg: MulticoreConfig) extends Component {
   refill_req.payload.we := True
   refill_req.payload.wdata := Duplicate(external_bus.uplink.payload.data, transfer_width_ratio)
 
-  // FIXME: move to GC
-  // refill_pending_read_fifo.io.push.valid := refill_req.fire && refill_cnt.andR
-  // refill_pending_read_fifo.io.push.payload.port_idx := refill_id
-  // refill_pending_read_fifo.io.push.payload.addr := refill_target_mshr.addr_r
-  // refill_pending_read_fifo.io.push.payload.assoc := refill_target_mshr.assoc
-  // refill_pending_read_fifo.io.push.payload.idx := refill_target_mshr.idx
-  // refill_pending_read_fifo.io.push.payload.subidx := refill_subidx
-
   external_bus.uplink.ready := refill_space_allowed && external_bus.uplink.ready
 
   assert(!refill_target_mshr.valid)
@@ -700,6 +712,7 @@ class L2Inst(inst_id: Int)(implicit cfg: MulticoreConfig) extends Component {
   mscchr_read_req.valid := Vec(mscchr_finalize_valid).orR
   mscchr_read_req.payload.port_idx := mscchr_finalize_target.req_port
   mscchr_read_req.payload.addr := mscchr_finalize_target.addr_r
+  mscchr_read_req.payload.assoc := mscchr_finalize_target.assoc
   mscchr_read_req.payload.idx := mscchr_finalize_target.idx
   mscchr_read_req.payload.subidx := mscchr_finalize_target.subidx
 
