@@ -98,7 +98,7 @@ object MemBusSubOpIdx {
 
 // Ids are shared between read and writes
 class MemBusCmd(val params: MemBusParams) extends Bundle {
-  val id = Bits(params.id_width bits)
+  val id = UInt(params.id_width bits)
 
   val op = if(params.bus_type.with_write) MemBusOp() else null
   val subop = if(params.bus_type.with_subop) Bits(5 bits) else null

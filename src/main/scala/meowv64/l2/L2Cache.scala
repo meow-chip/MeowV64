@@ -196,10 +196,9 @@ class L2Inst(inst_id: Int)(implicit cfg: MulticoreConfig) extends Component {
   }
 
   val direct_read_req = Stream(new TargetedPendingRead)
-  val mshr_read_req = Stream(new TargetedPendingRead)
+  val mscchr_read_req = Stream(new TargetedPendingRead)
 
-  val direct_writre_req = Stream(new TargetedPendingWrite)
-  val mshr_writre_req = Stream(new TargetedPendingWrite)
+  val direct_write_req = Stream(new TargetedPendingWrite)
   // FIXME: Schedule reads / writes
 
   // TODO: queue
@@ -418,6 +417,9 @@ class L2Inst(inst_id: Int)(implicit cfg: MulticoreConfig) extends Component {
 
   for((m, en) <- mscchrs.zip(cmd_s2_hr_allocation_oh)) {
     when(en && cmd_s2_hr_allocate) {
+      m.req_id := cmd_s2_req.id
+      m.req_port := cmd_s2_chosen
+
       m.addr_r := cmd_s2_req.addr
       m.addr_w := (cmd_s2_metadata.tag ## cfg.l2.base.index(cmd_s2_req.addr) ## cfg.l2.base.offset(cmd_s2_req.addr)).asUInt
       m.assoc := cmd_s2_assoc
@@ -690,6 +692,21 @@ class L2Inst(inst_id: Int)(implicit cfg: MulticoreConfig) extends Component {
   // MSCCHR Finialize + GC
   ////////////////////
 
-  val mscchr_finialize_valid = mscchrs.map(e => !e.waiting_i.orR && !e.waiting_r && !e.waiting_w)
-  // FIXME: impl
+  val mscchr_finalize_valid = mscchrs.map(e => e.valid && !e.waiting_i.orR && !e.waiting_r && !e.waiting_w)
+  val mscchr_finalize_arb_prio = Reg(B(1, cfg.l2.mscchr_cnt bits))
+  mscchr_finalize_arb_prio := mscchr_finalize_arb_prio(0) ## mscchr_finalize_arb_prio >> 1
+  val mscchr_finalize_arb = OHMasking.roundRobin(Vec(mscchr_finalize_valid).asBits, mscchr_finalize_arb_prio).asBools
+  val mscchr_finalize_target = MuxOH(mscchr_finalize_arb, mscchrs)
+
+  mscchr_read_req.valid := Vec(mscchr_finalize_valid).orR
+  mscchr_read_req.payload.port_idx := mscchr_finalize_target.req_port
+  mscchr_read_req.payload.addr := mscchr_finalize_target.addr_r
+  mscchr_read_req.payload.idx := mscchr_finalize_target.idx
+  mscchr_read_req.payload.subidx := mscchr_finalize_target.subidx
+
+  for((m, arb) <- mscchrs.zip(mscchr_finalize_arb)) {
+    when(arb && mscchr_read_req.ready) {
+      m.valid := False
+    }
+  }
 }
