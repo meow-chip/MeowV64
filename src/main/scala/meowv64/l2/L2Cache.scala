@@ -145,7 +145,7 @@ class L2Inst(inst_id: Int)(implicit cfg: MulticoreConfig) extends Component {
   implicit val banked_mem_cfg = BankedMemConfig(
     total_size = cfg.l2.base.assoc_size,
     access_size = internal_bus(0).frontend.params.data_width / 8,
-    concurrency = 4, subbank_cnt = 1,
+    max_concurrency = 4, subbank_cnt = 1,
 
     /**
       * Ports in decreasing priority:

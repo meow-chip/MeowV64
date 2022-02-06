@@ -1,4 +1,4 @@
-package meowv64.l2
+package meowv64.util
 
 import spinal.core._
 import spinal.lib._
@@ -10,8 +10,8 @@ case class BankedMemConfig(
   // Width per access in bytes
   access_size: Int,
 
-  // How many concurrent access can be made
-  concurrency: Int,
+  // Maximum number of concurrent access when sbe is full
+  max_concurrency: Int,
 
   // In total, how many subbanks are there in each concurrency bank
   subbank_cnt: Int,
@@ -20,13 +20,13 @@ case class BankedMemConfig(
   port_cnt: Int,
 ) {
   // Byte sizes for all banks combined
-  def row_size = access_size * concurrency
+  def row_size = access_size * max_concurrency
   // How many rows are there (depth of each bank)
   def row_cnt = total_size / row_size
   // Bit width of each subbank
   def subbank_size = access_size / subbank_cnt
   // Width of bankidx
-  def bankidx_width = log2Up(concurrency)
+  def bankidx_width = log2Up(max_concurrency)
 
   def bankidx(idx: UInt) = idx(0, bankidx_width bits)
   def memidx(idx: UInt) = idx >> bankidx_width
@@ -58,7 +58,7 @@ class BankedMem(name: String)(implicit cfg: BankedMemConfig) extends Component {
     port
   })
 
-  val banks = (0 to cfg.concurrency).map(idx => {
+  val banks = (0 to cfg.max_concurrency).map(idx => {
     (0 to cfg.subbank_cnt).map(sidx => {
       val bank = Mem(Bits(cfg.subbank_size * 8 bits), cfg.row_cnt)
       bank.setName(s"$name / Bank $idx.$sidx")
@@ -69,11 +69,11 @@ class BankedMem(name: String)(implicit cfg: BankedMemConfig) extends Component {
   // If higer prioritized port is already blocked
   var allowed = True
   // Usage by higher prioritized port
-  var used = B(0, cfg.concurrency bits)
+  var used = B(0, cfg.max_concurrency bits)
 
   val usage = for(port <- ports) yield {
     val bidx = cfg.bankidx(port.req.payload.idx)
-    val bidx_oh = UIntToOh(bidx, cfg.concurrency)
+    val bidx_oh = UIntToOh(bidx, cfg.max_concurrency)
     val can_schedule = !(bidx_oh & used).orR
 
     used := used | (Vec.fill(0)(port.req.valid).asBits & bidx_oh)
