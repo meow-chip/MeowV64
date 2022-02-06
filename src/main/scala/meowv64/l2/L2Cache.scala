@@ -25,18 +25,16 @@ class L2Cache(implicit cfg: MulticoreConfig) extends Component {
   for((l, r) <- banks(0).internal_bus.zip(internal_bus)) l <> r
 }
 
-class PendingInv extends Bundle with MatchedData[UInt] {
+class PendingInv extends Bundle {
   val valid = Bool()
 
   val is_invalidation = Bool() // If not, is 
   val sent = Bool() // If true, already sent to master, but has pending data write
 
   val addr = UInt(Consts.MAX_PADDR_WIDTH bits)
-
-  def matched(matcher: UInt): Bool = addr === matcher
 }
 
-class PendingWrite(implicit cfg: MulticoreConfig) extends Bundle {
+class PendingWrite(implicit cfg: MulticoreConfig) extends Bundle with MatchedData[UInt] {
   val valid = Bool()
 
   val addr = UInt(Consts.MAX_PADDR_WIDTH bits)
@@ -46,6 +44,8 @@ class PendingWrite(implicit cfg: MulticoreConfig) extends Bundle {
   val cnt = UInt(log2Up(cfg.l2.base.line_width / cfg.cores(0).membus_params(Frontend).data_width) bits)
 
   val associated_inv = UInt(log2Up(cfg.l2.max_pending_inv) bits)
+
+  def matched(matcher: UInt): Bool = cfg.l2.base.tag(addr) === cfg.l2.base.tag(matcher) && cfg.l2.base.index(addr) === cfg.l2.base.index(matcher)
 }
 
 class PendingReadHead(implicit cfg: MulticoreConfig) extends Bundle {
@@ -59,7 +59,7 @@ class PendingRead(implicit cfg: MulticoreConfig) extends Bundle with MatchedData
   val idx = UInt(cfg.l2.base.index_width bits)
   val subidx = UInt(log2Up(cfg.l2.base.line_width / cfg.cores(0).membus_params(Frontend).data_width) bits)
 
-  def matched(matcher: UInt): Bool = addr === matcher
+  def matched(matcher: UInt): Bool = cfg.l2.base.tag(addr) === cfg.l2.base.tag(matcher) && cfg.l2.base.index(addr) === cfg.l2.base.index(matcher)
 }
 
 /**
@@ -78,7 +78,7 @@ class L2MSCCHR(implicit cfg: MulticoreConfig) extends Bundle {
 
   // Master is reading/writing victim. Can send writeback / refill request, but cannot accept data yet, nor cannot invalidate master
   // TODO: how to wakeup?
-  val victim_ongoing_rw = UInt()
+  val victim_ongoing_rw = UInt(log2Up(cfg.cores.length * (2 * cfg.l2.max_pending_read + cfg.l2.max_pending_write)) bits)
 
   // TODO: only store one idx##offset for addr_r and addr_w
   val addr_r = UInt(addr_width bits) // Keyword first
@@ -151,33 +151,6 @@ class L2Inst(inst_id: Int)(implicit cfg: MulticoreConfig) extends Component {
   )
   val data = new BankedMem(s"L2.$inst_id.Data")
 
-  // Pendings
-  val pending_writes = src.flatMap(bus => if(bus.params.bus_type.with_write) Some(Reg(new PendingWrite)) else None)
-  val pending_invs = src.flatMap(bus =>
-    if(bus.params.bus_type.with_coherence)
-      Some(new MatchingQueue(new PendingInv, UInt(Consts.MAX_PADDR_WIDTH bits), cfg.l2.max_pending_inv))
-    else
-      None
-  )
-  val pending_read_heads = src.map(_ => Reg(new PendingReadHead))
-  val pending_reads = src.map(_ => new MatchingQueue(new PendingRead, UInt(Consts.MAX_PADDR_WIDTH bits), cfg.l2.max_pending_read))
-  require(pending_writes.length == cfg.cores.length)
-
-  class TargetedPendingRead extends PendingRead {
-    val port_idx = UInt(log2Up(src.length) bits)
-  }
-
-  val direct_read_req = Stream(new TargetedPendingRead)
-  val refill_pending_read_fifo = StreamFifo(new TargetedPendingRead, cfg.l2.mscchr_related_fifo_depth)
-  // FIXME: consume refill_pending_read_fifo
-
-  // TODO: queue
-  val cmd_arb = new StreamArbiter(new MemBusCmd(src(0).params), src.length)(StreamArbiter.Arbitration.roundRobin, StreamArbiter.Lock.none)
-  (cmd_arb.io.inputs, src).zipped.foreach(_ <> _.cmd)
-  val downlink_arb = StreamArbiterFactory.roundRobin.noLock.on(src.map(_.downlink).filter(_ != null)) // core_cnt sources
-  val resp_arb = StreamArbiterFactory.roundRobin.noLock.on(src.map(_.resp).filter(_ != null)) // core_cnt sources
-  // Ack channel doesn't need to be arbitered
-
   // Banked memory ports
   val writeback_req = Stream(new BankedMemReq)
   val refill_req = Stream(new BankedMemReq)
@@ -193,6 +166,48 @@ class L2Inst(inst_id: Int)(implicit cfg: MulticoreConfig) extends Component {
   val invresp_resp = data.ports(2)
   val write_resp = data.ports(3)
   val read_resp = data.ports(4)
+
+  // Pendings
+  val pending_writes = src.flatMap(bus => (
+    if(bus.params.bus_type.with_write)
+      Some(new MatchingQueue(new PendingWrite, UInt(Consts.MAX_PADDR_WIDTH bits), cfg.l2.max_pending_write))
+    else None
+  ))
+  // Unfinished invalidates must corresponds to MSCCHR, so there is no need to match / wakeup other MSCCHRs
+  val pending_invs = src.flatMap(bus =>
+    if(bus.params.bus_type.with_coherence)
+      Some(new StreamFifo(new PendingInv, cfg.l2.max_pending_inv))
+    else
+      None
+  )
+  val pending_read_heads = src.map(_ => Reg(new PendingReadHead))
+  val pending_reads = src.map(_ => new MatchingQueue(new PendingRead, UInt(Consts.MAX_PADDR_WIDTH bits), cfg.l2.max_pending_read))
+  require(pending_writes.length == cfg.cores.length)
+
+  // Wakeups from read/write port
+  val wakeup_reads = src.map(_ => Flow(UInt(Consts.MAX_PADDR_WIDTH bits)))
+  val wakeup_writes = src.flatMap(e => if(e.params.bus_type.with_write) Some(Flow(UInt(Consts.MAX_PADDR_WIDTH bits))) else None)
+
+  class TargetedPendingRead extends PendingRead {
+    val port_idx = UInt(log2Up(src.length) bits)
+  }
+  class TargetedPendingWrite extends PendingWrite {
+    val port_idx = UInt(log2Up(src.length) bits)
+  }
+
+  val direct_read_req = Stream(new TargetedPendingRead)
+  val mshr_read_req = Stream(new TargetedPendingRead)
+
+  val direct_writre_req = Stream(new TargetedPendingWrite)
+  val mshr_writre_req = Stream(new TargetedPendingWrite)
+  // FIXME: Schedule reads / writes
+
+  // TODO: queue
+  val cmd_arb = new StreamArbiter(new MemBusCmd(src(0).params), src.length)(StreamArbiter.Arbitration.roundRobin, StreamArbiter.Lock.none)
+  (cmd_arb.io.inputs, src).zipped.foreach(_ <> _.cmd)
+  val downlink_arb = StreamArbiterFactory.roundRobin.noLock.on(src.map(_.downlink).filter(_ != null)) // core_cnt sources
+  val resp_arb = StreamArbiterFactory.roundRobin.noLock.on(src.map(_.resp).filter(_ != null)) // core_cnt sources
+  // Ack channel doesn't need to be arbitered
 
   // MSHRs
   val mscchrs = Reg(Vec(new L2MSCCHR, cfg.l2.mscchr_cnt))
@@ -376,6 +391,19 @@ class L2Inst(inst_id: Int)(implicit cfg: MulticoreConfig) extends Component {
   )
   val cmd_s2_need_inval = cmd_s2_req.op === MemBusOp.occupy
 
+  // Counting ongoing pending requests
+  for(p <- pending_reads) {
+    p.matcher := cmd_s2_req.addr
+  }
+  for(p <- pending_writes) {
+    p.matcher := cmd_s2_req.addr
+  }
+  val cmd_s2_ongoing_bitmask = Seq(
+    pending_reads.map(_.matched),
+    pending_writes.map(_.matched)
+  ).flatten.seq.asBits
+  val cmd_s2_ongoing_cnt = CountOne(cmd_s2_ongoing_bitmask)
+
   for((m, en) <- mscchrs.zip(cmd_s2_hr_allocation_oh)) {
     when(en && cmd_s2_hr_allocate) {
       m.addr_r := cmd_s2_req.addr
@@ -390,6 +418,8 @@ class L2Inst(inst_id: Int)(implicit cfg: MulticoreConfig) extends Component {
       assert(!m.waiting_i.orR)
       assert(!m.waiting_r)
       assert(!m.waiting_w)
+
+      m.victim_ongoing_rw := cmd_s2_ongoing_cnt
 
       val mask_i = Mux(cmd_s2_need_coherence, cmd_s2_metadata.occupation & ~cmd_s2_self_coherence_mask, B(0))
       m.has_i_data := cmd_s2_need_inval
@@ -438,11 +468,20 @@ class L2Inst(inst_id: Int)(implicit cfg: MulticoreConfig) extends Component {
     uplink.valid := s1_read_arb_oh(pidx) && s1_read_arb_fire
   }
 
+  for((p, w) <- pending_reads.zip(wakeup_reads)) {
+    w.payload := RegNext(p.pop.payload.addr)
+    w.valid := RegNext(p.pop.fire)
+  }
   ////////////////////
   // downlink channel
   ////////////////////
 
   // TODO
+
+  for((p, w) <- pending_writes.zip(wakeup_writes)) {
+    w.payload := RegNext(p.pop.payload.addr)
+    w.valid := RegNext(p.pop.fire)
+  }
 
   ////////////////////
   // resp channel
@@ -591,7 +630,7 @@ class L2Inst(inst_id: Int)(implicit cfg: MulticoreConfig) extends Component {
   val refill_sbe = ExpandInterleave(refill_bitmask, refill_bitmask_expand_ratio)
 
   // TODO: refill_req.valid timing probably too bad?
-  refill_req.valid := refill_space_allowed && external_bus.uplink.valid && refill_pending_read_fifo.io.push.ready
+  refill_req.valid := refill_space_allowed && external_bus.uplink.valid
   refill_req.payload.sbe := refill_sbe
   refill_req.payload.idx := (refill_major + refill_subidx) + refill_idx
   refill_req.payload.we := True
@@ -619,6 +658,20 @@ class L2Inst(inst_id: Int)(implicit cfg: MulticoreConfig) extends Component {
       assert(!refill_target_mshr.waiting_w)
       writeback_target_mshr.waiting_r := False
     }
+  }
+
+  ////////////////////
+  // MSCCHR Wakeup
+  ////////////////////
+  for(m <- mscchrs) {
+    val matched_wakeups = (wakeup_reads ++ wakeup_writes).map(
+      e => e.valid
+      && cfg.l2.base.index(m.addr_w) === cfg.l2.base.index(e.payload)
+      && cfg.l2.base.tag(m.addr_w) === cfg.l2.base.tag(e.payload)
+    )
+    val matched_wakeups_cnt = CountOne(matched_wakeups)
+    assert(m.victim_ongoing_rw >= matched_wakeups_cnt)
+    m.victim_ongoing_rw := m.victim_ongoing_rw - matched_wakeups_cnt
   }
 
   ////////////////////

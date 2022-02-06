@@ -12,7 +12,7 @@ class MatchingQueue[M <: Data, T <: MatchedData[M]](t: T, m: M, depth: Int) exte
   val push = slave Stream(t)
   val pop = master Stream(t)
   val matcher = in(m)
-  val matched = out Bool()
+  val matched = if(depth == 0) null else out Bits(depth bit)
 
   require(isPow2(depth))
 
@@ -20,7 +20,6 @@ class MatchingQueue[M <: Data, T <: MatchedData[M]](t: T, m: M, depth: Int) exte
     pop.valid := push.valid
     push.ready := pop.ready
     pop.payload := push.payload
-    matched := False
   } else {
     val storage = Reg(Vec(t, depth))
     val valids = RegInit(B(0, depth bits))
@@ -44,6 +43,6 @@ class MatchingQueue[M <: Data, T <: MatchedData[M]](t: T, m: M, depth: Int) exte
       valids := Mux(push.fire, valids << 1 | 1, valids >> 1)
     }
 
-    matched := Vec(storage.zip(valids.asBools).map({ case (t, v) => v && t.matched(matcher) })).orR
+    matched := Vec(storage.zip(valids.asBools).map({ case (t, v) => v && t.matched(matcher) })).asBits
   }
 }
