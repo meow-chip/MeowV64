@@ -199,7 +199,6 @@ class L2Inst(inst_id: Int)(implicit cfg: MulticoreConfig) extends Component {
   val mscchr_read_req = Stream(new TargetedPendingRead)
 
   val direct_write_req = Stream(new TargetedPendingWrite)
-  // FIXME: Schedule reads / writes
 
   // TODO: queue
   val cmd_arb = new StreamArbiter(new MemBusCmd(src(0).params), src.length)(StreamArbiter.Arbitration.roundRobin, StreamArbiter.Lock.none)
@@ -708,5 +707,32 @@ class L2Inst(inst_id: Int)(implicit cfg: MulticoreConfig) extends Component {
     when(arb && mscchr_read_req.ready) {
       m.valid := False
     }
+  }
+
+  ////////////////////
+  // pending_read / pending_write scheduler
+  ////////////////////
+  mscchr_read_req.ready := Vec(pending_reads.map(_.push.ready))(mscchr_read_req.payload.port_idx)
+  direct_read_req.ready := (
+      direct_read_req.payload.port_idx =/= mscchr_read_req.payload.port_idx
+      || !mscchr_read_req.valid
+    ) && Vec(pending_reads.map(_.push.ready))(direct_read_req.payload.port_idx)
+  
+  for((r, idx) <- pending_reads.zipWithIndex) {
+    r.push.payload := Mux((mscchr_read_req.valid && mscchr_read_req.port_idx === idx),
+      mscchr_read_req.payload,
+      mscchr_read_req.payload,
+    )
+
+    r.push.valid := (
+      (mscchr_read_req.valid && mscchr_read_req.port_idx === idx)
+      || (direct_read_req.valid && direct_read_req.port_idx === idx)
+    )
+  }
+
+  direct_write_req.ready := Vec(pending_writes.map(_.push.ready))(direct_write_req.payload.port_idx)
+  for((w, idx) <- pending_writes.zipWithIndex) {
+    w.push.payload := direct_write_req.payload
+    w.push.valid := direct_write_req.valid && direct_write_req.port_idx === idx
   }
 }
