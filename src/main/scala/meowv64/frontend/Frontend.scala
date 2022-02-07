@@ -23,15 +23,6 @@ class PCGen(implicit cfg: CoreConfig) extends Bundle {
   // TODO: halt reason
 }
 
-object PCGen {
-  def default(implicit cfg: CoreConfig) = {
-    val v = new PCGen
-    v.halt := False
-    v.pc := U(cfg.init_vec)
-    v
-  }
-}
-
 /**
   * Frontend root class
   */
@@ -43,7 +34,9 @@ class Frontend(implicit cfg: CoreConfig) {
   /**
     * Current PC
     */
-  val pc = RegInit(PCGen.default)
+  val pc = Reg(new PCGen)
+  pc.halt init(False)
+  pc.pc init(cfg.init_vec)
 
   /**
     * Pipeline flow
@@ -83,7 +76,7 @@ class Frontend(implicit cfg: CoreConfig) {
     */
   val s0_pc_offset = (pc.pc >> log2Up(Consts.INSTR_WIDTH))(0, log2Up(cfg.fetch_width) bits)
   val s0_pc_aligned = (pc.pc >> log2Up(Consts.INSTR_WIDTH * cfg.fetch_width)) ## U(0, log2Up(Consts.INSTR_WIDTH * cfg.fetch_width) bits)
-  val s0_pc_mask = B(-1, cfg.fetch_width bits) << s0_pc_offset
+  val s0_pc_mask = B(BigInt(2).pow(cfg.fetch_width) - 1, cfg.fetch_width bits) << s0_pc_offset
 
   val s1_pc_aligned = RegNextWhen(s0_pc_aligned, flow)
 

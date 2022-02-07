@@ -54,8 +54,12 @@ class MemBus(val params: MemBusParams) extends Bundle with IMasterSlave {
   val ack = if(params.bus_type.with_coherence) Stream(new MemBusOccupyAck(params)) else null
 
   override def asMaster(): Unit = {
-    master(cmd, downlink, resp)
-    slave(uplink, inv)
+    master(cmd)
+    slave(uplink)
+    if(downlink != null) master(downlink)
+    if(inv != null) slave(inv)
+    if(resp != null) master(resp)
+    if(ack != null) master(ack)
   }
 
   object ToAxi4Config extends Axi4Config(

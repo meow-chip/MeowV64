@@ -24,7 +24,7 @@ case class CoreConfig(
 
 object DefaultCoreConfig extends CoreConfig(
   xlen = 64,
-  init_vec = BigInt("0x80000000"),
+  init_vec = BigInt("80000000", 16),
   fetch_width = 8,
   decode_width = 4,
 

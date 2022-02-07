@@ -6,10 +6,8 @@ import coursier.maven.MavenRepository
 
 val spinalVer = "1.6.0"
 val defaultVersions = Map(
-  "spinalhdl-core" -> ("com.github.spinalhdl", spinalVer, false),
-  "spinalhdl-lib" -> ("com.github.spinalhdl", spinalVer, false),
-  "spinalhdl-idsl-plugin" -> ("com.github.spinalhdl", spinalVer, false),
-  "scalatest" -> ("org.scalatest", "3.2.10", false)
+  "chisel3" -> ("edu.berkeley.cs", "3.5.0", false),
+  "chisel3-plugin" -> ("edu.berkeley.cs", "3.5.0", true),
 )
 
 val commonScalaVersion = "2.12.13"
@@ -29,27 +27,11 @@ object meowv64 extends SbtModule with ScalafmtModule {
   override def millSourcePath = os.pwd
 
   override def ivyDeps = super.ivyDeps() ++ Agg(
-    getVersion("spinalhdl-core"),
-    getVersion("spinalhdl-lib"),
-    getVersion("scalatest")
+    getVersion("chisel3"),
   )
 
   override def scalacPluginIvyDeps = super.scalacPluginIvyDeps() ++ Agg(
-    getVersion("spinalhdl-idsl-plugin")
+    getVersion("chisel3-plugin")
   )
 
-  object test
-      extends Tests
-      with TestModule.ScalaTest
-      with ScalafmtModule {
-    override def ivyDeps = super.ivyDeps() ++ Agg(
-      getVersion("spinalhdl-core"),
-      getVersion("spinalhdl-lib"),
-      getVersion("scalatest")
-    )
-
-    override def scalacPluginIvyDeps = super.scalacPluginIvyDeps() ++ Agg(
-      getVersion("spinalhdl-idsl-plugin")
-    )
-  }
 }

@@ -17,11 +17,11 @@ class InstrCache(implicit cfg: CoreConfig) extends Component {
     val s0_vaddr = slave Flow (cfg.rint)
     val s1_paddr = in UInt(Consts.MAX_PADDR_WIDTH bits) // When s1 is invalid, this is ignored
   }
-  val output = new Bundle {
-    val fetched = out(FetchVec)
+  val output = out(new Bundle {
+    val fetched = Vec(Consts.ibits, cfg.fetch_width)
     // When paused, pipeline is stalled, s0_vaddr is not accepted
     val paused = Bool()
-  }
+  })
 
   val data_offset_width = cfg.fetch_width * Consts.INSTR_WIDTH
   // Used for assertion only
