@@ -13,6 +13,8 @@ class BPU(implicit cfg: CoreConfig) extends Component {
     // TODO: mask
   }
 
+  val pause = in Bool() // Pipeline pause
+
   val preds = new Bundle {
 
     // NPC, fetch PC when instruction in ICache s1

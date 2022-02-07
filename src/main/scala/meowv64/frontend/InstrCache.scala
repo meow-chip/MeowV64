@@ -36,7 +36,7 @@ class InstrCache(implicit cfg: CoreConfig) extends Component {
   // FIXME: impls kill s2
   assert(!kills.s2)
 
-  val membus = master (new MemBus(cfg.membus_params(Frontend)))
+  val mem = master (new MemBus(cfg.membus_params(Frontend)))
 
   // The entire pipeline is flowing
   val flow = Bool()
@@ -203,21 +203,21 @@ class InstrCache(implicit cfg: CoreConfig) extends Component {
   ////////////////////
   // Refilling
   ////////////////////
-  membus.cmd.payload.id := 0
-  membus.cmd.payload.addr := s2_paddr
-  membus.cmd.valid := mshr.valid && mshr.pending
+  mem.cmd.payload.id := 0
+  mem.cmd.payload.addr := s2_paddr
+  mem.cmd.valid := mshr.valid && mshr.pending
   when(mshr.pending) {
     assert(mshr.cnt === 0)
   }
-  when(membus.cmd.fire) {
+  when(mem.cmd.fire) {
     mshr.pending := False
   }
 
-  val uplink_data = membus.uplink.data.as(FetchVec)
+  val uplink_data = mem.uplink.data.as(FetchVec)
   val uplink_write = Bool()
-  membus.uplink.ready := True
+  mem.uplink.ready := True
 
-  when(membus.uplink.fire) {
+  when(mem.uplink.fire) {
     mshr.cnt := mshr.cnt + 1
     when(mshr.cnt.andR) {
       // Last transfer
@@ -229,7 +229,7 @@ class InstrCache(implicit cfg: CoreConfig) extends Component {
   require(s0_data_subidx.getBitsWidth == mshr.cnt.getBitsWidth)
   val data_write_idx = (mshr.assoc ## mshr.idx ## (mshr.subidx + mshr.cnt)).as(UInt())
 
-  data_write.req.valid := membus.uplink.fire
+  data_write.req.valid := mem.uplink.fire
   when(data_write.req.valid) {
     assert(data_write.req.ready)
   }
@@ -237,7 +237,7 @@ class InstrCache(implicit cfg: CoreConfig) extends Component {
   data_write.req.payload.idx := data_write_idx
   data_write.req.sbe := B(1)
   data_write.req.we := True
-  data_write.req.wdata := membus.uplink.payload.data
+  data_write.req.wdata := mem.uplink.payload.data
 
   // We don't need to depend on valid here, because if invalid, cnt is not incremented, and s2 cannot exit in the next cycle
   s2_data := Mux(RegNext(data_read.req.payload.idx === data_write_idx), RegNext(data_write.req.wdata), data_read.readout).as(FetchVec)
