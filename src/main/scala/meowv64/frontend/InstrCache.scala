@@ -23,11 +23,11 @@ class InstrCache(implicit cfg: CoreConfig) extends Module {
     val paused = Bool()
   }))
 
-  val data_offset_width = cfg.fetch_width * Consts.INSTR_WIDTH
+  val data_offset_width = log2Ceil(cfg.fetch_width * Consts.INSTR_WIDTH / 8)
   // Used for assertion only
-  val s0_data_subidx = input.s0_vaddr.bits(0, cfg.ic.offset_width - data_offset_width)
+  val s0_data_subidx = input.s0_vaddr.bits(cfg.ic.offset_width - data_offset_width - 1, 0)
 
-  assert(input.s0_vaddr.fire && input.s0_vaddr.bits(0, data_offset_width) === 0.U, "PC should be aligned")
+  assert(input.s0_vaddr.fire && input.s0_vaddr.bits(data_offset_width - 1, 0) === 0.U, "PC should be aligned")
 
   val kills = IO(new Bundle {
     val s1 = Input(Bool())
@@ -39,7 +39,7 @@ class InstrCache(implicit cfg: CoreConfig) extends Module {
   val mem = IO(new MemBus(cfg.membus_params(Frontend)))
 
   // The entire pipeline is flowing
-  val flow = Bool()
+  val flow = Wire(Bool())
 
   // Validity in each stage
   val s0_valid = input.s0_vaddr.valid
@@ -56,13 +56,10 @@ class InstrCache(implicit cfg: CoreConfig) extends Module {
   // States
   ////////////////////
   def FetchVec = Vec(cfg.fetch_width, Consts.ibits)
-  val fetch_per_line = cfg.ic.line_width / cfg.fetch_width
+  val fetch_per_line = cfg.ic.line_width / cfg.fetch_width / Consts.INSTR_WIDTH
 
   // Valid matrix
-  val valids = RegInit(Vec(
-    cfg.ic.line_per_assoc,
-    0.U(cfg.ic.assoc_cnt.W),
-  ))
+  val valids = RegInit(VecInit(Seq.fill(cfg.ic.line_per_assoc)(0.U(cfg.ic.assoc_cnt.W))))
 
   // Tag memory
   val tags = SyncReadMem(
@@ -71,13 +68,13 @@ class InstrCache(implicit cfg: CoreConfig) extends Module {
   )
 
   // Data memory
-  val data = new BankedMem("L1I Data")(BankedMemConfig(
+  val data = Module(new BankedMem()(BankedMemConfig(
     total_size = cfg.ic.assoc_size * cfg.ic.assoc_cnt,
     access_size = FetchVec.getWidth / 8,
     max_concurrency = 4,
     subbank_cnt = 1,
     port_cnt = 2,
-  ))
+  )))
 
   val data_read = data.ports(1)
   val data_write = data.ports(0)
@@ -106,7 +103,9 @@ class InstrCache(implicit cfg: CoreConfig) extends Module {
   val pre_s1_idx = cfg.ic.index(
     Mux(flow, input.s0_vaddr.bits, s1_vaddr)
   )
-  val s1_valids = RegNext(valids(pre_s1_idx))
+  // To perserve width
+  val s1_valids = Reg(valids(pre_s1_idx).cloneType)
+  s1_valids := valids(pre_s1_idx)
 
   require(log2Ceil(cfg.ic.line_per_assoc * fetch_per_line) == s0_data_subidx.getWidth + pre_s1_idx.getWidth)
 
@@ -115,7 +114,7 @@ class InstrCache(implicit cfg: CoreConfig) extends Module {
   val s1_hit = s1_hits.asUInt.orR
   val s1_victim = 0.U // TODO: get a real impl
   val s1_victim_tag = s1_tags(s1_victim)
-  val s1_victimized = Bool()
+  val s1_victimized = Wire(Bool())
 
   val s1_assoc = Mux(s1_hit, OHToUInt(s1_hits), s1_victim)
   // TODO: Actually this can just be OHToUInt(s1_hits), because if we miss, we have to stay in s2 for at least one cycle
@@ -136,7 +135,7 @@ class InstrCache(implicit cfg: CoreConfig) extends Module {
   }
 
   val mshr = RegInit({
-    val m = new MSHR
+    val m = Wire(new MSHR)
     m := DontCare
     m.valid := false.B
     m
@@ -162,7 +161,7 @@ class InstrCache(implicit cfg: CoreConfig) extends Module {
   data_read.req.bits.sbe := -1.S.asUInt
   data_read.req.bits.wdata := DontCare
 
-  val s2_mshr_alloc = DecoupledIO(new Bundle {})
+  val s2_mshr_alloc = Wire(DecoupledIO(new Bundle {}))
   s2_mshr_alloc.valid := !s2_hit
   s2_mshr_alloc.ready := !mshr.valid
   when(s2_mshr_alloc.fire) {
@@ -188,7 +187,7 @@ class InstrCache(implicit cfg: CoreConfig) extends Module {
   val s2_blocked_by_mshr = mshr.idx === s2_idx && mshr.cnt > (s2_subidx - mshr.idx)
 
   // Forwarded at MSHR refill
-  val s2_data = FetchVec.cloneType
+  val s2_data = Wire(FetchVec.cloneType)
 
   output.fetched := s2_data
   output.paused := !flow

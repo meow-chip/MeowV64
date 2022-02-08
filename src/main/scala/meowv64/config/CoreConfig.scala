@@ -17,7 +17,7 @@ case class CoreConfig(
   def membus_params(bus_type: MemBusType) = MemBusParams(
     bus_type,
     addr_width = xlen,
-    data_width = xlen,
+    data_width = if(bus_type == Uncached) xlen else fetch_width * Consts.INSTR_WIDTH,
     id_width = 4,
   )
 }

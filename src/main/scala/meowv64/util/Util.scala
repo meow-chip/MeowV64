@@ -8,7 +8,7 @@ object FirstOneOH {
     val p = if(prio == null) 1.U(bits.getWidth) else prio
     val double_bits = bits ## (bits & (LeftOr(p) >> 1))
     val double_grant = double_bits & (LeftOr(double_bits) >> 1)
-    (double_grant >> bits.getWidth) | double_grant(bits.getWidth, 0)
+    (double_grant >> bits.getWidth) | double_grant(bits.getWidth - 1, 0)
   }
 
   def apply(bits: UInt): UInt = {

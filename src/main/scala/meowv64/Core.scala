@@ -14,7 +14,7 @@ class Core(implicit cfg: CoreConfig) extends Module {
   val eint = IO(Input(Bool())) // From PLIC
   val sint = IO(Input(Bool())) // From CLINT
 
-  val frontend = new Frontend
+  val frontend = Module(new Frontend)
 
   frontend.mem <> mem_fe
   frontend.branch.valid := false.B
@@ -30,7 +30,5 @@ class Core(implicit cfg: CoreConfig) extends Module {
   mem_uc := DontCare
   mem_uc.cmd.valid := false.B
   mem_uc.downlink.valid := false.B
-  mem_uc.ack.valid := false.B
   mem_uc.uplink.ready := false.B
-  mem_uc.inv.ready := false.B
 }

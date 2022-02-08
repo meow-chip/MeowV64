@@ -10,9 +10,9 @@ class Multicore(implicit cfg: MulticoreConfig) extends Module {
   val eints = IO(Input(UInt(cfg.eint_cnt.W)))
 
   val cores = cfg.cores.map(
-    implicit cfg => new Core
+    implicit cfg => Module(new Core)
   )
-  val l2 = new L2Cache
+  val l2 = Module(new L2Cache)
   val core_ucs = for((c, b) <- cores.zip(l2.internal_bus)) yield {
     c.mem_fe <> b.frontend
     c.mem_be <> b.backend

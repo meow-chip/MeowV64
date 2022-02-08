@@ -25,7 +25,7 @@ class MatchingQueue[M <: Data, T <: MatchedData[M]](t: T, m: M, depth: Int) exte
     val valids = RegInit(0.U(depth.W))
     val ptr = RegInit(0.U(log2Ceil(depth).W))
 
-    val nptr = ptr.cloneType
+    val nptr = Wire(ptr.cloneType)
     nptr := ptr
 
     pop.bits := storage(0)

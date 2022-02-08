@@ -1,6 +1,7 @@
 package meowv64
 
 import chisel3._
+import chisel3.stage._
 import meowv64._
 import meowv64.config._
 import meowv64.mem._
@@ -10,19 +11,16 @@ class AXI4Wrapper(implicit cfg: MulticoreConfig) extends Module {
 
   val mem = new Axi4(cfg.membus_params(External).to_axi_config)
 
-  val impl = new Multicore
+  val impl = Module(new Multicore)
 
   mem <> impl.mem.toAxi4
   impl.eints <> eints
 }
 
-/*
-object ElaborationConfig extends ChiselConfig()
-
 object Elaborate extends App {
   override def main(args: Array[String]): Unit = {
-    ElaborationConfig.generateSystemVerilog(new Multicore()(DefaultMulticoreConfig))
-    ElaborationConfig.generateSystemVerilog(new AXI4Wrapper()(DefaultMulticoreConfig))
+    (new ChiselStage).emitVerilog(new Multicore()(DefaultMulticoreConfig), args)
+    // TODO: enable this after finishing toAxi4 conversion
+    // (new ChiselStage).emitVerilog(new AXI4Wrapper()(DefaultMulticoreConfig), args)
   }
 }
-*/

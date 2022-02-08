@@ -14,13 +14,13 @@ import meowv64.util._
 class L2Cache(implicit cfg: MulticoreConfig) extends Module {
   require(cfg.l2.base.inst_cnt == 1) // TODO: impl banking
 
-  val internal_bus = cfg.cores.map(core => new Bundle {
+  val internal_bus = cfg.cores.map(core => IO(new Bundle {
     val frontend = Flipped(new MemBus(core.membus_params(Frontend)))
     val backend = Flipped(new MemBus(core.membus_params(Backend)))
-  })
-  val external_bus = new MemBus(cfg.membus_params(L2))
+  }))
+  val external_bus = IO(new MemBus(cfg.membus_params(L2)))
 
-  val banks = for(i <- 0 to cfg.l2.base.inst_cnt) yield new L2Inst(i)
+  val banks = for(i <- 0 until cfg.l2.base.inst_cnt) yield Module(new L2Inst(i).suggestName(s"inst.$i"))
   banks(0).external_bus <> external_bus
   for((l, r) <- banks(0).internal_bus.zip(internal_bus)) l <> r
 }
@@ -109,7 +109,7 @@ class L2MSCCHR(implicit cfg: MulticoreConfig) extends Bundle {
 
   // valid \implies (ongoing_rw \implies pending_w)
   // BTW, pending_x is !sent_x && has_x
-  assert(!valid || (!victim_ongoing_rw.orR || pending_w))
+  def sanity_chk = assert(!valid || (!victim_ongoing_rw.orR || pending_w))
 }
 
 class L2Metadata(implicit val cfg: MulticoreConfig) extends Bundle {
@@ -121,21 +121,21 @@ class L2Metadata(implicit val cfg: MulticoreConfig) extends Bundle {
 }
 
 class L2Inst(inst_id: Int)(implicit cfg: MulticoreConfig) extends Module {
-  val internal_bus = cfg.cores.map(core => new Bundle {
+  val internal_bus = cfg.cores.map(core => IO(new Bundle {
     val frontend = Flipped(new MemBus(core.membus_params(Frontend)))
     val backend = Flipped(new MemBus(core.membus_params(Backend)))
-  })
+  }))
   // TODO: assert they are homogeneous
-  val external_bus = new MemBus(cfg.membus_params(L2))
+  val external_bus = IO(new MemBus(cfg.membus_params(L2)))
 
   val src: Seq[MemBus] = internal_bus.flatMap(core => Seq(core.frontend, core.backend))
 
   // Memories
   val metadata = SyncReadMem(cfg.l2.base.line_per_assoc, Vec(cfg.l2.base.assoc_cnt, new L2Metadata))
   metadata.suggestName(s"L2.$inst_id.Metadata")
-  val metadata_write_idx = UInt(cfg.l2.base.index_width.W)
-  val metadata_write_payload = new L2Metadata
-  val metadata_write_mask = Bits(cfg.l2.base.assoc_cnt.W)
+  val metadata_write_idx = Wire(UInt(cfg.l2.base.index_width.W))
+  val metadata_write_payload = Wire(new L2Metadata)
+  val metadata_write_mask = Wire(UInt(cfg.l2.base.assoc_cnt.W))
   metadata.write(
     metadata_write_idx,
     VecInit(Seq.fill(cfg.l2.base.assoc_cnt)({ metadata_write_payload })),
@@ -145,7 +145,7 @@ class L2Inst(inst_id: Int)(implicit cfg: MulticoreConfig) extends Module {
   implicit val banked_mem_cfg = BankedMemConfig(
     total_size = cfg.l2.base.assoc_size,
     access_size = internal_bus(0).frontend.params.data_width / 8,
-    max_concurrency = 4, subbank_cnt = 1,
+    max_concurrency = 4, subbank_cnt = internal_bus(0).frontend.params.data_width / 64,
 
     /**
       * Ports in decreasing priority:
@@ -157,14 +157,14 @@ class L2Inst(inst_id: Int)(implicit cfg: MulticoreConfig) extends Module {
       */
     port_cnt = 5
   )
-  val data = new BankedMem(s"L2.$inst_id.Data")
+  val data = Module(new BankedMem)
 
   // Banked memory ports
-  val writeback_req = DecoupledIO(new BankedMemReq)
-  val refill_req = DecoupledIO(new BankedMemReq)
-  val invresp_req = DecoupledIO(new BankedMemReq)
-  val write_req = DecoupledIO(new BankedMemReq)
-  val read_req = DecoupledIO(new BankedMemReq)
+  val writeback_req = Wire(DecoupledIO(new BankedMemReq))
+  val refill_req = Wire(DecoupledIO(new BankedMemReq))
+  val invresp_req = Wire(DecoupledIO(new BankedMemReq))
+  val write_req = Wire(DecoupledIO(new BankedMemReq))
+  val read_req = Wire(DecoupledIO(new BankedMemReq))
 
   val banked_req = Seq(writeback_req, refill_req, invresp_req, write_req, read_req)
   (data.ports, banked_req).zipped.foreach(_.req <> _)
@@ -178,23 +178,23 @@ class L2Inst(inst_id: Int)(implicit cfg: MulticoreConfig) extends Module {
   // Pendings
   val pending_writes = src.flatMap(bus => (
     if(bus.params.bus_type.with_write)
-      Some(new MatchingQueue(new PendingWrite, UInt(Consts.MAX_PADDR_WIDTH.W), cfg.l2.max_pending_write))
+      Some(Module(new MatchingQueue(new PendingWrite, UInt(Consts.MAX_PADDR_WIDTH.W), cfg.l2.max_pending_write)))
     else None
   ))
   // Unfinished invalidates must corresponds to MSCCHR, so there is no need to match / wakeup other MSCCHRs
   val pending_invs = src.flatMap(bus =>
     if(bus.params.bus_type.with_coherence)
-      Some(new Queue(new PendingInv, cfg.l2.max_pending_inv))
+      Some(Module(new Queue(new PendingInv, cfg.l2.max_pending_inv)))
     else
       None
   )
   val pending_read_heads = src.map(_ => Reg(new PendingReadHead))
-  val pending_reads = src.map(_ => new MatchingQueue(new PendingRead, UInt(Consts.MAX_PADDR_WIDTH.W), cfg.l2.max_pending_read))
+  val pending_reads = src.map(_ => Module(new MatchingQueue(new PendingRead, UInt(Consts.MAX_PADDR_WIDTH.W), cfg.l2.max_pending_read)))
   require(pending_writes.length == cfg.cores.length)
 
   // Wakeups from read/write port
-  val wakeup_reads = src.map(_ => Valid(UInt(Consts.MAX_PADDR_WIDTH.W)))
-  val wakeup_writes = src.flatMap(e => if(e.params.bus_type.with_write) Some(Valid(UInt(Consts.MAX_PADDR_WIDTH.W))) else None)
+  val wakeup_reads = src.map(_ => Wire(Valid(UInt(Consts.MAX_PADDR_WIDTH.W))))
+  val wakeup_writes = src.flatMap(e => if(e.params.bus_type.with_write) Some(Wire(Valid(UInt(Consts.MAX_PADDR_WIDTH.W)))) else None)
 
   class TargetedPendingRead extends PendingRead {
     val port_idx = UInt(log2Ceil(src.length).W)
@@ -203,24 +203,32 @@ class L2Inst(inst_id: Int)(implicit cfg: MulticoreConfig) extends Module {
     val port_idx = UInt(log2Ceil(src.length).W)
   }
 
-  val direct_read_req = DecoupledIO(new TargetedPendingRead)
-  val mscchr_read_req = DecoupledIO(new TargetedPendingRead)
+  val direct_read_req = Wire(DecoupledIO(new TargetedPendingRead))
+  val mscchr_read_req = Wire(DecoupledIO(new TargetedPendingRead))
 
-  val direct_write_req = DecoupledIO(new TargetedPendingWrite)
+  val direct_write_req = Wire(DecoupledIO(new TargetedPendingWrite))
 
   // TODO: queue
-  val cmd_arb = new RRArbiter(new MemBusCmd(src(0).params), src.length)
-  (cmd_arb.io.in, src).zipped.foreach(_ <> _.cmd)
-  val downlink_arb = new RRArbiter(new MemBusDownlink(src(0).params), src.length / 2)
+  val cmd_arb = Module(new RRArbiter(new MemBusCmd(src(1).params), src.length))
+  (cmd_arb.io.in, src).zipped.foreach((l, r) => {
+    l.valid <> r.cmd.valid
+    l.ready <> r.cmd.ready
+    l.bits.id := r.cmd.bits.id
+    l.bits.addr := r.cmd.bits.addr
+    l.bits.op := Option(r.cmd.bits.op).getOrElse(MemBusOp.read)
+    l.bits.subop := Option(r.cmd.bits.subop).getOrElse(0.U)
+  })
+  val downlink_arb = Module(new RRArbiter(new MemBusDownlink(src(1).params), src.length / 2))
   (downlink_arb.io.in, src.flatMap(s => Option(s.downlink))).zipped.foreach(_ <> _)
-  val resp_arb = new RRArbiter(new MemBusDownlink(src(0).params), src.length / 2)
+  val resp_arb = Module(new RRArbiter(new MemBusInvResp(src(1).params), src.length / 2))
   (resp_arb.io.in, src.flatMap(s => Option(s.resp))).zipped.foreach(_ <> _)
 
   // Ack channel doesn't need to be arbitered
 
   // MSHRs
   val mscchrs = RegInit(VecInit(Seq.fill(cfg.l2.mscchr_cnt)({
-    val m = new L2MSCCHR
+    val m = Wire(new L2MSCCHR)
+    m.sanity_chk
     m := DontCare
     m.valid := false.B
     m.cnt_i := 0.U
@@ -243,25 +251,25 @@ class L2Inst(inst_id: Int)(implicit cfg: MulticoreConfig) extends Module {
   
   // s0 is essentially a no-op
   // int stands for interface
-  val cmd_s0_s1_int = DecoupledIO(new Bundle {
+  val cmd_s0_s1_int = Wire(DecoupledIO(new Bundle {
     val req = new MemBusCmd(cmd_arb.io.out.bits.params)
     val chosen = UInt(log2Ceil(src.length).W)
-  })
+  }))
   cmd_s0_s1_int.valid <> cmd_arb.io.out.valid
   cmd_s0_s1_int.ready <> cmd_arb.io.out.ready
   cmd_s0_s1_int.bits.req <> cmd_arb.io.out.bits
   cmd_s0_s1_int.bits.chosen <> cmd_arb.io.chosen
 
-  val cmd_s1_s2_int = DecoupledIO(new Bundle {
+  val cmd_s1_s2_int = Wire(DecoupledIO(new Bundle {
     val req = new MemBusCmd(cmd_arb.io.out.bits.params)
     val chosen = UInt(log2Ceil(src.length).W)
     val hit = Bool()
     val assoc = UInt(log2Ceil(cfg.l2.base.assoc_cnt).W)
     // Metadata of the hit assoc, or the selected victim
     val metadata = new L2Metadata
-  })
+  }))
 
-  val cmd_s1_blocked_by_s2 = Bool()
+  val cmd_s1_blocked_by_s2 = Wire(Bool())
 
   val cmd_s1_valid = RegInit(false.B)
   val cmd_s1_req = Reg(new MemBusCmd(cmd_arb.io.out.bits.params))
@@ -296,7 +304,7 @@ class L2Inst(inst_id: Int)(implicit cfg: MulticoreConfig) extends Module {
   val cmd_s1_metadata_readout = for((readout, we) <- metadata.read(cfg.l2.base.index(cmd_pre_s1_addr)).zip(metadata_write_mask.asBools)) yield {
     Mux(RegNext(we && metadata_write_idx === cfg.l2.base.index(cmd_pre_s1_addr)), RegNext(metadata_write_payload), readout)
   }
-  val cmd_s1_hitmask = cmd_s1_metadata_readout.map(m => m.valid && m.tag === cfg.l2.base.tag(cmd_s2_req.addr))
+  val cmd_s1_hitmask = cmd_s1_metadata_readout.map(m => m.valid && m.tag === cfg.l2.base.tag(cmd_s1_req.addr))
   assert(PopCount(cmd_s1_hitmask) <= 1.U)
   val cmd_s1_hit = VecInit(cmd_s1_hitmask).asUInt.orR
   val cmd_s1_metadata = Mux1H(cmd_s1_hitmask, cmd_s1_metadata_readout)
@@ -307,8 +315,10 @@ class L2Inst(inst_id: Int)(implicit cfg: MulticoreConfig) extends Module {
     && m.waiting_r
     // TODO: impl CCHR side
   )
-  val cmd_pre_s1_hr_allocting_matched = Bool()
-  val cmd_s1_victim_unavail = RegNext(mscchrs.foldLeft(0.U(cfg.l2.base.assoc_cnt.W))((acc, m: L2MSCCHR) => {
+  val cmd_pre_s1_hr_allocting_matched = Wire(Bool())
+  // To perserve width
+  val cmd_s1_victim_unavail = Reg(UInt(cfg.l2.base.assoc_cnt.W))
+  cmd_s1_victim_unavail := RegNext(mscchrs.foldLeft(0.U(cfg.l2.base.assoc_cnt.W))((acc, m: L2MSCCHR) => {
     acc | Mux(m.valid && m.idx === cfg.l2.base.index(cmd_pre_s1_addr), UIntToOH(m.assoc, cfg.l2.base.assoc_cnt), 0.U)
   }))
   val cmd_s1_hr_blocked = RegNext(VecInit(cmd_pre_s1_hr_matching_vec).asUInt.orR || cmd_pre_s1_hr_allocting_matched)
@@ -333,13 +343,13 @@ class L2Inst(inst_id: Int)(implicit cfg: MulticoreConfig) extends Module {
   cmd_s1_s2_int.bits.chosen := cmd_s1_chosen
   cmd_s1_s2_int.valid := cmd_s1_valid && !cmd_s1_hr_blocked && !cmd_s1_blocked_by_s2 && !cmd_s1_no_avail_victim
 
-  val cmd_s2_exit = Bool()
+  val cmd_s2_exit = Wire(Bool())
   val cmd_s2_valid = RegInit(false.B)
   val cmd_s2_req = Reg(new MemBusCmd(cmd_s1_req.params))
   val cmd_s2_chosen = Reg(UInt(log2Ceil(src.length).W))
-  val cmd_s2_hit = Bool()
-  val cmd_s2_assoc = UInt(log2Ceil(cfg.l2.base.assoc_cnt).W)
-  val cmd_s2_metadata = new L2Metadata
+  val cmd_s2_hit = Reg(Bool())
+  val cmd_s2_assoc = Reg(UInt(log2Ceil(cfg.l2.base.assoc_cnt).W))
+  val cmd_s2_metadata = Reg(new L2Metadata)
 
   when(cmd_s2_exit) {
     cmd_s2_valid := cmd_s1_s2_int.fire
@@ -393,7 +403,7 @@ class L2Inst(inst_id: Int)(implicit cfg: MulticoreConfig) extends Module {
     (cmd_s2_req.op === MemBusOp.occupy) -> true.B,
     true.B -> cmd_s2_metadata.dirty,
   ))
-  val cmd_s2_updated_metadata = new L2Metadata
+  val cmd_s2_updated_metadata = Wire(new L2Metadata)
   cmd_s2_updated_metadata.dirty := cmd_s2_updated_dirty
   cmd_s2_updated_metadata.master_dirty := cmd_s2_updated_master_dirty
   cmd_s2_updated_metadata.occupation := cmd_s2_updated_occupation
@@ -471,13 +481,17 @@ class L2Inst(inst_id: Int)(implicit cfg: MulticoreConfig) extends Module {
     )
   )
 
+  // FIXME: push to direct r/w
+  direct_read_req.noenq()
+  direct_write_req.noenq()
+
   ////////////////////
   // Reading (uplink channel)
   ////////////////////
-  val read_output_bp = Bool()
+  val read_output_bp = Wire(Bool())
   read_output_bp := false.B
   val read_streams = for((s, (h, p)) <- src.zip(pending_read_heads.zip(pending_reads))) yield {
-    val stream = DecoupledIO(new BankedMemReq)
+    val stream = Wire(DecoupledIO(new BankedMemReq))
 
     stream.bits.we := false.B
     stream.bits.sbe := -1.S.asUInt
@@ -493,7 +507,7 @@ class L2Inst(inst_id: Int)(implicit cfg: MulticoreConfig) extends Module {
 
     stream
   }
-  val read_arb = new RRArbiter(new BankedMemReq, read_streams.length)
+  val read_arb = Module(new RRArbiter(new BankedMemReq, read_streams.length))
   (read_arb.io.in, read_streams).zipped.foreach(_ <> _)
   val read_arb_out = read_arb.io.out
   val read_arb_oh = UIntToOH(read_arb.io.chosen)
@@ -501,7 +515,7 @@ class L2Inst(inst_id: Int)(implicit cfg: MulticoreConfig) extends Module {
   val s1_read_arb_oh = RegEnable(read_arb_oh, !read_output_bp)
   read_output_bp := s1_read_arb_fire && Mux1H(s1_read_arb_oh, src.map(_.uplink.ready))
   for((uplink, pidx) <- src.map(_.uplink).zipWithIndex) {
-    uplink.bits.data := read_resp
+    uplink.bits.data := Mux(read_output_bp, RegNext(uplink.bits.data), read_resp.readout)
     uplink.valid := s1_read_arb_oh(pidx) && s1_read_arb_fire
   }
 
@@ -538,12 +552,12 @@ class L2Inst(inst_id: Int)(implicit cfg: MulticoreConfig) extends Module {
 
   // CMD
   
-  val writeMSHRIdxFifo = new Queue(UInt(log2Ceil(mscchrs.length).W), cfg.l2.mscchr_related_fifo_depth)
+  val writeMSHRIdxFifo = Module(new Queue(UInt(log2Ceil(mscchrs.length).W), cfg.l2.mscchr_related_fifo_depth))
 
   // Streams are arranged in (w0, w1, w2, w3, r0, r1, r2, r3),
   // so that we can just trim the selectOH to get a write OH
   val wreq_streams = for(m <- mscchrs) yield {
-    val stream = DecoupledIO(new MemBusCmd(cfg.membus_params(L2)))
+    val stream = Wire(DecoupledIO(new MemBusCmd(cfg.membus_params(L2))))
 
     stream.bits.id := DontCare
     stream.bits.addr := m.addr_w
@@ -560,7 +574,7 @@ class L2Inst(inst_id: Int)(implicit cfg: MulticoreConfig) extends Module {
   }
 
   val rreq_streams = for((m, idx) <- mscchrs.zipWithIndex) yield {
-    val stream = DecoupledIO(new MemBusCmd(cfg.membus_params(L2)))
+    val stream = Wire(DecoupledIO(new MemBusCmd(cfg.membus_params(L2))))
 
     stream.bits.id := idx.U
     stream.bits.addr := m.addr_w
@@ -575,7 +589,7 @@ class L2Inst(inst_id: Int)(implicit cfg: MulticoreConfig) extends Module {
     stream
   }
 
-  val ext_cmd_arb = new Arbiter(new MemBusCmd(cfg.membus_params(L2)), 2 * mscchrs.length)
+  val ext_cmd_arb = Module(new Arbiter(new MemBusCmd(cfg.membus_params(L2)), 2 * mscchrs.length))
   (ext_cmd_arb.io.in, Seq(wreq_streams, rreq_streams).flatten).zipped.foreach(_ <> _)
   val w_mshr_idx = ext_cmd_arb.io.chosen
   writeMSHRIdxFifo.io.enq.bits := w_mshr_idx
@@ -586,18 +600,19 @@ class L2Inst(inst_id: Int)(implicit cfg: MulticoreConfig) extends Module {
 
   // Memory width / external bus width
   val transfer_width_ratio = banked_mem_cfg.access_size * 8 / external_bus.params.data_width
+  println(banked_mem_cfg.access_size)
 
   // Writeback reader, 2 stage
-  val writeback_s0_send = Bool()
+  val writeback_s0_send = Wire(Bool())
   val writeback_s0_mshr_idx = writeMSHRIdxFifo.io.deq.bits
   val writeback_target_mshr = mscchrs(writeback_s0_mshr_idx)
 
   // Index is more probable to differ, so we are using assoc ## idx as major idx
   val writeback_s0_idx = (writeback_target_mshr.assoc ## writeback_target_mshr.idx).asUInt
-  val writeback_s0_subidx = writeback_target_mshr.addr_w(log2Ceil(cfg.l2.base.line_size), log2Ceil(src(0).params.data_width / 8))
+  val writeback_s0_subidx = writeback_target_mshr.addr_w(log2Ceil(cfg.l2.base.line_size) - 1, log2Ceil(src(1).params.data_width / 8))
 
-  val writeback_s0_cnt = UInt(log2Ceil(cfg.l2.base.line_size * 8 / external_bus.params.data_width).W)
-  val writeback_s0_minor = writeback_s0_cnt(log2Ceil(transfer_width_ratio), 0) // Expand to sbe
+  val writeback_s0_cnt = RegInit(0.U(log2Ceil(cfg.l2.base.line_size * 8 / external_bus.params.data_width).W))
+  val writeback_s0_minor = writeback_s0_cnt(log2Ceil(transfer_width_ratio) - 1, 0) // Expand to sbe
   // TODO: do spinal/chisel statically determine these width?
   val writeback_s0_major = writeback_s0_cnt >> log2Ceil(transfer_width_ratio) // Append to subidx
 
@@ -625,7 +640,7 @@ class L2Inst(inst_id: Int)(implicit cfg: MulticoreConfig) extends Module {
 
   val writeback_s1_valid = RegInit(false.B)
   val writeback_s1_just_sent = RegNext(writeback_s0_send)
-  val writeback_s1_data = writeback_resp.readout.cloneType
+  val writeback_s1_data = Wire(writeback_resp.readout.cloneType)
   writeback_s1_data := Mux(writeback_s1_just_sent, writeback_resp.readout, RegNext(writeback_s1_data))
   val writeback_s1_bitmask = RegEnable(writeback_s0_bitmask, writeback_s0_send)
   val writeback_s1_muxed = Mux1H(writeback_s1_bitmask, writeback_s1_data.asTypeOf(Vec(transfer_width_ratio, UInt(external_bus.params.data_width.W))))
@@ -655,10 +670,10 @@ class L2Inst(inst_id: Int)(implicit cfg: MulticoreConfig) extends Module {
   )
 
   val refill_idx = (refill_target_mshr.assoc ## refill_target_mshr.idx).asUInt
-  val refill_subidx = refill_target_mshr.addr_w(log2Ceil(cfg.l2.base.line_size), log2Ceil(src(0).params.data_width / 8))
+  val refill_subidx = refill_target_mshr.addr_w(log2Ceil(cfg.l2.base.line_size) - 1, log2Ceil(src(1).params.data_width / 8))
 
-  val refill_cnt = UInt(log2Ceil(cfg.l2.base.line_size * 8 / external_bus.params.data_width).W)
-  val refill_minor = refill_cnt(log2Ceil(transfer_width_ratio), 0) // Expand to sbe
+  val refill_cnt = RegInit(0.U(log2Ceil(cfg.l2.base.line_size * 8 / external_bus.params.data_width).W))
+  val refill_minor = refill_cnt(log2Ceil(transfer_width_ratio) - 1, 0) // Expand to sbe
   val refill_major = refill_cnt >> log2Ceil(transfer_width_ratio) // Append to subidx
 
   val refill_bitmask = UIntToOH(refill_minor, transfer_width_ratio)
@@ -708,7 +723,7 @@ class L2Inst(inst_id: Int)(implicit cfg: MulticoreConfig) extends Module {
   ////////////////////
 
   val mscchr_finalize_valid = mscchrs.map(e => e.valid && !e.waiting_i.orR && !e.waiting_r && !e.waiting_w)
-  val mscchr_finalize_arb_prio = Reg(1.U(cfg.l2.mscchr_cnt.W))
+  val mscchr_finalize_arb_prio = RegInit(1.U(cfg.l2.mscchr_cnt.W))
   mscchr_finalize_arb_prio := mscchr_finalize_arb_prio.rotateLeft(1)
   val mscchr_finalize_arb = FirstOneOH(mscchr_finalize_valid, mscchr_finalize_arb_prio).asBools
   val mscchr_finalize_target = Mux1H(mscchr_finalize_arb, mscchrs)

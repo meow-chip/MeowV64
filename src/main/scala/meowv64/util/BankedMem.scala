@@ -28,7 +28,7 @@ case class BankedMemConfig(
   // Width of bankidx
   def bankidx_width = log2Ceil(max_concurrency)
 
-  def bankidx(idx: UInt) = idx(0, bankidx_width)
+  def bankidx(idx: UInt) = idx(bankidx_width - 1, 0)
   def memidx(idx: UInt) = idx >> bankidx_width
 
   require(isPow2(subbank_cnt))
@@ -42,26 +42,24 @@ class BankedMemReq(implicit cfg: BankedMemConfig) extends Bundle {
   val sbe = Bits(cfg.subbank_cnt.W) // Subbank enable
 }
 
-class BankedMem(name: String)(implicit cfg: BankedMemConfig) extends Module {
-  this.suggestName(name)
-
+class BankedMem(implicit cfg: BankedMemConfig) extends Module {
   ////////////////////
   // IOs
   ////////////////////
 
-  val ports = (0 to cfg.port_cnt).map(idx => {
+  val ports = (0 until cfg.port_cnt).map(idx => {
     val port = IO(new Bundle {
       val req = Flipped(DecoupledIO(new BankedMemReq))
-      val readout = UInt((cfg.access_size * 8).W)
+      val readout = Output(UInt((cfg.access_size * 8).W))
     })
-    port.suggestName(s"$name.port.$idx")
+    port.suggestName(s"port.$idx")
     port
   })
 
-  val banks = (0 to cfg.max_concurrency).map(idx => {
-    (0 to cfg.subbank_cnt).map(sidx => {
+  val banks = (0 until cfg.max_concurrency).map(idx => {
+    (0 until cfg.subbank_cnt).map(sidx => {
       val bank = SyncReadMem(cfg.row_cnt, UInt((cfg.subbank_size * 8).W))
-      bank.suggestName(s"$name.bank.$idx.$sidx")
+      bank.suggestName(s"bank.$idx.$sidx")
       bank
     })
   })
@@ -86,10 +84,10 @@ class BankedMem(name: String)(implicit cfg: BankedMemConfig) extends Module {
       & Fill(cfg.max_concurrency * cfg.subbank_cnt, port.req.valid)
     )
 
-    val can_schedule = !(req_usage & used).orR
+    val can_schedule = !(req_usage & used).orR && allowed
 
-    used := used | req_usage
-    allowed := allowed & ((!port.req.valid) || can_schedule)
+    used = used | req_usage
+    allowed = allowed & ((!port.req.valid) || can_schedule)
 
     port.req.ready := can_schedule
 
@@ -98,7 +96,8 @@ class BankedMem(name: String)(implicit cfg: BankedMemConfig) extends Module {
 
   val s1_readout = for((bank, bidx) <- banks.zipWithIndex) yield {
     val sreadouts = for((subbank, sbidx) <- bank.zipWithIndex) yield {
-      val port_sel = usage.map(_(bidx)(sbidx))
+      val port_sel_bank = usage.map(_(bidx))
+      val port_sel = port_sel_bank.map(_(sbidx))
       val port_en = VecInit(port_sel).asUInt.orR
 
       assert(PopCount(port_sel) <= 1.U)

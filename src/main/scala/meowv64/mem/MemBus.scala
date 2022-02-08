@@ -21,7 +21,7 @@ sealed class MemBusType(
 case object Frontend extends MemBusType(false, false, false, false)
 case object Backend extends MemBusType(true, true, true, false)
 case object Uncached extends MemBusType(true, false, false, true)
-case object L2 extends MemBusType(true, false, false, false)
+case object L2 extends MemBusType(true, false, false, true)
 case object External extends MemBusType(true, false, false, true)
 
 case class MemBusParams(

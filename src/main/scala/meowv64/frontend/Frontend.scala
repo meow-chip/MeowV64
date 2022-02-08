@@ -37,7 +37,7 @@ class Frontend(implicit cfg: CoreConfig) extends Module {
     * Current PC
     */
   val pc = RegInit({
-    val init = new PCGen
+    val init = Wire(new PCGen)
     init.halt := false.B
     init.pc := cfg.init_vec.U
     init
@@ -46,12 +46,12 @@ class Frontend(implicit cfg: CoreConfig) extends Module {
   /**
     * Pipeline flow
     */
-  val flow = Bool()
+  val flow = Wire(Bool())
 
   /**
     * Pause fetch (insufficient space in fetch queue)
     */
-  val bubble = Bool()
+  val bubble = Wire(Bool())
 
   /**
     * Stage valids
@@ -64,9 +64,9 @@ class Frontend(implicit cfg: CoreConfig) extends Module {
   /**
     * Kill signals
     */
-  val kill_s1 = Bool()
-  val kill_s2 = Bool()
-  val kill_s3 = Bool()
+  val kill_s1 = Wire(Bool())
+  val kill_s2 = Wire(Bool())
+  val kill_s3 = Wire(Bool())
 
   s1_valid := Mux(flow, s0_valid, s1_valid && !kill_s1)
   s2_valid := Mux(flow, s1_valid && !kill_s1, s2_valid && !kill_s2)
@@ -79,13 +79,13 @@ class Frontend(implicit cfg: CoreConfig) extends Module {
   /**
     * ICache has three stage, so at s2 we can get the result
     */
-  val s0_pc_offset = (pc.pc >> log2Ceil(Consts.INSTR_WIDTH))(0, log2Ceil(cfg.fetch_width))
+  val s0_pc_offset = (pc.pc >> log2Ceil(Consts.INSTR_WIDTH))(log2Ceil(cfg.fetch_width) - 1, 0)
   val s0_pc_aligned = (pc.pc >> log2Ceil(Consts.INSTR_WIDTH * cfg.fetch_width)) ## 0.U(log2Ceil(Consts.INSTR_WIDTH * cfg.fetch_width).W)
   val s0_pc_mask = (BigInt(2).pow(cfg.fetch_width) - 1).U(cfg.fetch_width.W) << s0_pc_offset
 
   val s1_pc_aligned = RegEnable(s0_pc_aligned, flow)
 
-  val cache = new InstrCache
+  val cache = Module(new InstrCache)
   cache.mem <> mem
   cache.input.s0_vaddr.bits := s0_pc_aligned.asUInt
   cache.input.s0_vaddr.valid := s0_valid && !pc.halt // If halt, don't need to send fetch to ICache
@@ -94,7 +94,7 @@ class Frontend(implicit cfg: CoreConfig) extends Module {
   ////////////////////
   // BPU
   ////////////////////
-  val bpu = new BPU
+  val bpu = Module(new BPU)
   bpu.pause := !flow
   bpu.pc.base := s0_pc_aligned.asUInt
   bpu.pc.mask := s0_pc_mask

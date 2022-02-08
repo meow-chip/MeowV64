@@ -19,9 +19,9 @@ case class CacheConfig(
   def index_width: Int = log2Ceil(line_per_assoc)
   def tag_width(alen: Int) = alen - offset_width - instidx_width - index_width
 
-  def offset(addr: UInt): UInt = addr(0, offset_width)
-  def instidx(addr: UInt): UInt = (addr >> offset_width)(0, instidx_width)
-  def index(addr: UInt): UInt = (addr >> (offset_width + instidx_width))(0, index_width)
+  def offset(addr: UInt): UInt = addr(offset_width - 1, 0)
+  def instidx(addr: UInt): UInt = (addr >> offset_width)(instidx_width - 1, 0)
+  def index(addr: UInt): UInt = (addr >> (offset_width + instidx_width))(index_width - 1, 0)
   def tag(addr: UInt): UInt = addr >> (index_width + offset_width + instidx_width)
   def line_width = line_size * 8
 }
