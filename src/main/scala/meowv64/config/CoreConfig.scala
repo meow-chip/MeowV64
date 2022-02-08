@@ -1,6 +1,6 @@
 package meowv64.config
 
-import spinal.core._
+import chisel3._
 import meowv64.mem._
 import meowv64._
 
@@ -13,7 +13,7 @@ case class CoreConfig(
 
   val ic: CacheConfig,
 ) {
-  def rint: UInt = UInt(xlen bits)
+  def rint: UInt = UInt(xlen.W)
   def membus_params(bus_type: MemBusType) = MemBusParams(
     bus_type,
     addr_width = xlen,

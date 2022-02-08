@@ -1,15 +1,37 @@
 package meowv64.util
 
-import spinal.core._
+import chisel3._
+import chisel3.util._
 
-object ExpandInterleave extends Function2[Bits, Int, Bits] {
-  override def apply(data: Bits, ratio: Int): Bits = {
-    Vec(data.asBools.map(b => Vec((0 to ratio).map(_ => b)))).as(Bits(data.getWidth * ratio bits))
+object FirstOneOH {
+  def apply(bits: UInt, prio: UInt): UInt = {
+    val p = if(prio == null) 1.U(bits.getWidth) else prio
+    val double_bits = bits ## (bits & (LeftOr(p) >> 1))
+    val double_grant = double_bits & (LeftOr(double_bits) >> 1)
+    (double_grant >> bits.getWidth) | double_grant(bits.getWidth, 0)
+  }
+
+  def apply(bits: UInt): UInt = {
+    apply(bits, null)
+  }
+
+  def apply(bits: Seq[Bool], prio: UInt = null): UInt = {
+    apply(VecInit(bits).asUInt, prio)
   }
 }
 
-object Duplicate extends Function2[Bits, Int, Bits] {
-  override def apply(data: Bits, times: Int): Bits = {
-    Vec((0 to times).map(_ => data)).as(Bits(data.getWidth * times bits))
-  }
+object Reverse {
+  def apply(u: UInt): UInt = VecInit(u.asBools.reverse).asUInt
+}
+
+object LeftOr {
+  def apply(data: UInt): UInt = VecInit(Seq.tabulate(data.getWidth) { i: Int =>
+    VecInit(data.asBools().dropRight(data.getWidth - i - 1)).asUInt().orR()
+  }).asUInt()
+}
+
+object RightOr {
+  def apply(data: UInt): UInt = VecInit(Seq.tabulate(data.getWidth) { i: Int =>
+    VecInit(data.asBools().drop(i)).asUInt().orR()
+  }).asUInt()
 }

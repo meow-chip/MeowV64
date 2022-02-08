@@ -1,15 +1,17 @@
 package meowv64.frontend
 
-import spinal.core._
-import spinal.lib._
+import chisel3._
+import chisel3.util._
 import meowv64.config._
 import meowv64.mem._
+import chisel3.util.DecoupledIO
+import chisel3.util.Valid
 
 class PCGen(implicit cfg: CoreConfig) extends Bundle {
   /**
     * PC sent to I$ in the current cycle
     */
-  val pc = UInt(cfg.xlen bits)
+  val pc = UInt(cfg.xlen.W)
 
   /**
     * If we need to halt I$ fetch, e.g.:
@@ -18,7 +20,7 @@ class PCGen(implicit cfg: CoreConfig) extends Bundle {
     * - WFI
     * - FENCE.I
     */
-  val halt = Bool
+  val halt = Bool()
 
   // TODO: halt reason
 }
@@ -26,17 +28,20 @@ class PCGen(implicit cfg: CoreConfig) extends Bundle {
 /**
   * Frontend root class
   */
-class Frontend(implicit cfg: CoreConfig) {
+class Frontend(implicit cfg: CoreConfig) extends Module {
   // IOs
-  val mem = master (new MemBus(cfg.membus_params(Frontend)))
-  val branch = slave Flow (cfg.rint)
+  val mem = IO(new MemBus(cfg.membus_params(Frontend)))
+  val branch = IO(Flipped(Valid(cfg.rint)))
 
   /**
     * Current PC
     */
-  val pc = Reg(new PCGen)
-  pc.halt init(False)
-  pc.pc init(cfg.init_vec)
+  val pc = RegInit({
+    val init = new PCGen
+    init.halt := false.B
+    init.pc := cfg.init_vec.U
+    init
+  })
 
   /**
     * Pipeline flow
@@ -52,9 +57,9 @@ class Frontend(implicit cfg: CoreConfig) {
     * Stage valids
     */
   val s0_valid = !bubble
-  val s1_valid = RegInit(False)
-  val s2_valid = RegInit(False)
-  val s3_valid = RegInit(False)
+  val s1_valid = RegInit(false.B)
+  val s2_valid = RegInit(false.B)
+  val s3_valid = RegInit(false.B)
 
   /**
     * Kill signals
@@ -74,15 +79,15 @@ class Frontend(implicit cfg: CoreConfig) {
   /**
     * ICache has three stage, so at s2 we can get the result
     */
-  val s0_pc_offset = (pc.pc >> log2Up(Consts.INSTR_WIDTH))(0, log2Up(cfg.fetch_width) bits)
-  val s0_pc_aligned = (pc.pc >> log2Up(Consts.INSTR_WIDTH * cfg.fetch_width)) ## U(0, log2Up(Consts.INSTR_WIDTH * cfg.fetch_width) bits)
-  val s0_pc_mask = B(BigInt(2).pow(cfg.fetch_width) - 1, cfg.fetch_width bits) << s0_pc_offset
+  val s0_pc_offset = (pc.pc >> log2Ceil(Consts.INSTR_WIDTH))(0, log2Ceil(cfg.fetch_width))
+  val s0_pc_aligned = (pc.pc >> log2Ceil(Consts.INSTR_WIDTH * cfg.fetch_width)) ## 0.U(log2Ceil(Consts.INSTR_WIDTH * cfg.fetch_width).W)
+  val s0_pc_mask = (BigInt(2).pow(cfg.fetch_width) - 1).U(cfg.fetch_width.W) << s0_pc_offset
 
-  val s1_pc_aligned = RegNextWhen(s0_pc_aligned, flow)
+  val s1_pc_aligned = RegEnable(s0_pc_aligned, flow)
 
   val cache = new InstrCache
   cache.mem <> mem
-  cache.input.s0_vaddr.payload := s0_pc_aligned.asUInt
+  cache.input.s0_vaddr.bits := s0_pc_aligned.asUInt
   cache.input.s0_vaddr.valid := s0_valid && !pc.halt // If halt, don't need to send fetch to ICache
   cache.input.s1_paddr := s1_pc_aligned.asUInt
 
@@ -109,14 +114,14 @@ class Frontend(implicit cfg: CoreConfig) {
     * Additionally, if there is pending interrupt, halt is set to true no matter what
     */
   val npc = PriorityMux(Seq(
-    branch.valid -> branch.payload,
-    bpu.preds.d4.valid -> bpu.preds.d4.payload, // TODO: Default prediction
-    bpu.preds.d3.valid -> bpu.preds.d3.payload,
-    bpu.preds.d2.valid -> bpu.preds.d2.payload,
-    True -> bpu.preds.d1,
+    branch.valid -> branch.bits,
+    bpu.preds.d4.valid -> bpu.preds.d4.bits, // TODO: Default prediction
+    bpu.preds.d3.valid -> bpu.preds.d3.bits,
+    bpu.preds.d2.valid -> bpu.preds.d2.bits,
+    true.B -> bpu.preds.d1,
   ))
 
-  val npc_halt = False // TODO: impl
+  val npc_halt = false.B // TODO: impl
 
   kill_s1 := bpu.preds.d3.valid || bpu.preds.d4.valid || branch.valid
   kill_s2 := bpu.preds.d4.valid || branch.valid

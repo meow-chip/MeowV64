@@ -1,9 +1,8 @@
 package meowv64.mem
 
-import spinal.core._
-import spinal.lib._
-import spinal.lib.bus.amba4.axi.Axi4
-import spinal.lib.bus.amba4.axi.Axi4Config
+import chisel3._
+import chisel3.util._
+import chisel3.experimental._
 
 sealed class MemBusType(
   // Can write
@@ -30,7 +29,13 @@ case class MemBusParams(
   val addr_width: Int,
   val data_width: Int,
   val id_width: Int,
-);
+) {
+  val to_axi_config = Axi4Config(
+    id_width = id_width,
+    addr_width = addr_width,
+    data_width = data_width,
+  )
+}
 
 /**
   * Internal memory bus. This is heavely inspired by the BMB(Banana memory bus).
@@ -45,48 +50,28 @@ case class MemBusParams(
   *
   * @param isInstr: If this memory bus's master is an I$
   */
-class MemBus(val params: MemBusParams) extends Bundle with IMasterSlave {
-  val cmd = Stream(new MemBusCmd(params))
-  val uplink = Stream(new MemBusUplink(params))
-  val downlink = if(params.bus_type.with_write) Stream(new MemBusDownlink(params)) else null
-  val inv = if(params.bus_type.with_coherence) Stream(new MemBusInv(params)) else null
-  val resp = if(params.bus_type.with_coherence) Stream(new MemBusInvResp(params)) else null
-  val ack = if(params.bus_type.with_coherence) Stream(new MemBusOccupyAck(params)) else null
-
-  override def asMaster(): Unit = {
-    master(cmd)
-    slave(uplink)
-    if(downlink != null) master(downlink)
-    if(inv != null) slave(inv)
-    if(resp != null) master(resp)
-    if(ack != null) master(ack)
-  }
-
-  object ToAxi4Config extends Axi4Config(
-    addressWidth = params.addr_width,
-    dataWidth = params.data_width, // TODO: make this configurable
-    idWidth = params.id_width,
-    useRegion = false,
-    useLock = false,
-    useCache = false,
-    useQos = false,
-    useProt = false,
-  )
+class MemBus(val params: MemBusParams) extends Bundle {
+  val cmd = DecoupledIO(new MemBusCmd(params))
+  val uplink = Flipped(DecoupledIO(new MemBusUplink(params)))
+  val downlink = if(params.bus_type.with_write) DecoupledIO(new MemBusDownlink(params)) else null
+  val inv = if(params.bus_type.with_coherence) Flipped(DecoupledIO(new MemBusInv(params))) else null
+  val resp = if(params.bus_type.with_coherence) DecoupledIO(new MemBusInvResp(params)) else null
+  val ack = if(params.bus_type.with_coherence) DecoupledIO(new MemBusOccupyAck(params)) else null
 
   def toAxi4: Axi4 = {
     require(!params.bus_type.with_subop)
     require(!params.bus_type.with_coherence)
     require(params.bus_type.with_write)
     require(params.bus_type.with_direct)
-    val axi4 = new Axi4(ToAxi4Config)
+    val axi4 = new Axi4(params.to_axi_config)
 
     // FIXME: Impl
     ???
   }
 }
 
-object MemBusOp extends SpinalEnum {
-  val read, write, occupy, amo = newElement()
+object MemBusOp extends ChiselEnum {
+  val read, write, occupy, amo = Value
 }
 
 object MemBusSubOpIdx {
@@ -102,45 +87,45 @@ object MemBusSubOpIdx {
 
 // Ids are shared between read and writes
 class MemBusCmd(val params: MemBusParams) extends Bundle {
-  val id = UInt(params.id_width bits)
+  val id = UInt(params.id_width.W)
 
   val op = if(params.bus_type.with_write) MemBusOp() else null
-  val subop = if(params.bus_type.with_subop) Bits(5 bits) else null
+  val subop = if(params.bus_type.with_subop) Bits(5.W) else null
 
-  val size = if(params.bus_type.with_direct) UInt(2 bits) else null // Supports up to 2^3 = 64
-  val burst = if(params.bus_type.with_direct) UInt(8 bits) else null // Supports up to 256
+  val size = if(params.bus_type.with_direct) UInt(2.W) else null // Supports up to 2^3 = 64
+  val burst = if(params.bus_type.with_direct) UInt(8.W) else null // Supports up to 256
   // No write enable for direct writes because we don't need them!
 
   // Keyword first sematic, beat count is always determined by cache line width
-  val addr = UInt(params.addr_width bits)
+  val addr = UInt(params.addr_width.W)
 }
 
 // Master -> Slave
 class MemBusDownlink(val params: MemBusParams) extends Bundle {
   // No write interleaving is allowed.
-  val data = Bits(params.data_width bits)
+  val data = Bits(params.data_width.W)
 }
 
 // Slave -> Master
 class MemBusUplink(val params: MemBusParams) extends Bundle {
-  val id = UInt(params.id_width bits)
-  val data = Bits(params.data_width bits)
+  val id = UInt(params.id_width.W)
+  val data = Bits(params.data_width.W)
 }
 
-class MemBusInvOp extends SpinalEnum {
-  val flush, inv = newElement()
+class MemBusInvOp extends ChiselEnum {
+  val flush, inv = Value
 }
 
 class MemBusInv(val params: MemBusParams) extends Bundle {
   val op = new MemBusInvOp
-  val addr = UInt(params.addr_width bits)
+  val addr = UInt(params.addr_width.W)
 }
 
 class MemBusInvResp(val params: MemBusParams) extends Bundle {
   val with_data = Bool()
-  val data = Bits(params.data_width bits)
+  val data = Bits(params.data_width.W)
 }
 
 class MemBusOccupyAck(val params: MemBusParams) extends Bundle {
-  val id = Bits(params.id_width bits)
+  val id = Bits(params.id_width.W)
 }

@@ -1,7 +1,7 @@
 package meowv64.util
 
-import spinal.core._
-import spinal.lib._
+import chisel3._
+import chisel3.util._
 
 case class BankedMemConfig(
   // Total size in bytes
@@ -26,9 +26,9 @@ case class BankedMemConfig(
   // Bit width of each subbank
   def subbank_size = access_size / subbank_cnt
   // Width of bankidx
-  def bankidx_width = log2Up(max_concurrency)
+  def bankidx_width = log2Ceil(max_concurrency)
 
-  def bankidx(idx: UInt) = idx(0, bankidx_width bits)
+  def bankidx(idx: UInt) = idx(0, bankidx_width)
   def memidx(idx: UInt) = idx >> bankidx_width
 
   require(isPow2(subbank_cnt))
@@ -36,68 +36,95 @@ case class BankedMemConfig(
 }
 
 class BankedMemReq(implicit cfg: BankedMemConfig) extends Bundle {
-  val idx = UInt(log2Up(cfg.total_size / cfg.access_size) bits)
-  val wdata = Bits(cfg.access_size * 8 bits)
+  val idx = UInt(log2Ceil(cfg.total_size / cfg.access_size).W)
+  val wdata = Bits((cfg.access_size * 8).W)
   val we = Bool() // Write enable
-  val sbe = Bits(cfg.subbank_cnt bits) // Subbank enable
+  val sbe = Bits(cfg.subbank_cnt.W) // Subbank enable
 }
 
-class BankedMem(name: String)(implicit cfg: BankedMemConfig) extends Component {
-  this.setName(name)
+class BankedMem(name: String)(implicit cfg: BankedMemConfig) extends Module {
+  this.suggestName(name)
 
   ////////////////////
   // IOs
   ////////////////////
 
   val ports = (0 to cfg.port_cnt).map(idx => {
-    val port = new Bundle {
-      val req = slave Stream(new BankedMemReq)
-      val readout = out Bits(cfg.access_size * 8 bits)
-    }
-    port.setName(s"$name / Port $idx")
+    val port = IO(new Bundle {
+      val req = Flipped(DecoupledIO(new BankedMemReq))
+      val readout = UInt((cfg.access_size * 8).W)
+    })
+    port.suggestName(s"$name.port.$idx")
     port
   })
 
   val banks = (0 to cfg.max_concurrency).map(idx => {
     (0 to cfg.subbank_cnt).map(sidx => {
-      val bank = Mem(Bits(cfg.subbank_size * 8 bits), cfg.row_cnt)
-      bank.setName(s"$name / Bank $idx.$sidx")
+      val bank = SyncReadMem(cfg.row_cnt, UInt((cfg.subbank_size * 8).W))
+      bank.suggestName(s"$name.bank.$idx.$sidx")
       bank
     })
   })
 
   // If higer prioritized port is already blocked
-  var allowed = True
+  // TODO: allow non-conflicting subbank reads to be scheduled together
+  var allowed = true.B
   // Usage by higher prioritized port
-  var used = B(0, cfg.max_concurrency bits)
+  var used = 0.U((cfg.max_concurrency * cfg.subbank_cnt).W)
+
+  val bidxs = for(port <- ports) yield {
+    cfg.bankidx(port.req.bits.idx)
+  }
 
   val usage = for(port <- ports) yield {
-    val bidx = cfg.bankidx(port.req.payload.idx)
-    val bidx_oh = UIntToOh(bidx, cfg.max_concurrency)
-    val can_schedule = !(bidx_oh & used).orR
+    val bidx = cfg.bankidx(port.req.bits.idx)
+    val bidx_oh = UIntToOH(bidx, cfg.max_concurrency)
 
-    used := used | (Vec.fill(0)(port.req.valid).asBits & bidx_oh)
+    val req_usage = (
+      FillInterleaved(cfg.subbank_cnt, bidx_oh)
+      & Fill(cfg.max_concurrency, port.req.bits.sbe)
+      & Fill(cfg.max_concurrency * cfg.subbank_cnt, port.req.valid)
+    )
+
+    val can_schedule = !(req_usage & used).orR
+
+    used := used | req_usage
     allowed := allowed & ((!port.req.valid) || can_schedule)
 
     port.req.ready := can_schedule
 
-    (Vec.fill(0)(port.req.valid && can_schedule).asBits & bidx_oh)
+    Mux(can_schedule, req_usage, 0.U).asTypeOf(Vec(cfg.max_concurrency, Vec(cfg.subbank_cnt, Bool())))
   }
 
-  val s1_readout = for((bank, idx) <- banks.zipWithIndex) yield {
-    val port_select = usage.map(_(idx))
-    assert(CountOne(port_select) <= 1)
-    val port_enable = port_select.orR
+  val s1_readout = for((bank, bidx) <- banks.zipWithIndex) yield {
+    val sreadouts = for((subbank, sbidx) <- bank.zipWithIndex) yield {
+      val port_sel = usage.map(_(bidx)(sbidx))
+      val port_en = VecInit(port_sel).asUInt.orR
 
-    val req = MuxOH(port_select, ports.map(_.req.payload))
+      assert(PopCount(port_sel) <= 1.U)
 
-    // TODO: lift this
-    require(cfg.subbank_cnt == 1)
-    bank(0).readWriteSync(cfg.memidx(req.idx), req.wdata, port_enable, req.we)
+      val req = Mux1H(port_sel, ports.map(_.req.bits))
+      val port = subbank(cfg.memidx(req.idx))
+
+      val readout = Wire(UInt())
+      readout := DontCare
+      when(port_en) {
+        when(req.we) {
+          when(req.sbe(sbidx)) {
+            port := req.wdata.asTypeOf(Vec(cfg.subbank_cnt, UInt((cfg.subbank_size * 8).W)))(sbidx)
+          }
+        }.otherwise {
+          readout := port
+        }
+      }
+
+      readout
+    }
+    VecInit(sreadouts).asUInt
   }
 
-  val s1_usage = usage.map(RegNext(_))
-  for((p, s1_u) <- ports.zip(s1_usage)) {
-    p.readout := MuxOH(s1_u.asBools.seq, s1_readout)
+  val s1_bidxs = bidxs.map(RegNext(_))
+  for((p, bidx) <- ports.zip(s1_bidxs)) {
+    p.readout := VecInit(s1_readout)(bidx)
   }
 }
