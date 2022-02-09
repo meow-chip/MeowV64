@@ -81,17 +81,17 @@ class BankedMem(implicit cfg: BankedMemConfig) extends Module {
     val req_usage = (
       FillInterleaved(cfg.subbank_cnt, bidx_oh)
       & Fill(cfg.max_concurrency, port.req.bits.sbe)
-      & Fill(cfg.max_concurrency * cfg.subbank_cnt, port.req.valid)
     )
+    val real_usage = req_usage & Fill(cfg.max_concurrency * cfg.subbank_cnt, port.req.valid)
 
     val can_schedule = !(req_usage & used).orR && allowed
 
-    used = used | req_usage
+    used = used | real_usage
     allowed = allowed & ((!port.req.valid) || can_schedule)
 
     port.req.ready := can_schedule
 
-    Mux(can_schedule, req_usage, 0.U).asTypeOf(Vec(cfg.max_concurrency, Vec(cfg.subbank_cnt, Bool())))
+    Mux(can_schedule, real_usage, 0.U).asTypeOf(Vec(cfg.max_concurrency, Vec(cfg.subbank_cnt, Bool())))
   }
 
   val s1_readout = for((bank, bidx) <- banks.zipWithIndex) yield {

@@ -745,7 +745,7 @@ class L2Inst(inst_id: Int)(implicit cfg: MulticoreConfig) extends Module {
   refill_req.bits.we := true.B
   refill_req.bits.wdata := Fill(transfer_width_ratio, external_bus.uplink.bits.data)
 
-  external_bus.uplink.ready := refill_space_allowed && external_bus.uplink.ready
+  external_bus.uplink.ready := refill_space_allowed && refill_req.ready
 
   assert(!refill_target_mshr.valid)
   assert(refill_target_mshr.cnt_r === refill_cnt)

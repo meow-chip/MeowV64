@@ -141,6 +141,8 @@ class InstrCache(implicit cfg: CoreConfig) extends Module {
     m
   })
 
+  val s2_exit = Wire(Bool())
+
   val s2_hit = RegEnable(s1_hit && !s1_victimized, flow)
   val s2_assoc = RegEnable(s1_assoc, flow)
   val s2_paddr = RegEnable(input.s1_paddr, flow)
@@ -155,11 +157,18 @@ class InstrCache(implicit cfg: CoreConfig) extends Module {
   val pre_s2_data_read_idx = Mux(flow, s1_data_read_idx, s2_data_read_idx)
 
   // TODO: To save power, only enable if pre_s2_valid
-  data_read.req.valid := true.B
-  data_read.req.bits.idx := pre_s2_data_read_idx.asUInt
+  data_read.req.valid := s2_exit
+  // Always read from pre_s1 to avoid comb loop
+  data_read.req.bits.idx := s1_data_read_idx.asUInt
   data_read.req.bits.we := false.B
   data_read.req.bits.sbe := -1.S.asUInt
   data_read.req.bits.wdata := DontCare
+
+  val s2_data_holder = Reg(data_read.readout.cloneType)
+  val s2_data_raw = Mux(RegNext(flow), data_read.readout, s2_data_holder)
+  // Forwarded at MSHR refill
+  val s2_data = Wire(s2_data_raw.cloneType)
+  s2_data_holder := s2_data
 
   val s2_mshr_alloc = Wire(DecoupledIO(new Bundle {}))
   s2_mshr_alloc.valid := !s2_hit
@@ -186,10 +195,9 @@ class InstrCache(implicit cfg: CoreConfig) extends Module {
   }
   val s2_blocked_by_mshr = mshr.idx === s2_idx && mshr.cnt > (s2_subidx - mshr.idx)
 
-  // Forwarded at MSHR refill
-  val s2_data = Wire(FetchVec.cloneType)
+  s2_exit := !s2_blocked_by_mshr && s2_hit
 
-  output.fetched := s2_data
+  output.fetched := s2_data.asTypeOf(FetchVec)
   output.paused := !flow
 
   /**
@@ -200,8 +208,7 @@ class InstrCache(implicit cfg: CoreConfig) extends Module {
     */
   flow := (
     (data_read.req.ready || !data_read.req.valid)
-    && !s2_blocked_by_mshr
-    && s2_hit
+    && s2_exit
   )
   // If missed, need to send. Essentially !sent
 
@@ -245,5 +252,5 @@ class InstrCache(implicit cfg: CoreConfig) extends Module {
   data_write.req.bits.wdata := mem.uplink.bits.data
 
   // We don't need to depend on valid here, because if invalid, cnt is not incremented, and s2 cannot exit in the next cycle
-  s2_data := Mux(RegNext(data_read.req.bits.idx === data_write_idx), RegNext(data_write.req.bits.wdata), data_read.readout).asTypeOf(FetchVec)
+  s2_data := Mux(RegNext(data_read.req.bits.idx === data_write_idx), RegNext(data_write.req.bits.wdata), s2_data_raw)
 }
