@@ -21,5 +21,18 @@ class Multicore(implicit cfg: MulticoreConfig) extends Module {
   }
 
   // TODO: intc(l2, cores.map(_.uc))
+  for(u <- core_ucs) {
+    u := DontCare
+    u.cmd.ready := false.B
+    u.downlink.ready := false.B
+    u.uplink.valid := false.B
+  }
+
   mem <> l2.external_bus
+
+  // TODO: CLINT & PLIC
+  for(c <- cores) {
+    c.eint := false.B
+    c.sint := false.B
+  }
 }

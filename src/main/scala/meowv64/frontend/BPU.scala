@@ -31,6 +31,9 @@ class BPU(implicit cfg: CoreConfig) extends Module {
     val d4 = Valid(cfg.rint)
   })
 
+  // TODO: impl
+  preds := DontCare
+
   preds.d1 := pc.base + (Consts.INSTR_WIDTH / 8 * cfg.fetch_width).U
 
   preds.d2.valid := false.B

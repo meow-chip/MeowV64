@@ -91,6 +91,13 @@ class Frontend(implicit cfg: CoreConfig) extends Module {
   cache.input.s0_vaddr.valid := s0_valid && !pc.halt // If halt, don't need to send fetch to ICache
   cache.input.s1_paddr := s1_pc_aligned.asUInt
 
+  flow := !cache.output.paused
+
+  // TODO: impl bubble
+  bubble := false.B
+  cache.kills.s1 := kill_s1
+  cache.kills.s2 := kill_s2
+
   ////////////////////
   // BPU
   ////////////////////
