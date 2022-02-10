@@ -106,7 +106,7 @@ class MemBusDownlink(val params: MemBusParams) extends Bundle {
   val data = Bits(params.data_width.W)
 }
 
-// Slave -> Master
+// Slave -> Master, write confirmation / read resp
 class MemBusUplink(val params: MemBusParams) extends Bundle {
   val id = UInt(params.id_width.W)
   val data = Bits(params.data_width.W)
