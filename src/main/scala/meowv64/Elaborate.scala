@@ -19,7 +19,7 @@ class AXI4Wrapper(implicit cfg: MulticoreConfig) extends Module {
 
 object Elaborate extends App {
   override def main(args: Array[String]): Unit = {
-    (new ChiselStage).emitVerilog(new Multicore()(DefaultMulticoreConfig), args)
+    (new ChiselStage).emitSystemVerilog(new Multicore()(DefaultMulticoreConfig), args)
     // TODO: enable this after finishing toAxi4 conversion
     // (new ChiselStage).emitVerilog(new AXI4Wrapper()(DefaultMulticoreConfig), args)
   }

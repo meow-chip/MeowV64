@@ -79,8 +79,8 @@ class Frontend(implicit cfg: CoreConfig) extends Module {
   /**
     * ICache has three stage, so at s2 we can get the result
     */
-  val s0_pc_offset = (pc.pc >> log2Ceil(Consts.INSTR_WIDTH))(log2Ceil(cfg.fetch_width) - 1, 0)
-  val s0_pc_aligned = (pc.pc >> log2Ceil(Consts.INSTR_WIDTH * cfg.fetch_width)) ## 0.U(log2Ceil(Consts.INSTR_WIDTH * cfg.fetch_width).W)
+  val s0_pc_offset = (pc.pc >> log2Ceil(Consts.INSTR_WIDTH / 8))(log2Ceil(cfg.fetch_width) - 1, 0)
+  val s0_pc_aligned = (pc.pc >> log2Ceil(Consts.INSTR_WIDTH / 8 * cfg.fetch_width)) ## 0.U(log2Ceil(Consts.INSTR_WIDTH / 8 * cfg.fetch_width).W)
   val s0_pc_mask = (BigInt(2).pow(cfg.fetch_width) - 1).U(cfg.fetch_width.W) << s0_pc_offset
 
   val s1_pc_aligned = RegEnable(s0_pc_aligned, flow)

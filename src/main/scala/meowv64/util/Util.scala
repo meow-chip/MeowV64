@@ -5,9 +5,9 @@ import chisel3.util._
 
 object FirstOneOH {
   def apply(bits: UInt, prio: UInt): UInt = {
-    val p = if(prio == null) 1.U(bits.getWidth) else prio
-    val double_bits = bits ## (bits & (LeftOr(p) >> 1))
-    val double_grant = double_bits & (LeftOr(double_bits) >> 1)
+    val p = if(prio == null) 1.U(bits.getWidth.W) else prio
+    val double_bits = bits ## (bits & ~(0.U(1.W) ## RightOr(p) >> 1))
+    val double_grant = double_bits & ~(LeftOr(double_bits) << 1)(double_bits.getWidth - 1, 0)
     (double_grant >> bits.getWidth) | double_grant(bits.getWidth - 1, 0)
   }
 

@@ -138,6 +138,8 @@ class InstrCache(implicit cfg: CoreConfig) extends Module {
     val m = Wire(new MSHR)
     m := DontCare
     m.valid := false.B
+    m.pending := false.B
+    m.cnt := 0.U
     m
   })
 
@@ -152,7 +154,7 @@ class InstrCache(implicit cfg: CoreConfig) extends Module {
   val s2_data_read_idx = s2_assoc ## s2_idx ## s2_subidx
   val s2_victim_tag = RegEnable(s1_victim_tag, flow)
 
-  s1_victimized := cfg.ic.tag(input.s1_paddr) === s2_victim_tag && cfg.ic.index(s2_paddr) === cfg.ic.index(s1_vaddr)
+  s1_victimized := !s2_hit && cfg.ic.tag(input.s1_paddr) === s2_victim_tag && cfg.ic.index(s2_paddr) === cfg.ic.index(s1_vaddr)
 
   val pre_s2_data_read_idx = Mux(flow, s1_data_read_idx, s2_data_read_idx)
 
@@ -171,7 +173,7 @@ class InstrCache(implicit cfg: CoreConfig) extends Module {
   s2_data_holder := s2_data
 
   val s2_mshr_alloc = Wire(DecoupledIO(new Bundle {}))
-  s2_mshr_alloc.valid := !s2_hit
+  s2_mshr_alloc.valid := !s2_hit && s2_valid
   s2_mshr_alloc.ready := !mshr.valid
   when(s2_mshr_alloc.fire) {
     assert(!flow)
@@ -193,7 +195,7 @@ class InstrCache(implicit cfg: CoreConfig) extends Module {
   when(s2_mshr_alloc.fire) {
     tags.write(cfg.ic.index(s2_paddr), VecInit(Seq.fill(cfg.ic.assoc_cnt)(cfg.ic.tag(s2_paddr))), UIntToOH(s2_assoc, cfg.ic.assoc_cnt).asBools)
   }
-  val s2_blocked_by_mshr = mshr.idx === s2_idx && mshr.cnt > (s2_subidx - mshr.idx)
+  val s2_blocked_by_mshr = mshr.valid && mshr.idx === s2_idx && mshr.cnt <= (s2_subidx - mshr.subidx)
 
   s2_exit := !s2_blocked_by_mshr && s2_hit
 
@@ -208,7 +210,7 @@ class InstrCache(implicit cfg: CoreConfig) extends Module {
     */
   flow := (
     (data_read.req.ready || !data_read.req.valid)
-    && s2_exit
+    && (s2_exit || !s2_valid)
   )
   // If missed, need to send. Essentially !sent
 

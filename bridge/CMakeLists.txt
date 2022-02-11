@@ -39,11 +39,11 @@ add_library(
 
 verilate(
   meowv64rtl
-  SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/../Multicore.v
+  SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/../Multicore.sv
   PREFIX rtl
   TRACE_FST
   DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/verilated
-  VERILATOR_ARGS --trace-params --trace-structs --top-module Multicore
+  VERILATOR_ARGS --trace-params --trace-structs --top-module Multicore --assert
 )
 
 install(TARGETS meowv64rtl)

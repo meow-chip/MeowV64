@@ -17,4 +17,5 @@ fn main() {
 
     // Rerun on Multicore.v
     println!("cargo:rerun-if-changed=Multicore.v");
+    println!("cargo:rerun-if-changed=Multicore.sv");
 }

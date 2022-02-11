@@ -2,13 +2,13 @@
 mod ffi {
     // TODO: handle memory write
     #[repr(u8)]
-    #[derive(PartialEq, PartialOrd, Eq, Ord)]
+    #[derive(PartialEq, PartialOrd, Eq, Ord, Debug)]
     enum MemOp {
         Read = 0,
         Write = 1,
     }
 
-    #[derive(Default, PartialEq, PartialOrd, Eq, Ord)]
+    #[derive(Default, PartialEq, PartialOrd, Eq, Ord, Debug)]
     struct MemCmd {
         id: u64,
         addr: u64,
@@ -17,12 +17,12 @@ mod ffi {
         burst: u8,
     }
 
-    #[derive(Default, PartialEq, PartialOrd, Eq, Ord)]
+    #[derive(Default, PartialEq, PartialOrd, Eq, Ord, Debug)]
     struct MemWrite {
         data: u64,
     }
  
-    #[derive(PartialEq, PartialOrd, Eq, Ord)]
+    #[derive(PartialEq, PartialOrd, Eq, Ord, Debug)]
     struct MemResp {
         id: u64,
         data: u64,
@@ -50,20 +50,20 @@ impl Default for ffi::MemOp {
     }
 }
 
-use std::{path::PathBuf, collections::BinaryHeap};
+use std::{path::PathBuf, collections::BinaryHeap, cmp::Reverse};
 
 use cxx::UniquePtr;
 
-#[derive(PartialEq, Eq, PartialOrd, Ord)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Debug)]
 enum DownlinkEv {
     Cmd(ffi::MemCmd),
     Write(ffi::MemWrite),
 }
 
-#[derive(PartialEq, Eq, PartialOrd, Ord)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Debug)]
 struct PendingEv<E> {
-    scheduled_at: u64,
-    enqueued_at: u64, // As secondary key
+    scheduled_at: Reverse<u64>,
+    enqueued_at: Reverse<u64>, // As secondary key
     ev: E,
 }
 
@@ -111,7 +111,8 @@ impl<F: FnMut() -> u64> System<F> {
 
     pub fn tick(&mut self) -> anyhow::Result<()> {
         if let Some(r) = self.uplink.peek() {
-            if r.scheduled_at <= self.tick {
+            if r.scheduled_at.0 <= self.tick {
+                log::debug!("[{}] Enqueue mem resp: {:?}", self.tick, r.ev);
                 let enqueued = self.backend.as_mut().unwrap().mem_resp_enqueue(&r.ev);
                 if enqueued {
                     self.uplink.pop();
@@ -129,23 +130,26 @@ impl<F: FnMut() -> u64> System<F> {
         let mut cmd = ffi::MemCmd::default();
         let mut write = ffi::MemWrite::default();
         if self.backend.as_mut().unwrap().mem_cmd_accept(&mut cmd) {
+            log::debug!("[{}] Got cmd: {:?}", self.tick, cmd);
             self.downlink.push(PendingEv {
-                scheduled_at: self.tick + (self.delay_randomizer)(),
-                enqueued_at: self.tick,
+                scheduled_at: Reverse(self.tick + (self.delay_randomizer)()),
+                enqueued_at: Reverse(self.tick),
                 ev: DownlinkEv::Cmd(cmd),
             })
         }
         if self.backend.as_mut().unwrap().mem_write_accept(&mut write) {
+            log::debug!("[{}] Got write: {:?}", self.tick, write);
             self.downlink.push(PendingEv {
-                scheduled_at: self.tick + (self.delay_randomizer)(),
-                enqueued_at: self.tick,
+                scheduled_at: Reverse(self.tick + (self.delay_randomizer)()),
+                enqueued_at: Reverse(self.tick),
                 ev: DownlinkEv::Write(write),
             })
         }
 
         // Handles events. Also handle at most one event per cycle
         if let Some(e) = self.downlink.peek() {
-            if e.scheduled_at <= self.tick {
+            if e.scheduled_at.0 <= self.tick {
+                log::debug!("[{}] Processing: {:?}", self.tick, e);
                 match e.ev {
                     DownlinkEv::Cmd(ref c) => {
                         match c.op {
@@ -156,8 +160,8 @@ impl<F: FnMut() -> u64> System<F> {
                                 for (idx, data) in buf.into_iter().enumerate() {
                                     let scheduled_at = burst_arrival + idx as u64 * self.mem_burst_interval as u64;
                                     self.uplink.push(PendingEv {
-                                        scheduled_at,
-                                        enqueued_at: self.tick,
+                                        scheduled_at: Reverse(scheduled_at),
+                                        enqueued_at: Reverse(self.tick),
                                         ev: ffi::MemResp {
                                             id: c.id,
                                             data,
@@ -171,6 +175,8 @@ impl<F: FnMut() -> u64> System<F> {
                     },
                     DownlinkEv::Write(_) => unimplemented!("Mem write not implemented"),
                 }
+
+                self.downlink.pop();
             }
         }
 
@@ -264,10 +270,12 @@ impl Peripherals {
 
     // Wrap-around burst reading
     pub fn read(&mut self, base: u64, raw_size: u8, burst: u8, buf: &mut Vec<u64>) -> anyhow::Result<()> {
+        log::debug!("reading: 0x{:x} x {}", base, burst);
         for pack in AddrGen::new(base, raw_size, burst)? {
             let raw_readout = self.mem.mem.get(&pack.base).cloned().unwrap_or(0);
             // Bus is aligned, we can ignore shift and size
             // TODO: fill random data out side of current burst
+            log::debug!("-> : 0x{:x}", raw_readout);
             buf.push(raw_readout);
         }
         Ok(())

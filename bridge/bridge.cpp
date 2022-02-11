@@ -94,7 +94,7 @@ namespace meowv64::bridge {
     bool mem_write_accept(MemWrite &dest) override {
       dest.data = backend.mem_downlink_bits_data;
       backend.mem_downlink_ready = true;
-      return backend.mem_cmd_valid;
+      return backend.mem_downlink_valid;
     }
 
     // Returns false if the previous request is not yet accepted.
